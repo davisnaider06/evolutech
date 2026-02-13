@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuditLog } from '@/hooks/useAuditLog';
-import { supabase } from '@/integrations/supabase/client';
+import { useAuth as useClerkAuth } from '@clerk/clerk-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -87,19 +87,19 @@ interface SistemaModulo {
   is_default: boolean;
 }
 
-// Tipos de sistema com configurações padrão - 25+ nichos
+// Tipos de sistema com configuraÃ§Ãµes padrÃ£o - 25+ nichos
 type TipoSistema = 
-  | 'Clínicas Médicas' | 'Clínicas Odontológicas' | 'Psicólogos/Terapeutas'
-  | 'Salões de Beleza' | 'Barbearias' | 'Estúdios de Estética'
+  | 'ClÃ­nicas MÃ©dicas' | 'ClÃ­nicas OdontolÃ³gicas' | 'PsicÃ³logos/Terapeutas'
+  | 'SalÃµes de Beleza' | 'Barbearias' | 'EstÃºdios de EstÃ©tica'
   | 'Academias' | 'Personal Trainers'
   | 'Escolas' | 'Cursos Profissionalizantes' | 'Plataforma EAD'
   | 'Restaurantes' | 'Pizzarias' | 'Lanchonetes' | 'Delivery'
-  | 'Oficinas Mecânicas' | 'Lava-Jato'
-  | 'Imobiliárias' | 'Corretores Autônomos'
-  | 'Igrejas' | 'Associações/ONGs'
-  | 'Escritórios Contábeis' | 'Escritórios Advocacia'
-  | 'Serviços Gerais' | 'Prestadores Autônomos'
-  | 'Genérico';
+  | 'Oficinas MecÃ¢nicas' | 'Lava-Jato'
+  | 'ImobiliÃ¡rias' | 'Corretores AutÃ´nomos'
+  | 'Igrejas' | 'AssociaÃ§Ãµes/ONGs'
+  | 'EscritÃ³rios ContÃ¡beis' | 'EscritÃ³rios Advocacia'
+  | 'ServiÃ§os Gerais' | 'Prestadores AutÃ´nomos'
+  | 'GenÃ©rico';
 
 interface TipoSistemaConfig {
   icon: React.ReactNode;
@@ -111,35 +111,35 @@ interface TipoSistemaConfig {
 }
 
 const TIPOS_SISTEMA: Record<TipoSistema, TipoSistemaConfig> = {
-  // SAÚDE
-  'Clínicas Médicas': {
+  // SAÃšDE
+  'ClÃ­nicas MÃ©dicas': {
     icon: <Stethoscope className="h-5 w-5" />,
-    descricao: 'Sistema completo para clínicas médicas com agendamentos, prontuário eletrônico e financeiro.',
+    descricao: 'Sistema completo para clÃ­nicas mÃ©dicas com agendamentos, prontuÃ¡rio eletrÃ´nico e financeiro.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'agendamentos', 'prontuario'],
     opcionaisModulos: ['financeiro', 'pagamentos', 'relatorios_avancados'],
     color: 'bg-emerald-500',
-    categoria: 'Saúde',
+    categoria: 'SaÃºde',
   },
-  'Clínicas Odontológicas': {
+  'ClÃ­nicas OdontolÃ³gicas': {
     icon: <Stethoscope className="h-5 w-5" />,
-    descricao: 'Gestão de consultórios odontológicos com odontograma, tratamentos e agendamentos.',
+    descricao: 'GestÃ£o de consultÃ³rios odontolÃ³gicos com odontograma, tratamentos e agendamentos.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'agendamentos', 'prontuario'],
     opcionaisModulos: ['financeiro', 'pagamentos', 'estoque'],
     color: 'bg-emerald-500',
-    categoria: 'Saúde',
+    categoria: 'SaÃºde',
   },
-  'Psicólogos/Terapeutas': {
+  'PsicÃ³logos/Terapeutas': {
     icon: <Heart className="h-5 w-5" />,
-    descricao: 'Gestão de consultórios de saúde mental com prontuário, sessões e evolução do paciente.',
+    descricao: 'GestÃ£o de consultÃ³rios de saÃºde mental com prontuÃ¡rio, sessÃµes e evoluÃ§Ã£o do paciente.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'agendamentos', 'prontuario'],
     opcionaisModulos: ['financeiro', 'assinaturas', 'pagamentos'],
     color: 'bg-pink-500',
-    categoria: 'Saúde',
+    categoria: 'SaÃºde',
   },
   // BELEZA
-  'Salões de Beleza': {
+  'SalÃµes de Beleza': {
     icon: <Scissors className="h-5 w-5" />,
-    descricao: 'Agendamentos, controle de profissionais, comissões e fidelização de clientes.',
+    descricao: 'Agendamentos, controle de profissionais, comissÃµes e fidelizaÃ§Ã£o de clientes.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'agendamentos'],
     opcionaisModulos: ['financeiro', 'assinaturas', 'pagamentos'],
     color: 'bg-pink-400',
@@ -147,15 +147,15 @@ const TIPOS_SISTEMA: Record<TipoSistema, TipoSistemaConfig> = {
   },
   'Barbearias': {
     icon: <Scissors className="h-5 w-5" />,
-    descricao: 'Gestão de barbearias com agendamentos online, filas e pagamentos.',
+    descricao: 'GestÃ£o de barbearias com agendamentos online, filas e pagamentos.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'agendamentos'],
     opcionaisModulos: ['financeiro', 'pagamentos'],
     color: 'bg-slate-600',
     categoria: 'Beleza',
   },
-  'Estúdios de Estética': {
+  'EstÃºdios de EstÃ©tica': {
     icon: <Scissors className="h-5 w-5" />,
-    descricao: 'Controle de procedimentos, pacotes e acompanhamento de tratamentos estéticos.',
+    descricao: 'Controle de procedimentos, pacotes e acompanhamento de tratamentos estÃ©ticos.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'agendamentos', 'prontuario'],
     opcionaisModulos: ['financeiro', 'assinaturas', 'pagamentos'],
     color: 'bg-purple-400',
@@ -164,7 +164,7 @@ const TIPOS_SISTEMA: Record<TipoSistema, TipoSistemaConfig> = {
   // FITNESS
   'Academias': {
     icon: <Dumbbell className="h-5 w-5" />,
-    descricao: 'Gestão completa de academia com matrículas, treinos, check-in e mensalidades.',
+    descricao: 'GestÃ£o completa de academia com matrÃ­culas, treinos, check-in e mensalidades.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'matriculas', 'presenca', 'treinos'],
     opcionaisModulos: ['assinaturas', 'avaliacao_fisica', 'pagamentos', 'financeiro'],
     color: 'bg-orange-500',
@@ -172,41 +172,41 @@ const TIPOS_SISTEMA: Record<TipoSistema, TipoSistemaConfig> = {
   },
   'Personal Trainers': {
     icon: <Dumbbell className="h-5 w-5" />,
-    descricao: 'Gestão de alunos, treinos personalizados, agendamentos e evolução.',
+    descricao: 'GestÃ£o de alunos, treinos personalizados, agendamentos e evoluÃ§Ã£o.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'agendamentos', 'treinos'],
     opcionaisModulos: ['avaliacao_fisica', 'assinaturas', 'pagamentos'],
     color: 'bg-orange-600',
     categoria: 'Fitness',
   },
-  // EDUCAÇÃO
+  // EDUCAÃ‡ÃƒO
   'Escolas': {
     icon: <GraduationCap className="h-5 w-5" />,
-    descricao: 'Gestão escolar com matrículas, turmas, frequência e comunicação com pais.',
+    descricao: 'GestÃ£o escolar com matrÃ­culas, turmas, frequÃªncia e comunicaÃ§Ã£o com pais.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'matriculas', 'presenca'],
     opcionaisModulos: ['financeiro', 'documentos', 'relatorios_avancados'],
     color: 'bg-blue-500',
-    categoria: 'Educação',
+    categoria: 'EducaÃ§Ã£o',
   },
   'Cursos Profissionalizantes': {
     icon: <GraduationCap className="h-5 w-5" />,
-    descricao: 'Gestão de cursos livres com turmas, certificados e controle financeiro.',
+    descricao: 'GestÃ£o de cursos livres com turmas, certificados e controle financeiro.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'matriculas', 'presenca'],
     opcionaisModulos: ['certificados', 'financeiro', 'pagamentos'],
     color: 'bg-blue-600',
-    categoria: 'Educação',
+    categoria: 'EducaÃ§Ã£o',
   },
   'Plataforma EAD': {
     icon: <GraduationCap className="h-5 w-5" />,
-    descricao: 'Plataforma de cursos online com vídeos, materiais, provas e certificados.',
+    descricao: 'Plataforma de cursos online com vÃ­deos, materiais, provas e certificados.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'cursos_online'],
     opcionaisModulos: ['certificados', 'assinaturas', 'pagamentos'],
     color: 'bg-indigo-500',
-    categoria: 'Educação',
+    categoria: 'EducaÃ§Ã£o',
   },
   // FOOD SERVICE
   'Restaurantes': {
     icon: <UtensilsCrossed className="h-5 w-5" />,
-    descricao: 'Gestão completa de restaurante com mesas, comandas, cardápio e caixa.',
+    descricao: 'GestÃ£o completa de restaurante com mesas, comandas, cardÃ¡pio e caixa.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'cardapio', 'comandas'],
     opcionaisModulos: ['reservas', 'estoque', 'financeiro', 'delivery'],
     color: 'bg-amber-500',
@@ -214,7 +214,7 @@ const TIPOS_SISTEMA: Record<TipoSistema, TipoSistemaConfig> = {
   },
   'Pizzarias': {
     icon: <UtensilsCrossed className="h-5 w-5" />,
-    descricao: 'Gestão de pizzaria com pedidos, delivery e controle de produção.',
+    descricao: 'GestÃ£o de pizzaria com pedidos, delivery e controle de produÃ§Ã£o.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'cardapio', 'comandas', 'delivery'],
     opcionaisModulos: ['estoque', 'financeiro'],
     color: 'bg-red-500',
@@ -222,7 +222,7 @@ const TIPOS_SISTEMA: Record<TipoSistema, TipoSistemaConfig> = {
   },
   'Lanchonetes': {
     icon: <UtensilsCrossed className="h-5 w-5" />,
-    descricao: 'Sistema simples para lanchonetes com pedidos rápidos e controle de caixa.',
+    descricao: 'Sistema simples para lanchonetes com pedidos rÃ¡pidos e controle de caixa.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'cardapio', 'comandas'],
     opcionaisModulos: ['estoque', 'financeiro'],
     color: 'bg-yellow-500',
@@ -230,16 +230,16 @@ const TIPOS_SISTEMA: Record<TipoSistema, TipoSistemaConfig> = {
   },
   'Delivery': {
     icon: <UtensilsCrossed className="h-5 w-5" />,
-    descricao: 'Plataforma de delivery com app, rastreamento e gestão de entregadores.',
+    descricao: 'Plataforma de delivery com app, rastreamento e gestÃ£o de entregadores.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'cardapio', 'delivery'],
     opcionaisModulos: ['pagamentos', 'financeiro'],
     color: 'bg-green-500',
     categoria: 'Food Service',
   },
   // AUTOMOTIVO
-  'Oficinas Mecânicas': {
+  'Oficinas MecÃ¢nicas': {
     icon: <Car className="h-5 w-5" />,
-    descricao: 'Gestão de oficina com OS, peças, orçamentos e controle de serviços.',
+    descricao: 'GestÃ£o de oficina com OS, peÃ§as, orÃ§amentos e controle de serviÃ§os.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'ordens_servico'],
     opcionaisModulos: ['estoque', 'financeiro'],
     color: 'bg-slate-500',
@@ -247,83 +247,83 @@ const TIPOS_SISTEMA: Record<TipoSistema, TipoSistemaConfig> = {
   },
   'Lava-Jato': {
     icon: <Car className="h-5 w-5" />,
-    descricao: 'Controle de serviços de lavagem, pacotes e fidelização.',
+    descricao: 'Controle de serviÃ§os de lavagem, pacotes e fidelizaÃ§Ã£o.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'ordens_servico'],
     opcionaisModulos: ['assinaturas', 'financeiro'],
     color: 'bg-cyan-500',
     categoria: 'Automotivo',
   },
-  // IMOBILIÁRIO
-  'Imobiliárias': {
+  // IMOBILIÃRIO
+  'ImobiliÃ¡rias': {
     icon: <Building2 className="h-5 w-5" />,
-    descricao: 'Gestão de imóveis, contratos, visitas e CRM de clientes.',
+    descricao: 'GestÃ£o de imÃ³veis, contratos, visitas e CRM de clientes.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'imoveis', 'agendamentos'],
     opcionaisModulos: ['documentos', 'financeiro'],
     color: 'bg-violet-500',
-    categoria: 'Imobiliário',
+    categoria: 'ImobiliÃ¡rio',
   },
-  'Corretores Autônomos': {
+  'Corretores AutÃ´nomos': {
     icon: <Building2 className="h-5 w-5" />,
-    descricao: 'CRM imobiliário simples para corretores independentes.',
+    descricao: 'CRM imobiliÃ¡rio simples para corretores independentes.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'imoveis', 'agendamentos'],
     opcionaisModulos: [],
     color: 'bg-violet-400',
-    categoria: 'Imobiliário',
+    categoria: 'ImobiliÃ¡rio',
   },
   // RELIGIOSO / TERCEIRO SETOR
   'Igrejas': {
     icon: <Church className="h-5 w-5" />,
-    descricao: 'Gestão de membros, dízimos, eventos e comunicação da comunidade.',
+    descricao: 'GestÃ£o de membros, dÃ­zimos, eventos e comunicaÃ§Ã£o da comunidade.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'membros'],
     opcionaisModulos: ['dizimos', 'agendamentos', 'documentos'],
     color: 'bg-indigo-500',
     categoria: 'Religioso',
   },
-  'Associações/ONGs': {
+  'AssociaÃ§Ãµes/ONGs': {
     icon: <Heart className="h-5 w-5" />,
-    descricao: 'Controle de associados, contribuições, projetos e transparência.',
+    descricao: 'Controle de associados, contribuiÃ§Ãµes, projetos e transparÃªncia.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'membros'],
     opcionaisModulos: ['assinaturas', 'financeiro', 'documentos', 'relatorios_avancados'],
     color: 'bg-teal-500',
     categoria: 'Terceiro Setor',
   },
-  // SERVIÇOS PROFISSIONAIS
-  'Escritórios Contábeis': {
+  // SERVIÃ‡OS PROFISSIONAIS
+  'EscritÃ³rios ContÃ¡beis': {
     icon: <Briefcase className="h-5 w-5" />,
-    descricao: 'Gestão de clientes, documentos, prazos e integração fiscal.',
+    descricao: 'GestÃ£o de clientes, documentos, prazos e integraÃ§Ã£o fiscal.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'documentos', 'agendamentos'],
     opcionaisModulos: ['financeiro', 'relatorios_avancados'],
     color: 'bg-cyan-600',
-    categoria: 'Serviços',
+    categoria: 'ServiÃ§os',
   },
-  'Escritórios Advocacia': {
+  'EscritÃ³rios Advocacia': {
     icon: <Scale className="h-5 w-5" />,
-    descricao: 'Gestão de processos, prazos, clientes e controle de honorários.',
+    descricao: 'GestÃ£o de processos, prazos, clientes e controle de honorÃ¡rios.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'processos', 'documentos'],
     opcionaisModulos: ['agendamentos', 'financeiro'],
     color: 'bg-rose-600',
-    categoria: 'Jurídico',
+    categoria: 'JurÃ­dico',
   },
-  'Serviços Gerais': {
+  'ServiÃ§os Gerais': {
     icon: <Briefcase className="h-5 w-5" />,
-    descricao: 'Gestão de ordens de serviço, equipes e agendamentos de visitas.',
+    descricao: 'GestÃ£o de ordens de serviÃ§o, equipes e agendamentos de visitas.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'ordens_servico', 'agendamentos'],
     opcionaisModulos: ['financeiro'],
     color: 'bg-gray-500',
-    categoria: 'Serviços',
+    categoria: 'ServiÃ§os',
   },
-  'Prestadores Autônomos': {
+  'Prestadores AutÃ´nomos': {
     icon: <Briefcase className="h-5 w-5" />,
-    descricao: 'Sistema simples para profissionais autônomos com agenda e financeiro.',
+    descricao: 'Sistema simples para profissionais autÃ´nomos com agenda e financeiro.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes', 'agendamentos', 'ordens_servico'],
     opcionaisModulos: ['financeiro', 'pagamentos'],
     color: 'bg-gray-600',
-    categoria: 'Serviços',
+    categoria: 'ServiÃ§os',
   },
-  // GENÉRICO
-  'Genérico': {
+  // GENÃ‰RICO
+  'GenÃ©rico': {
     icon: <Layers className="h-5 w-5" />,
-    descricao: 'Sistema base flexível para qualquer tipo de negócio. Personalize conforme sua necessidade.',
+    descricao: 'Sistema base flexÃ­vel para qualquer tipo de negÃ³cio. Personalize conforme sua necessidade.',
     coreModulos: ['auth', 'users', 'dashboard', 'clientes'],
     opcionaisModulos: [],
     color: 'bg-gray-500',
@@ -333,22 +333,23 @@ const TIPOS_SISTEMA: Record<TipoSistema, TipoSistemaConfig> = {
 
 // Group templates by category
 const CATEGORIAS = [
-  { nome: 'Saúde', icon: <Stethoscope className="h-4 w-4" />, color: 'bg-emerald-500' },
+  { nome: 'SaÃºde', icon: <Stethoscope className="h-4 w-4" />, color: 'bg-emerald-500' },
   { nome: 'Beleza', icon: <Scissors className="h-4 w-4" />, color: 'bg-pink-500' },
   { nome: 'Fitness', icon: <Dumbbell className="h-4 w-4" />, color: 'bg-orange-500' },
-  { nome: 'Educação', icon: <GraduationCap className="h-4 w-4" />, color: 'bg-blue-500' },
+  { nome: 'EducaÃ§Ã£o', icon: <GraduationCap className="h-4 w-4" />, color: 'bg-blue-500' },
   { nome: 'Food Service', icon: <UtensilsCrossed className="h-4 w-4" />, color: 'bg-amber-500' },
   { nome: 'Automotivo', icon: <Car className="h-4 w-4" />, color: 'bg-slate-500' },
-  { nome: 'Imobiliário', icon: <Building2 className="h-4 w-4" />, color: 'bg-violet-500' },
+  { nome: 'ImobiliÃ¡rio', icon: <Building2 className="h-4 w-4" />, color: 'bg-violet-500' },
   { nome: 'Religioso', icon: <Church className="h-4 w-4" />, color: 'bg-indigo-500' },
   { nome: 'Terceiro Setor', icon: <Heart className="h-4 w-4" />, color: 'bg-teal-500' },
-  { nome: 'Serviços', icon: <Briefcase className="h-4 w-4" />, color: 'bg-cyan-500' },
-  { nome: 'Jurídico', icon: <Scale className="h-4 w-4" />, color: 'bg-rose-500' },
+  { nome: 'ServiÃ§os', icon: <Briefcase className="h-4 w-4" />, color: 'bg-cyan-500' },
+  { nome: 'JurÃ­dico', icon: <Scale className="h-4 w-4" />, color: 'bg-rose-500' },
   { nome: 'Outros', icon: <Layers className="h-4 w-4" />, color: 'bg-gray-500' },
 ];
 
 export default function GestaoSistemasBase() {
   const { user } = useAuth();
+  const { getToken } = useClerkAuth();
   const { logAudit } = useAuditLog();
   const { toast } = useToast();
   const [sistemas, setSistemas] = useState<SistemaBase[]>([]);
@@ -370,6 +371,15 @@ export default function GestaoSistemasBase() {
   });
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN_EVOLUTECH';
+  const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001/api';
+
+  const getAuthHeaders = useCallback(async () => {
+    const token = await getToken();
+    return {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+  }, [getToken]);
 
   useEffect(() => {
     fetchSistemas();
@@ -377,36 +387,50 @@ export default function GestaoSistemasBase() {
   }, []);
 
   const fetchSistemas = async () => {
-    const { data, error } = await supabase
-      .from('sistemas_base')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      toast({ title: 'Erro ao carregar sistemas', variant: 'destructive' });
-    } else {
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${API_URL}/sistemas-base`, { headers });
+      if (!response.ok) {
+        throw new Error(`Erro ${response.status}`);
+      }
+      const data = await response.json();
       setSistemas(data || []);
+    } catch (_error) {
+      toast({ title: 'Erro ao carregar sistemas', variant: 'destructive' });
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const fetchModulos = async () => {
-    const { data } = await supabase
-      .from('modulos')
-      .select('*')
-      .eq('status', 'active')
-      .order('is_core', { ascending: false })
-      .order('nome');
-    setModulos(data || []);
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${API_URL}/modulos`, { headers });
+      if (!response.ok) {
+        throw new Error(`Erro ${response.status}`);
+      }
+      const data = await response.json();
+      const onlyActive = (data || []).filter((m: Modulo) => m.status === 'active');
+      setModulos(onlyActive);
+    } catch (_error) {
+      toast({ title: 'Erro ao carregar mÃ³dulos', variant: 'destructive' });
+      setModulos([]);
+    }
   };
 
   const fetchSistemaModulos = async (sistemaId: string) => {
-    const { data } = await supabase
-      .from('sistema_base_modulos')
-      .select('modulo_id, is_default')
-      .eq('sistema_base_id', sistemaId);
-    
-    setSistemaModulos(data || []);
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${API_URL}/sistemas-base/${sistemaId}/modulos`, { headers });
+      if (!response.ok) {
+        throw new Error(`Erro ${response.status}`);
+      }
+      const data = await response.json();
+      setSistemaModulos((data || []).map((m: any) => ({ modulo_id: m.modulo_id, is_default: !!m.is_default })));
+    } catch (_error) {
+      toast({ title: 'Erro ao carregar mÃ³dulos do sistema', variant: 'destructive' });
+      setSistemaModulos([]);
+    }
   };
 
   // Apply template when tipo is selected
@@ -423,7 +447,7 @@ export default function GestaoSistemasBase() {
     // Set modules
     const newModulos: SistemaModulo[] = [];
     
-    // Add core modules as default (obrigatório)
+    // Add core modules as default (obrigatÃ³rio)
     config.coreModulos.forEach(codigo => {
       const modulo = modulos.find(m => m.codigo === codigo);
       if (modulo) {
@@ -432,7 +456,7 @@ export default function GestaoSistemasBase() {
     });
 
     // Add optional modules as non-default
-    const opcionais = tipo === 'Genérico' 
+    const opcionais = tipo === 'GenÃ©rico' 
       ? modulos.filter(m => !config.coreModulos.includes(m.codigo))
       : modulos.filter(m => config.opcionaisModulos.includes(m.codigo));
 
@@ -482,21 +506,25 @@ export default function GestaoSistemasBase() {
 
   const handleSave = async () => {
     if (!formData.nome || !formData.nicho) {
-      toast({ title: 'Preencha os campos obrigatórios', variant: 'destructive' });
+      toast({ title: 'Preencha os campos obrigatÃ³rios', variant: 'destructive' });
       return;
     }
 
     setIsSaving(true);
     try {
       let sistemaId = selectedSistema?.id;
+      const headers = await getAuthHeaders();
 
       if (selectedSistema) {
-        const { error } = await supabase
-          .from('sistemas_base')
-          .update(formData)
-          .eq('id', selectedSistema.id);
-
-        if (error) throw error;
+        const response = await fetch(`${API_URL}/sistemas-base/${selectedSistema.id}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify(formData),
+        });
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData?.error || `Erro ${response.status}`);
+        }
         
         await logAudit({ 
           action: 'update', 
@@ -505,14 +533,16 @@ export default function GestaoSistemasBase() {
           details: formData 
         });
       } else {
-        const { data, error } = await supabase
-          .from('sistemas_base')
-          .insert(formData)
-          .select()
-          .single();
-
-        if (error) throw error;
-        
+        const response = await fetch(`${API_URL}/sistemas-base`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(formData),
+        });
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData?.error || `Erro ${response.status}`);
+        }
+        const data = await response.json();
         sistemaId = data.id;
         await logAudit({ 
           action: 'create', 
@@ -524,19 +554,16 @@ export default function GestaoSistemasBase() {
 
       // Save modules
       if (sistemaId) {
-        await supabase
-          .from('sistema_base_modulos')
-          .delete()
-          .eq('sistema_base_id', sistemaId);
-
-        if (sistemaModulos.length > 0) {
-          const inserts = sistemaModulos.map(sm => ({
-            sistema_base_id: sistemaId,
-            modulo_id: sm.modulo_id,
-            is_default: sm.is_default,
-          }));
-
-          await supabase.from('sistema_base_modulos').insert(inserts);
+        const moduleIds = sistemaModulos.map((sm) => sm.modulo_id);
+        const defaultModuleIds = sistemaModulos.filter((sm) => sm.is_default).map((sm) => sm.modulo_id);
+        const modulesResponse = await fetch(`${API_URL}/sistemas-base/${sistemaId}/modulos`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({ moduleIds, defaultModuleIds }),
+        });
+        if (!modulesResponse.ok) {
+          const errorData = await modulesResponse.json().catch(() => ({}));
+          throw new Error(errorData?.error || `Erro ${modulesResponse.status}`);
         }
 
         await logAudit({ 
@@ -560,26 +587,30 @@ export default function GestaoSistemasBase() {
 
   const handleDelete = async (sistema: SistemaBase) => {
     if (!isSuperAdmin) {
-      toast({ title: 'Sem permissão', variant: 'destructive' });
+      toast({ title: 'Sem permissÃ£o', variant: 'destructive' });
       return;
     }
 
-    const { error } = await supabase
-      .from('sistemas_base')
-      .delete()
-      .eq('id', sistema.id);
-
-    if (error) {
-      toast({ title: 'Erro ao excluir', variant: 'destructive' });
-    } else {
-      await logAudit({ 
-        action: 'delete', 
-        entityType: 'sistemas_base', 
-        entityId: sistema.id, 
-        details: { nome: sistema.nome } 
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${API_URL}/sistemas-base/${sistema.id}`, {
+        method: 'DELETE',
+        headers,
       });
-      toast({ title: 'Sistema excluído' });
+      if (!response.ok) {
+        throw new Error(`Erro ${response.status}`);
+      }
+
+      await logAudit({
+        action: 'delete',
+        entityType: 'sistemas_base',
+        entityId: sistema.id,
+        details: { nome: sistema.nome }
+      });
+      toast({ title: 'Sistema excluido' });
       fetchSistemas();
+    } catch (_error) {
+      toast({ title: 'Erro ao excluir', variant: 'destructive' });
     }
   };
 
@@ -589,7 +620,7 @@ export default function GestaoSistemasBase() {
     
     // Core modules cannot be removed
     if (isCore) {
-      toast({ title: 'Módulos Core não podem ser removidos', variant: 'destructive' });
+      toast({ title: 'MÃ³dulos Core nÃ£o podem ser removidos', variant: 'destructive' });
       return;
     }
     
@@ -609,7 +640,7 @@ export default function GestaoSistemasBase() {
     
     // Core modules are always default
     if (isCore) {
-      toast({ title: 'Módulos Core são sempre obrigatórios', variant: 'destructive' });
+      toast({ title: 'MÃ³dulos Core sÃ£o sempre obrigatÃ³rios', variant: 'destructive' });
       return;
     }
     
@@ -645,7 +676,7 @@ export default function GestaoSistemasBase() {
           <div>
             <h1 className="text-3xl font-bold">Biblioteca de Templates</h1>
             <p className="text-muted-foreground">
-              {sistemas.length} templates • {modulos.length} módulos • {Object.keys(TIPOS_SISTEMA).length - 1} nichos
+              {sistemas.length} templates â€¢ {modulos.length} mÃ³dulos â€¢ {Object.keys(TIPOS_SISTEMA).length - 1} nichos
             </p>
           </div>
         </div>
@@ -658,9 +689,9 @@ export default function GestaoSistemasBase() {
       {/* WhatsApp Alert */}
       <Alert className="border-amber-500/50 bg-amber-500/10">
         <MessageSquare className="h-4 w-4 text-amber-600" />
-        <AlertTitle className="text-amber-600">Automação WhatsApp</AlertTitle>
+        <AlertTitle className="text-amber-600">AutomaÃ§Ã£o WhatsApp</AlertTitle>
         <AlertDescription className="text-amber-700">
-          A automação de WhatsApp será habilitada em versão futura. A estrutura de eventos, filas e logs já está preparada.
+          A automaÃ§Ã£o de WhatsApp serÃ¡ habilitada em versÃ£o futura. A estrutura de eventos, filas e logs jÃ¡ estÃ¡ preparada.
         </AlertDescription>
       </Alert>
 
@@ -683,7 +714,7 @@ export default function GestaoSistemasBase() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Módulos Disponíveis</p>
+                <p className="text-sm text-muted-foreground">MÃ³dulos DisponÃ­veis</p>
                 <p className="text-2xl font-bold">
                   {modulos.filter(m => m.status === 'active').length}
                 </p>
@@ -719,7 +750,7 @@ export default function GestaoSistemasBase() {
               <Blocks className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold mb-2">Nenhum sistema cadastrado</h3>
               <p className="text-muted-foreground text-center mb-4">
-                Crie seu primeiro sistema base para começar
+                Crie seu primeiro sistema base para comeÃ§ar
               </p>
               <Button onClick={openNewSistema}>
                 <Plus className="h-4 w-4 mr-2" />
@@ -745,7 +776,7 @@ export default function GestaoSistemasBase() {
                       <div>
                         <CardTitle className="text-lg">{sistema.nome}</CardTitle>
                         <CardDescription className="line-clamp-2">
-                          {sistema.descricao || 'Sem descrição'}
+                          {sistema.descricao || 'Sem descriÃ§Ã£o'}
                         </CardDescription>
                       </div>
                     </div>
@@ -757,7 +788,7 @@ export default function GestaoSistemasBase() {
                     <Badge variant="outline">{sistema.nicho}</Badge>
                   </div>
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Versão</span>
+                    <span className="text-muted-foreground">VersÃ£o</span>
                     <span className="font-mono">{sistema.versao}</span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
@@ -811,11 +842,11 @@ export default function GestaoSistemasBase() {
               </TabsTrigger>
               <TabsTrigger value="info" className="gap-2">
                 <Settings2 className="h-4 w-4" />
-                Informações
+                InformaÃ§Ãµes
               </TabsTrigger>
               <TabsTrigger value="modulos" className="gap-2">
                 <Package className="h-4 w-4" />
-                Módulos ({sistemaModulos.length})
+                MÃ³dulos ({sistemaModulos.length})
               </TabsTrigger>
             </TabsList>
 
@@ -824,7 +855,7 @@ export default function GestaoSistemasBase() {
               <div className="text-center mb-6">
                 <h3 className="text-lg font-semibold mb-2">Escolha o tipo de sistema</h3>
                 <p className="text-sm text-muted-foreground">
-                  Selecione um tipo para carregar automaticamente os módulos ideais
+                  Selecione um tipo para carregar automaticamente os mÃ³dulos ideais
                 </p>
               </div>
 
@@ -876,21 +907,21 @@ export default function GestaoSistemasBase() {
               {selectedTipo && (
                 <div className="flex justify-end pt-4">
                   <Button onClick={() => setActiveTab('info')} className="gap-2">
-                    Próximo: Informações
+                    PrÃ³ximo: InformaÃ§Ãµes
                     <Settings2 className="h-4 w-4" />
                   </Button>
                 </div>
               )}
             </TabsContent>
 
-            {/* Tab: Informações */}
+            {/* Tab: InformaÃ§Ãµes */}
             <TabsContent value="info" className="space-y-4 mt-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="nome">Nome do Sistema *</Label>
                   <Input
                     id="nome"
-                    placeholder="Ex: Sistema para Clínicas"
+                    placeholder="Ex: Sistema para ClÃ­nicas"
                     value={formData.nome}
                     onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
                   />
@@ -924,10 +955,10 @@ export default function GestaoSistemasBase() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="descricao">Descrição</Label>
+                <Label htmlFor="descricao">DescriÃ§Ã£o</Label>
                 <Textarea
                   id="descricao"
-                  placeholder="Descreva o propósito e funcionalidades principais do sistema..."
+                  placeholder="Descreva o propÃ³sito e funcionalidades principais do sistema..."
                   value={formData.descricao}
                   onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
                   rows={3}
@@ -936,7 +967,7 @@ export default function GestaoSistemasBase() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="versao">Versão</Label>
+                  <Label htmlFor="versao">VersÃ£o</Label>
                   <Input
                     id="versao"
                     placeholder="1.0.0"
@@ -972,17 +1003,17 @@ export default function GestaoSistemasBase() {
                   </Button>
                 )}
                 <Button onClick={() => setActiveTab('modulos')} className="gap-2 ml-auto">
-                  Próximo: Módulos
+                  PrÃ³ximo: MÃ³dulos
                   <Package className="h-4 w-4" />
                 </Button>
               </div>
             </TabsContent>
 
-            {/* Tab: Módulos */}
+            {/* Tab: MÃ³dulos */}
             <TabsContent value="modulos" className="space-y-4 mt-4">
               <div className="flex items-center justify-between mb-4">
                 <div className="text-sm text-muted-foreground">
-                  Selecione os módulos. Módulos <strong>Core</strong> não podem ser desativados pelos clientes.
+                  Selecione os mÃ³dulos. MÃ³dulos <strong>Core</strong> nÃ£o podem ser desativados pelos clientes.
                 </div>
                 <div className="flex gap-2">
                   <Badge variant="default">{coreCount} Core</Badge>
@@ -992,7 +1023,7 @@ export default function GestaoSistemasBase() {
 
               {modulos.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
-                  Nenhum módulo cadastrado. Crie módulos primeiro.
+                  Nenhum mÃ³dulo cadastrado. Crie mÃ³dulos primeiro.
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -1032,18 +1063,18 @@ export default function GestaoSistemasBase() {
                               </Badge>
                             </div>
                             <p className="text-sm text-muted-foreground">
-                              {modulo.descricao || 'Sem descrição'}
+                              {modulo.descricao || 'Sem descriÃ§Ã£o'}
                             </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-4">
                           <span className="text-sm font-medium">
-                            {modulo.preco_mensal > 0 ? formatCurrency(modulo.preco_mensal) : 'Grátis'}
+                            {modulo.preco_mensal > 0 ? formatCurrency(modulo.preco_mensal) : 'GrÃ¡tis'}
                           </span>
                           {isSelected && (
                             <div className="flex items-center gap-2">
                               <Label htmlFor={`default-${modulo.id}`} className="text-xs text-muted-foreground">
-                                Obrigatório
+                                ObrigatÃ³rio
                               </Label>
                               <Switch
                                 id={`default-${modulo.id}`}
@@ -1064,7 +1095,7 @@ export default function GestaoSistemasBase() {
                 <div className="mt-4 p-4 rounded-lg bg-secondary/50">
                   <h4 className="font-medium mb-2 flex items-center gap-2">
                     <CheckCircle className="h-4 w-4 text-primary" />
-                    Resumo de Módulos
+                    Resumo de MÃ³dulos
                   </h4>
                   <div className="flex flex-wrap gap-2">
                     {sistemaModulos.map(sm => {
@@ -1089,10 +1120,10 @@ export default function GestaoSistemasBase() {
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                     <div>
-                      <h4 className="font-medium text-yellow-700">Módulos Core</h4>
+                      <h4 className="font-medium text-yellow-700">MÃ³dulos Core</h4>
                       <p className="text-sm text-muted-foreground">
-                        Os módulos marcados como <strong>Core</strong> para o tipo "{selectedTipo}" 
-                        não podem ser desativados pelos clientes. Eles são essenciais para o funcionamento do sistema.
+                        Os mÃ³dulos marcados como <strong>Core</strong> para o tipo "{selectedTipo}" 
+                        nÃ£o podem ser desativados pelos clientes. Eles sÃ£o essenciais para o funcionamento do sistema.
                       </p>
                     </div>
                   </div>
@@ -1124,3 +1155,4 @@ export default function GestaoSistemasBase() {
     </div>
   );
 }
+

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth as useAppAuth } from '@/contexts/AuthContext';
+import { useAuth as useClerkAuth } from '@clerk/clerk-react';
 import { syncCustomModulesToCompany, syncTemplateModulesToCompany } from '@/hooks/useSyncCompanyModules';
 import { useEditCompanyModules } from '@/hooks/useEditCompanyModules';
 import { TemplateModulesSelector } from '@/components/empresa/TemplateModulesSelector';
@@ -65,8 +66,11 @@ const planColors = {
   enterprise: 'bg-role-super-admin/20 text-role-super-admin border-role-super-admin/30',
 };
 
+const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001/api';
+
 const Empresas: React.FC = () => {
-  const { user } = useAuth();
+  const { user } = useAppAuth();
+  const { getToken } = useClerkAuth();
   const { logAudit } = useAuditLog();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -87,19 +91,30 @@ const Empresas: React.FC = () => {
     sistema_base_id: '' as string,
   });
 
-  const fetchEmpresas = async () => {
-    const { data, error } = await supabase
-      .from('companies')
-      .select('*')
-      .order('created_at', { ascending: false });
+  const getAuthHeaders = async () => {
+    const token = await getToken();
+    return {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+  };
 
-    if (error) {
+  const fetchEmpresas = async () => {
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${API_URL}/companies`, { headers });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData?.error || `Erro ${response.status}`);
+      }
+      const data = await response.json();
+      setEmpresas(Array.isArray(data) ? data : []);
+    } catch (error) {
       console.error('Error fetching companies:', error);
       toast.error('Erro ao carregar empresas');
-    } else {
-      setEmpresas(data || []);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   useEffect(() => {
@@ -197,19 +212,24 @@ const Empresas: React.FC = () => {
           if (uploadedUrl) logoUrl = uploadedUrl;
         }
 
-        const { error } = await supabase
-          .from('companies')
-          .update({
+        const headers = await getAuthHeaders();
+        const updateResponse = await fetch(`${API_URL}/companies/${selectedCompany.id}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
             name: formData.name,
             slug,
             plan: formData.plan,
             monthly_revenue: formData.monthly_revenue,
             logo_url: logoUrl,
             sistema_base_id: formData.sistema_base_id || null,
-          })
-          .eq('id', selectedCompany.id);
+          }),
+        });
 
-        if (error) throw error;
+        if (!updateResponse.ok) {
+          const errorData = await updateResponse.json().catch(() => ({}));
+          throw new Error(errorData?.error || `Erro ${updateResponse.status}`);
+        }
 
         // Sync modules for existing company
         if (selectedModules.length > 0) {
@@ -228,28 +248,39 @@ const Empresas: React.FC = () => {
 
         toast.success('Empresa atualizada com sucesso');
       } else {
-        const { data, error } = await supabase
-          .from('companies')
-          .insert([{
+        const headers = await getAuthHeaders();
+        const createResponse = await fetch(`${API_URL}/companies`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
             name: formData.name,
             slug,
             plan: formData.plan,
             monthly_revenue: formData.monthly_revenue,
             sistema_base_id: formData.sistema_base_id || null,
-          }])
-          .select()
-          .single();
+          }),
+        });
 
-        if (error) throw error;
+        if (!createResponse.ok) {
+          const errorData = await createResponse.json().catch(() => ({}));
+          throw new Error(errorData?.error || `Erro ${createResponse.status}`);
+        }
+
+        const data = await createResponse.json();
 
         // Upload logo after company is created
         if (logoFile && data) {
           const logoUrl = await uploadLogo(data.id);
           if (logoUrl) {
-            await supabase
-              .from('companies')
-              .update({ logo_url: logoUrl })
-              .eq('id', data.id);
+            const patchLogoResponse = await fetch(`${API_URL}/companies/${data.id}`, {
+              method: 'PATCH',
+              headers,
+              body: JSON.stringify({ logo_url: logoUrl }),
+            });
+            if (!patchLogoResponse.ok) {
+              const errorData = await patchLogoResponse.json().catch(() => ({}));
+              console.error('Error patching company logo in backend:', errorData);
+            }
           }
         }
 
@@ -284,7 +315,8 @@ const Empresas: React.FC = () => {
       fetchEmpresas();
     } catch (error) {
       console.error('Error saving company:', error);
-      toast.error('Erro ao salvar empresa');
+      const message = error instanceof Error ? error.message : 'Erro ao salvar empresa';
+      toast.error(message);
     } finally {
       setIsUploading(false);
     }
@@ -294,12 +326,16 @@ const Empresas: React.FC = () => {
     const newStatus = company.status === 'active' ? 'inactive' : 'active';
     
     try {
-      const { error } = await supabase
-        .from('companies')
-        .update({ status: newStatus })
-        .eq('id', company.id);
-
-      if (error) throw error;
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${API_URL}/companies/${company.id}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData?.error || `Erro ${response.status}`);
+      }
 
       await logAudit({
         action: newStatus === 'active' ? 'activate' : 'deactivate',
@@ -312,7 +348,8 @@ const Empresas: React.FC = () => {
       fetchEmpresas();
     } catch (error) {
       console.error('Error toggling status:', error);
-      toast.error('Erro ao alterar status');
+      const message = error instanceof Error ? error.message : 'Erro ao alterar status';
+      toast.error(message);
     }
   };
 
@@ -320,12 +357,15 @@ const Empresas: React.FC = () => {
     if (!selectedCompany) return;
 
     try {
-      const { error } = await supabase
-        .from('companies')
-        .delete()
-        .eq('id', selectedCompany.id);
-
-      if (error) throw error;
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${API_URL}/companies/${selectedCompany.id}`, {
+        method: 'DELETE',
+        headers,
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData?.error || `Erro ${response.status}`);
+      }
 
       await logAudit({
         action: 'delete',
@@ -340,7 +380,8 @@ const Empresas: React.FC = () => {
       fetchEmpresas();
     } catch (error) {
       console.error('Error deleting company:', error);
-      toast.error('Erro ao excluir empresa');
+      const message = error instanceof Error ? error.message : 'Erro ao excluir empresa';
+      toast.error(message);
     }
   };
 

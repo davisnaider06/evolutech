@@ -5,6 +5,24 @@ import { User as AppUser, UserRole, AuthState, Company, dbRoleToUserRole, DbRole
 // Certifique-se que esta URL está correta e o backend está rodando
 const API_URL = 'http://localhost:3001/api';
 
+const normalizeRole = (role: string | null | undefined): UserRole => {
+  if (!role) return 'FUNCIONARIO_EMPRESA';
+
+  // Already normalized
+  if (
+    role === 'SUPER_ADMIN_EVOLUTECH' ||
+    role === 'ADMIN_EVOLUTECH' ||
+    role === 'DONO_EMPRESA' ||
+    role === 'FUNCIONARIO_EMPRESA'
+  ) {
+    return role;
+  }
+
+  // DB format (snake_case)
+  const mapped = dbRoleToUserRole(role as DbRole);
+  return mapped || 'FUNCIONARIO_EMPRESA';
+};
+
 interface AuthContextType extends AuthState {
   login: () => void;
   signup: () => void;
@@ -57,7 +75,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         id: data.user.id,
         email: clerkUser.primaryEmailAddress?.emailAddress || '',
         name: data.user.full_name || clerkUser.fullName || '',
-        role: dbRoleToUserRole(data.user.role as DbRole),
+        role: normalizeRole(data.user.role),
         tenantId: data.user.company_id,
         tenantName: data.company?.name,
         avatar: clerkUser.imageUrl,
