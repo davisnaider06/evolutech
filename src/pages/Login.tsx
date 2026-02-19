@@ -1,21 +1,59 @@
-import React, { useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Logo } from '@/components/Logo';
-import { SignIn } from '@clerk/clerk-react';
-import { dark } from '@clerk/themes';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { toast } from 'sonner';
+import { Lock, Mail, ArrowRight, Loader2 } from 'lucide-react';
 
 const Login: React.FC = () => {
-  const { isAuthenticated, getRedirectPath } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const { login } = useAuth();
   const navigate = useNavigate();
 
-  // Se o usuário já estiver logado, redireciona automaticamente
-  useEffect(() => {
-    if (isAuthenticated) {
-      const redirectPath = getRedirectPath();
-      navigate(redirectPath, { replace: true });
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      // Bate no nosso backend local na nova rota de auth
+      const response = await fetch('http://localhost:3001/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Falha no login');
+      }
+
+      // Sucesso! Salva no contexto e redireciona
+      login(data.token, data.user);
+      toast.success(`Bem-vindo, ${data.user.name}!`);
+
+      // Pequeno delay para UX
+      setTimeout(() => {
+        if (data.user.role === 'SUPER_ADMIN_EVOLUTECH') {
+            navigate('/admin-evolutech', { replace: true });
+        } else if (data.user.role === 'DONO_EMPRESA') {
+            navigate('/empresa/dashboard', { replace: true });
+        } else {
+            navigate('/redirect', { replace: true });
+        }
+      }, 500);
+
+    } catch (error: any) {
+      toast.error(error.message || "Erro ao conectar com o servidor");
+    } finally {
+      setIsLoading(false);
     }
-  }, [isAuthenticated, getRedirectPath, navigate]);
+  };
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background p-4">
@@ -43,28 +81,55 @@ const Login: React.FC = () => {
             <Logo size="lg" />
           </div>
 
-          {/* Componente do Clerk
-              Configurado para remover o card padrão do Clerk e usar o tema Dark 
-          */}
-          <SignIn 
-            appearance={{
-              baseTheme: dark,
-              elements: {
-                rootBox: "w-full",
-                card: "bg-transparent shadow-none w-full p-0", // Remove o fundo/sombra do Clerk para usar o seu Glass
-                headerTitle: "text-foreground text-xl font-bold", // Ajusta tipografia
-                headerSubtitle: "text-muted-foreground",
-                formFieldLabel: "text-foreground",
-                formFieldInput: "bg-background/50 border-input text-foreground", // Inputs mais integrados
-                footerActionText: "text-muted-foreground",
-                footerActionLink: "text-primary hover:text-primary/90"
-              }
-            }}
-            routing="path" 
-            path="/login" 
-            signUpUrl="/cadastro" 
-            forceRedirectUrl="/redirect"
-          />
+          <div className="text-center mb-8">
+            <h1 className="text-2xl font-bold text-foreground">Acesso ao Sistema</h1>
+            <p className="text-sm text-muted-foreground mt-2">Entre com suas credenciais corporativas</p>
+          </div>
+
+          {/* Formulário Próprio (Substituindo o Clerk) */}
+          <form onSubmit={handleSubmit} className="w-full space-y-4">
+            
+            <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <div className="relative">
+                    <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <Input 
+                        id="email"
+                        type="email" 
+                        placeholder="admin@evolutech.com" 
+                        className="pl-10 bg-background/50 border-input"
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        required
+                    />
+                </div>
+            </div>
+
+            <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                    <Label htmlFor="password">Senha</Label>
+                </div>
+                <div className="relative">
+                    <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <Input 
+                        id="password"
+                        type="password" 
+                        placeholder="••••••••" 
+                        className="pl-10 bg-background/50 border-input"
+                        value={password}
+                        onChange={e => setPassword(e.target.value)}
+                        required
+                    />
+                </div>
+            </div>
+
+            <Button type="submit" className="w-full mt-6" disabled={isLoading} variant="glow">
+                {isLoading ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <ArrowRight className="mr-2 h-4 w-4" />}
+                {isLoading ? 'Autenticando...' : 'Entrar'}
+            </Button>
+
+          </form>
+
         </div>
 
         {/* Footer */}

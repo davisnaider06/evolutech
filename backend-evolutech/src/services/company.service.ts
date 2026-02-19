@@ -1,93 +1,83 @@
-import { pool } from '../db';
+import { prisma } from '../db';
 import { AuthenticatedUser } from '../types';
 import { TABLE_CONFIG } from '../config/tableConfig';
 
 export class CompanyService {
-  private checkAccess(user: AuthenticatedUser, targetCompanyId: string) {
-    if (user.role === 'SUPER_ADMIN_EVOLUTECH') return true;
-    return user.companyId === targetCompanyId;
+  
+  // Mapeia string da URL -> Model do Prisma
+  private getModel(tableName: string) {
+    // Mapeamento manual para garantir segurança e converter plural/singular se necessário
+    const map: Record<string, any> = {
+      customers: prisma.customer,
+      products: prisma.product,
+      appointments: prisma.appointment,
+      orders: prisma.order,
+      // adicione novos models aqui
+    };
+    return map[tableName];
   }
 
-  private safeIdentifier(value: string) {
-    return /^[a-z_][a-z0-9_]*$/i.test(value);
+  private checkAccess(user: AuthenticatedUser, companyId: string) {
+    if (user.role === 'SUPER_ADMIN_EVOLUTECH') return true;
+    return user.companyId === companyId;
   }
 
   async listTableData(table: string, user: AuthenticatedUser, queryParams: any) {
+    const model = this.getModel(table);
     const config = TABLE_CONFIG[table];
-    if (!config) throw new Error('Tabela não suportada');
+    if (!model || !config) throw new Error('Tabela não suportada ou não configurada');
 
     const companyId = user.role === 'SUPER_ADMIN_EVOLUTECH' 
         ? (queryParams.company_id || user.companyId) 
         : user.companyId;
 
     if (!companyId) throw new Error('Company ID obrigatório');
-    if (!this.checkAccess(user, companyId)) throw new Error('Acesso negado à empresa');
+    if (!this.checkAccess(user, companyId)) throw new Error('Acesso negado');
 
     const page = Number(queryParams.page || 1);
     const pageSize = Number(queryParams.pageSize || 10);
-    const offset = (page - 1) * pageSize;
     const search = (queryParams.search as string)?.trim();
 
-    const values: any[] = [companyId];
-    const whereParts: string[] = ['company_id = $1'];
+    // Filtros Dinâmicos do Prisma
+    const where: any = { companyId };
 
-    // Busca Textual
     if (search && config.searchFields.length > 0) {
-      const searchParts: string[] = [];
-      for (const field of config.searchFields) {
-        values.push(`%${search}%`);
-        searchParts.push(`${field} ILIKE $${values.length}`);
-      }
-      whereParts.push(`(${searchParts.join(' OR ')})`);
+      where['OR'] = config.searchFields.map(field => ({
+        [field]: { contains: search, mode: 'insensitive' }
+      }));
     }
 
-    // Filtro de Data (Exemplo)
     if (queryParams.dateFrom) {
-        values.push(queryParams.dateFrom);
-        whereParts.push(`${config.dateField} >= $${values.length}`);
+      where[config.dateField] = { gte: new Date(queryParams.dateFrom) };
     }
 
-    const whereClause = whereParts.join(' AND ');
-
-    // Count
-    const countQuery = `SELECT COUNT(*)::int as total FROM ${table} WHERE ${whereClause}`;
-    const { rows: countRows } = await pool.query(countQuery, values);
-    const total = countRows[0]?.total || 0;
-
-    // Data
-    values.push(pageSize);
-    values.push(offset);
-    const dataQuery = `
-      SELECT * FROM ${table} 
-      WHERE ${whereClause} 
-      ORDER BY ${config.defaultOrderBy} DESC 
-      LIMIT $${values.length - 1} OFFSET $${values.length}
-    `;
+    // Executa Queries
+    const [data, total] = await Promise.all([
+      model.findMany({
+        where,
+        take: pageSize,
+        skip: (page - 1) * pageSize,
+        orderBy: { [config.defaultOrderBy]: 'desc' }
+      }),
+      model.count({ where })
+    ]);
     
-    const { rows } = await pool.query(dataQuery, values);
-    return { data: rows, total, page, pageSize };
+    return { data, total, page, pageSize };
   }
 
   async createRecord(table: string, user: AuthenticatedUser, data: any) {
-    if (!TABLE_CONFIG[table]) throw new Error('Tabela não suportada');
-    
-    const companyId = user.role === 'SUPER_ADMIN_EVOLUTECH' 
-        ? (data.company_id || user.companyId) 
-        : user.companyId;
+    const model = this.getModel(table);
+    if (!model) throw new Error('Tabela não suportada');
 
-    if (!companyId) throw new Error('Company ID necessário');
+    const companyId = user.role === 'SUPER_ADMIN_EVOLUTECH' ? data.company_id : user.companyId;
+    if (!companyId) throw new Error('Company ID obrigatório');
     if (!this.checkAccess(user, companyId)) throw new Error('Acesso negado');
 
-    const payload = { ...data, company_id: companyId };
-    delete payload.id; // ID é gerado pelo banco
+    // O Prisma ignora campos extras que não existem no schema, 
+    // mas é bom limpar o payload se necessário.
+    const payload = { ...data, companyId };
+    delete payload.id; 
 
-    const columns = Object.keys(payload).filter(this.safeIdentifier);
-    const values = columns.map(c => payload[c]);
-    const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
-
-    const sql = `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders}) RETURNING *`;
-    const { rows } = await pool.query(sql, values);
-    
-    return rows[0];
+    return model.create({ data: payload });
   }
 }

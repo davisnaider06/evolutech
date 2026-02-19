@@ -1,62 +1,59 @@
-import { pool } from '../db';
+import { prisma } from '../db';
+import { Modulo, SistemaBase, Status } from '@prisma/client';
 
 export class AdminService {
+  // --- MÓDULOS ---
   async listModulos(onlyActive: boolean) {
-    const query = onlyActive
-      ? 'SELECT * FROM modulos WHERE status = $1 ORDER BY is_core DESC, nome ASC'
-      : 'SELECT * FROM modulos ORDER BY is_core DESC, nome ASC';
-    const params = onlyActive ? ['active'] : [];
-    const { rows } = await pool.query(query, params);
-    return rows;
+    return prisma.modulo.findMany({
+      where: onlyActive ? { status: 'active' } : undefined,
+      orderBy: [{ isCore: 'desc' }, { nome: 'asc' }],
+    });
   }
 
   async createModulo(data: any) {
-    const { nome, descricao, codigo, icone, preco_mensal, is_core, status } = data;
-    const { rows } = await pool.query(
-      `INSERT INTO modulos (nome, descricao, codigo, icone, preco_mensal, is_core, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [nome, descricao, codigo, icone, preco_mensal || 0, is_core || false, status || 'active']
-    );
-    return rows[0];
+    return prisma.modulo.create({
+      data: {
+        nome: data.nome,
+        descricao: data.descricao,
+        codigo: data.codigo,
+        icone: data.icone,
+        precoMensal: data.preco_mensal || 0,
+        isCore: data.is_core || false,
+        status: data.status as Status || 'active'
+      }
+    });
   }
 
+  // --- SISTEMAS BASE ---
   async listSistemasBase(onlyActive: boolean) {
-    const query = onlyActive
-      ? 'SELECT * FROM sistema_base WHERE is_active = $1 ORDER BY created_at DESC'
-      : 'SELECT * FROM sistema_base ORDER BY created_at DESC';
-    const params = onlyActive ? [true] : [];
-    const { rows } = await pool.query(query, params);
-    return rows;
+    return prisma.sistemaBase.findMany({
+      where: onlyActive ? { isActive: true } : undefined,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        modulos: true, // Já traz os módulos vinculados!
+      }
+    });
   }
 
   async createSistemaBase(data: any) {
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      
-      const { rows } = await client.query(
-        `INSERT INTO sistema_base (nome, descricao, categoria, icone)
-         VALUES ($1, $2, $3, $4) RETURNING *`,
-        [data.nome, data.descricao, data.categoria, data.icone]
-      );
-      const sistema = rows[0];
-
-      if (data.modulosIds && Array.isArray(data.modulosIds)) {
-        for (const modId of data.modulosIds) {
-          await client.query(
-            `INSERT INTO sistema_base_modulos (sistema_base_id, modulo_id) VALUES ($1, $2)`,
-            [sistema.id, modId]
-          );
+    // O Prisma faz a transação e inserção nas tabelas pivô (N:N) sozinho!
+    return prisma.sistemaBase.create({
+      data: {
+        nome: data.nome,
+        descricao: data.descricao,
+        categoria: data.categoria,
+        icone: data.icone,
+        // Cria os relacionamentos na tabela pivô 'sistema_base_modulos'
+        modulos: {
+          create: data.modulosIds?.map((modId: string) => ({
+             modulo: { connect: { id: modId } },
+             isMandatory: false // Default
+          }))
         }
+      },
+      include: {
+        modulos: true // Retorna o objeto completo
       }
-
-      await client.query('COMMIT');
-      return sistema;
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
-    }
+    });
   }
 }

@@ -1,4 +1,4 @@
-import { pool } from '../db';
+import { prisma } from '../db';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
@@ -6,23 +6,27 @@ const JWT_SECRET = process.env.JWT_SECRET || 'secret_fallback_dev';
 
 export class AuthService {
   async login(email: string, passwordPlain: string) {
-    const { rows } = await pool.query(
-      `SELECT p.*, ur.role, ur.company_id 
-       FROM profiles p 
-       LEFT JOIN user_roles ur ON p.id = ur.user_id 
-       WHERE p.email = $1`, 
-      [email]
-    );
-    const user = rows[0];
+    // Busca usuário e já traz as Roles juntas (JOIN automático)
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: { roles: true }, 
+    });
 
     if (!user) throw new Error('Credenciais inválidas');
-    if (!user.password_hash) throw new Error('Usuário sem senha definida');
+    if (!user.passwordHash) throw new Error('Usuário sem senha definida');
 
-    const isValid = await bcrypt.compare(passwordPlain, user.password_hash);
+    const isValid = await bcrypt.compare(passwordPlain, user.passwordHash);
     if (!isValid) throw new Error('Credenciais inválidas');
 
+    // Pega o primeiro papel (assumindo 1 role ativa por login por enquanto)
+    const activeRole = user.roles[0]; 
+
     const token = jwt.sign(
-      { userId: user.id, role: user.role, companyId: user.company_id }, 
+      { 
+        userId: user.id, 
+        role: activeRole?.role, 
+        companyId: activeRole?.companyId 
+      }, 
       JWT_SECRET, 
       { expiresIn: '24h' }
     );
@@ -32,22 +36,33 @@ export class AuthService {
       user: {
         id: user.id,
         email: user.email,
-        name: user.full_name,
-        role: user.role,
-        tenantId: user.company_id
+        name: user.fullName,
+        role: activeRole?.role,
+        tenantId: activeRole?.companyId
       }
     };
   }
 
   async getMe(userId: string) {
-    const { rows } = await pool.query(`
-      SELECT p.id, p.full_name, p.email, ur.role, ur.company_id, c.name as company_name
-      FROM profiles p
-      LEFT JOIN user_roles ur ON p.id = ur.user_id
-      LEFT JOIN companies c ON ur.company_id = c.id
-      WHERE p.id = $1
-    `, [userId]);
-    
-    return rows[0];
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        roles: {
+          include: { company: true } // Traz dados da empresa
+        }
+      }
+    });
+
+    if (!user) return null;
+    const activeRole = user.roles[0];
+
+    return {
+      id: user.id,
+      full_name: user.fullName,
+      email: user.email,
+      role: activeRole?.role,
+      company_id: activeRole?.companyId,
+      company_name: activeRole?.company?.name
+    };
   }
 }
