@@ -1,45 +1,77 @@
-import { Response } from 'express';
-import { AuthedRequest } from '../types';
+import { Request, Response } from 'express';
 import { AdminService } from '../services/admin.service';
 
-const service = new AdminService();
+const adminService = new AdminService();
 
 export class AdminController {
-  async getModulos(req: AuthedRequest, res: Response) {
+  
+  // --- MÓDULOS (Os blocos de construção) ---
+
+  async listModulos(req: Request, res: Response) {
     try {
-      const onlyActive = req.user?.role !== 'SUPER_ADMIN_EVOLUTECH';
-      const data = await service.listModulos(onlyActive);
-      res.json(data);
+      const onlyActive = req.query.active === 'true';
+      const modulos = await adminService.listModulos(onlyActive);
+      return res.json(modulos);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message || 'Erro ao listar módulos' });
     }
   }
 
-  async createModulo(req: AuthedRequest, res: Response) {
+  async createModulo(req: Request, res: Response) {
     try {
-      const data = await service.createModulo(req.body);
-      res.status(201).json(data);
+      const { nome, codigo, preco_mensal, is_core, icone } = req.body;
+      
+      // Validação básica
+      if (!nome || !codigo) {
+        return res.status(400).json({ error: 'Nome e Código são obrigatórios' });
+      }
+
+      const modulo = await adminService.createModulo({
+        nome,
+        codigo,
+        preco_mensal,
+        is_core,
+        icone,
+        status: 'active'
+      });
+
+      return res.status(201).json(modulo);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(400).json({ error: error.message || 'Erro ao criar módulo' });
     }
   }
 
-  async getSistemasBase(req: AuthedRequest, res: Response) {
+  // --- SISTEMAS BASE (Os produtos finais, ex: "Barbearia") ---
+
+  async listSistemasBase(req: Request, res: Response) {
     try {
-      const onlyActive = req.user?.role !== 'SUPER_ADMIN_EVOLUTECH';
-      const data = await service.listSistemasBase(onlyActive);
-      res.json(data);
+      const onlyActive = req.query.active === 'true';
+      const sistemas = await adminService.listSistemasBase(onlyActive);
+      return res.json(sistemas);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error.message || 'Erro ao listar sistemas' });
     }
   }
 
-  async createSistemaBase(req: AuthedRequest, res: Response) {
+  async createSistemaBase(req: Request, res: Response) {
     try {
-      const data = await service.createSistemaBase(req.body);
-      res.status(201).json(data);
+      const { nome, descricao, categoria, icone, modulosIds } = req.body;
+
+      if (!nome) {
+        return res.status(400).json({ error: 'Nome do sistema é obrigatório' });
+      }
+
+      const sistema = await adminService.createSistemaBase({
+        nome,
+        descricao,
+        categoria,
+        icone,
+        modulosIds // Array de IDs dos módulos que compõem esse sistema
+      });
+
+      return res.status(201).json(sistema);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(400).json({ error: error.message || 'Erro ao criar sistema base' });
     }
   }
 }

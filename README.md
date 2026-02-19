@@ -1,7 +1,7 @@
 
 # 🚀 Evolutech Digital Core - Guia de Instalação e Execução
 
-Este guia descreve o passo a passo completo para configurar o ambiente de desenvolvimento, conectar o banco de dados Neon (PostgreSQL), rodar as migrações do Prisma e realizar o login no sistema SaaS Whitelabel.
+Este guia descreve o passo a passo completo para configurar o ambiente de desenvolvimento, conectar o banco de dados Neon 3(PostgreSQL), rodar as migrações do Prisma e realizar o login no sistema SaaS Whitelabel.
 
 ---
 
