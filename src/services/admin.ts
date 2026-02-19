@@ -1,50 +1,50 @@
 const API_URL = 'http://localhost:3001/api/admin';
 
-// Função auxiliar para montar os headers com o token
 const getHeaders = () => {
   const token = localStorage.getItem('evolutech_token');
   return {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`
+    Authorization: `Bearer ${token}`,
   };
 };
 
-export const adminService = {
-  // --- MÓDULOS ---
-  listarModulos: async (onlyActive = false) => {
-    const response = await fetch(`${API_URL}/modulos?active=${onlyActive}`, {
-      headers: getHeaders(),
-    });
-    if (!response.ok) throw new Error('Erro ao buscar módulos');
-    return response.json();
-  },
+const request = async (path: string, init?: RequestInit) => {
+  const response = await fetch(`${API_URL}${path}`, {
+    ...init,
+    headers: {
+      ...getHeaders(),
+      ...(init?.headers || {}),
+    },
+  });
 
-  criarModulo: async (dados: any) => {
-    const response = await fetch(`${API_URL}/modulos`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(dados),
-    });
-    if (!response.ok) throw new Error('Erro ao criar módulo');
-    return response.json();
-  },
-
-  // --- SISTEMAS BASE (TEMPLATES) ---
-  listarSistemasBase: async (onlyActive = false) => {
-    const response = await fetch(`${API_URL}/sistemas-base?active=${onlyActive}`, {
-      headers: getHeaders(),
-    });
-    if (!response.ok) throw new Error('Erro ao buscar sistemas base');
-    return response.json();
-  },
-
-  criarSistemaBase: async (dados: any) => {
-    const response = await fetch(`${API_URL}/sistemas-base`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(dados),
-    });
-    if (!response.ok) throw new Error('Erro ao criar sistema base');
-    return response.json();
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `Erro ${response.status}`);
   }
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  return response.json();
+};
+
+export const adminService = {
+  listarModulos: async (onlyActive = false) => request(`/modulos?active=${onlyActive}`),
+  criarModulo: async (dados: any) => request('/modulos', { method: 'POST', body: JSON.stringify(dados) }),
+  atualizarModulo: async (id: string, dados: any) => request(`/modulos/${id}`, { method: 'PATCH', body: JSON.stringify(dados) }),
+  excluirModulo: async (id: string) => request(`/modulos/${id}`, { method: 'DELETE' }),
+
+  listarSistemasBase: async (onlyActive = false) => request(`/sistemas-base?active=${onlyActive}`),
+  criarSistemaBase: async (dados: any) => request('/sistemas-base', { method: 'POST', body: JSON.stringify(dados) }),
+  atualizarSistemaBase: async (id: string, dados: any) => request(`/sistemas-base/${id}`, { method: 'PATCH', body: JSON.stringify(dados) }),
+  excluirSistemaBase: async (id: string) => request(`/sistemas-base/${id}`, { method: 'DELETE' }),
+  listarModulosSistemaBase: async (id: string) => request(`/sistemas-base/${id}/modulos`),
+  salvarModulosSistemaBase: async (id: string, modulos: Array<{ modulo_id: string; is_default: boolean }>) =>
+    request(`/sistemas-base/${id}/modulos`, { method: 'PUT', body: JSON.stringify({ modulos }) }),
+
+  listarTenants: async () => request('/tenants'),
+  atualizarTenant: async (id: string, dados: any) => request(`/tenants/${id}`, { method: 'PATCH', body: JSON.stringify(dados) }),
+  excluirTenant: async (id: string) => request(`/tenants/${id}`, { method: 'DELETE' }),
+  criarTenant: async (dados: any) => request('/tenants', { method: 'POST', body: JSON.stringify(dados) }),
 };

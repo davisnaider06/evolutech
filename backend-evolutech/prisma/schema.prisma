@@ -64,6 +64,7 @@ model Company {
   appointments   Appointment[]
   orders         Order[]
 
+  @@index([sistemaBaseId])
   @@map("companies")
 }
 
@@ -78,6 +79,8 @@ model UserRole {
   company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@unique([userId, companyId]) // Um usuário só pode ter um papel por empresa
+  @@index([companyId])
+  @@index([userId])
   @@map("user_roles")
 }
 
@@ -143,6 +146,8 @@ model CompanyModule {
   modulo      Modulo    @relation(fields: [moduloId], references: [id], onDelete: Cascade)
 
   @@unique([companyId, moduloId])
+  @@index([companyId])
+  @@index([moduloId])
   @@map("empresa_modulos")
 }
 
