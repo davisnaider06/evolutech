@@ -30,6 +30,9 @@ const request = async (path: string, init?: RequestInit) => {
 };
 
 export const adminService = {
+  dashboardMetrics: async () => request('/dashboard/metrics'),
+  dashboardActivities: async (limit = 10) => request(`/dashboard/activities?limit=${limit}`),
+
   listarModulos: async (onlyActive = false) => request(`/modulos?active=${onlyActive}`),
   criarModulo: async (dados: any) => request('/modulos', { method: 'POST', body: JSON.stringify(dados) }),
   atualizarModulo: async (id: string, dados: any) => request(`/modulos/${id}`, { method: 'PATCH', body: JSON.stringify(dados) }),
@@ -40,11 +43,16 @@ export const adminService = {
   atualizarSistemaBase: async (id: string, dados: any) => request(`/sistemas-base/${id}`, { method: 'PATCH', body: JSON.stringify(dados) }),
   excluirSistemaBase: async (id: string) => request(`/sistemas-base/${id}`, { method: 'DELETE' }),
   listarModulosSistemaBase: async (id: string) => request(`/sistemas-base/${id}/modulos`),
-  salvarModulosSistemaBase: async (id: string, modulos: Array<{ modulo_id: string; is_default: boolean }>) =>
+  salvarModulosSistemaBase: async (id: string, modulos: Array<{ modulo_id: string }>) =>
     request(`/sistemas-base/${id}/modulos`, { method: 'PUT', body: JSON.stringify({ modulos }) }),
 
   listarTenants: async () => request('/tenants'),
   atualizarTenant: async (id: string, dados: any) => request(`/tenants/${id}`, { method: 'PATCH', body: JSON.stringify(dados) }),
   excluirTenant: async (id: string) => request(`/tenants/${id}`, { method: 'DELETE' }),
   criarTenant: async (dados: any) => request('/tenants', { method: 'POST', body: JSON.stringify(dados) }),
+
+  listarUsuarios: async () => request('/users'),
+  criarUsuario: async (dados: any) => request('/users', { method: 'POST', body: JSON.stringify(dados) }),
+  alternarStatusUsuario: async (id: string) => request(`/users/${id}/status`, { method: 'PATCH' }),
+  alterarPerfilUsuario: async (id: string, dados: any) => request(`/users/${id}/role`, { method: 'PATCH', body: JSON.stringify(dados) }),
 };

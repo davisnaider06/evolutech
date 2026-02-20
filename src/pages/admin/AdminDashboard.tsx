@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { adminService } from '@/services/admin';
 import { StatsCardRealtime } from '@/components/dashboard/StatsCardRealtime';
 import { RecentActivityRealtime } from '@/components/dashboard/RecentActivityRealtime';
 import { TenantsListRealtime } from '@/components/dashboard/TenantsListRealtime';
@@ -50,54 +50,18 @@ const AdminDashboard: React.FC = () => {
 
   const fetchStats = async () => {
     try {
-      // Fetch companies count
-      const { count: companiesCount } = await supabase
-        .from('companies')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'active');
-
-      // Fetch total MRR from companies
-      const { data: companiesData } = await supabase
-        .from('companies')
-        .select('monthly_revenue')
-        .eq('status', 'active');
-
-      const totalMRR = companiesData?.reduce((sum, c) => sum + (c.monthly_revenue || 0), 0) || 0;
-
-      // Fetch active users count
-      const { count: usersCount } = await supabase
-        .from('profiles')
-        .select('*', { count: 'exact', head: true })
-        .eq('is_active', true);
-
-      // Fetch open tickets
-      const { count: ticketsCount } = await supabase
-        .from('tickets_suporte')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'aberto');
-
-      // Fetch active gateways
-      const { count: gatewaysCount } = await supabase
-        .from('payment_gateways')
-        .select('*', { count: 'exact', head: true })
-        .eq('is_active', true);
-
-      // Fetch active modules
-      const { count: modulesCount } = await supabase
-        .from('modulos')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'active');
+      const metrics = await adminService.dashboardMetrics();
 
       setStats({
-        totalCompanies: companiesCount || 0,
-        activeUsers: usersCount || 0,
-        totalMRR: totalMRR,
-        openTickets: ticketsCount || 0,
-        gatewaysActive: gatewaysCount || 0,
-        modulesActive: modulesCount || 0,
-        previousCompanies: Math.max(0, (companiesCount || 0) - 2),
-        previousUsers: Math.max(0, (usersCount || 0) - 5),
-        previousMRR: Math.max(0, totalMRR - 1500),
+        totalCompanies: metrics.totalCompanies || 0,
+        activeUsers: metrics.activeUsers || 0,
+        totalMRR: metrics.totalMRR || 0,
+        openTickets: metrics.openTickets || 0,
+        gatewaysActive: metrics.gatewaysActive || 0,
+        modulesActive: metrics.modulesActive || 0,
+        previousCompanies: Math.max(0, (metrics.totalCompanies || 0) - 2),
+        previousUsers: Math.max(0, (metrics.activeUsers || 0) - 5),
+        previousMRR: Math.max(0, (metrics.totalMRR || 0) - 1500),
       });
     } catch (error) {
       console.error('Error fetching stats:', error);

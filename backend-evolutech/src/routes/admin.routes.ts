@@ -8,6 +8,9 @@ const controller = new AdminController();
 router.use(authenticateToken);
 router.use(requireRoles(['SUPER_ADMIN_EVOLUTECH']));
 
+router.get('/dashboard/metrics', controller.getDashboardMetrics.bind(controller));
+router.get('/dashboard/activities', controller.listRecentActivity.bind(controller));
+
 router.get('/modulos', controller.listModulos.bind(controller));
 router.post('/modulos', controller.createModulo.bind(controller));
 router.patch('/modulos/:moduloId', controller.updateModulo.bind(controller));
@@ -23,5 +26,10 @@ router.put('/sistemas-base/:sistemaId/modulos', controller.replaceSistemaBaseMod
 router.get('/tenants', controller.listTenants.bind(controller));
 router.patch('/tenants/:tenantId', controller.updateTenant.bind(controller));
 router.delete('/tenants/:tenantId', controller.deleteTenant.bind(controller));
+
+router.get('/users', controller.listUsers.bind(controller));
+router.post('/users', controller.createUser.bind(controller));
+router.patch('/users/:userId/status', controller.toggleUserStatus.bind(controller));
+router.patch('/users/:userId/role', controller.changeUserRole.bind(controller));
 
 export default router;

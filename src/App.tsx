@@ -9,6 +9,7 @@ import { ClerkProvider, SignUp } from "@clerk/clerk-react"; // Adicionado Clerk
 import { AuthProvider } from "@/contexts/AuthContext"; 
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { AuthGuard } from "@/components/guards/AuthGuard";
+import { ModuleGuard } from "@/components/guards/ModuleGuard";
 import { RoleRedirect } from "@/components/guards/RoleRedirect";
 import { AdminEvolutechLayout } from "@/components/layouts/AdminEvolutechLayout";
 import { EmpresaLayout } from "@/components/layouts/EmpresaLayout";
@@ -51,6 +52,7 @@ import Clientes from "./pages/empresa/Clientes";
 import Produtos from "./pages/empresa/Produtos";
 import Agendamentos from "./pages/empresa/Agendamentos";
 import Pedidos from "./pages/empresa/Pedidos";
+import Pdv from "./pages/empresa/Pdv";
 import Caixa from "./pages/empresa/Caixa";
 import Relatorios from "./pages/empresa/Relatorios";
 import Personalizacao from "./pages/empresa/Personalizacao";
@@ -169,16 +171,80 @@ const App = () => (
                   />
                   
                   {/* Common empresa routes */}
-                  <Route path="/empresa/suporte" element={<Suporte />} />
-                  <Route path="/empresa/treinamentos" element={<Treinamentos />} />
+                  <Route
+                    path="/empresa/suporte"
+                    element={
+                      <ModuleGuard moduleCode="support">
+                        <Suporte />
+                      </ModuleGuard>
+                    }
+                  />
+                  <Route
+                    path="/empresa/treinamentos"
+                    element={
+                      <ModuleGuard moduleCode="training">
+                        <Treinamentos />
+                      </ModuleGuard>
+                    }
+                  />
                   
                   {/* CRUD Module Routes */}
-                  <Route path="/empresa/clientes" element={<Clientes />} />
-                  <Route path="/empresa/produtos" element={<Produtos />} />
-                  <Route path="/empresa/agendamentos" element={<Agendamentos />} />
-                  <Route path="/empresa/pedidos" element={<Pedidos />} />
-                  <Route path="/empresa/caixa" element={<Caixa />} />
-                  <Route path="/empresa/relatorios" element={<Relatorios />} />
+                  <Route
+                    path="/empresa/clientes"
+                    element={
+                      <ModuleGuard moduleCode="customers">
+                        <Clientes />
+                      </ModuleGuard>
+                    }
+                  />
+                  <Route
+                    path="/empresa/produtos"
+                    element={
+                      <ModuleGuard moduleCode="products">
+                        <Produtos />
+                      </ModuleGuard>
+                    }
+                  />
+                  <Route
+                    path="/empresa/agendamentos"
+                    element={
+                      <ModuleGuard moduleCode="appointments">
+                        <Agendamentos />
+                      </ModuleGuard>
+                    }
+                  />
+                  <Route
+                    path="/empresa/pdv"
+                    element={
+                      <ModuleGuard moduleCode="pdv">
+                        <Pdv />
+                      </ModuleGuard>
+                    }
+                  />
+                  <Route
+                    path="/empresa/pedidos"
+                    element={
+                      <ModuleGuard moduleCode="orders">
+                        <Pedidos />
+                      </ModuleGuard>
+                    }
+                  />
+                  <Route
+                    path="/empresa/caixa"
+                    element={
+                      <ModuleGuard moduleCode="cash">
+                        <Caixa />
+                      </ModuleGuard>
+                    }
+                  />
+                  <Route
+                    path="/empresa/relatorios"
+                    element={
+                      <AuthGuard allowedRoles={['DONO_EMPRESA']}>
+                        <Relatorios />
+                      </AuthGuard>
+                    }
+                  />
                   
                   {/* Dono Empresa Only */}
                   <Route 
@@ -193,7 +259,9 @@ const App = () => (
                     path="/empresa/financeiro" 
                     element={
                       <AuthGuard allowedRoles={['DONO_EMPRESA']}>
-                        <Financeiro />
+                        <ModuleGuard moduleCode="finance">
+                          <Financeiro />
+                        </ModuleGuard>
                       </AuthGuard>
                     } 
                   />

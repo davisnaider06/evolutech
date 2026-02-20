@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Building2, Users, ArrowUpRight } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { adminService } from '@/services/admin';
 import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -36,36 +36,19 @@ export const TenantsListRealtime: React.FC = () => {
 
   const fetchTenants = async () => {
     try {
-      // Fetch companies
-      const { data: companies, error: companiesError } = await supabase
-        .from('companies')
-        .select('*')
-        .order('updated_at', { ascending: false })
-        .limit(5);
-
-      if (companiesError) throw companiesError;
-
-      // Fetch user counts for each company
-      const tenantsWithUsers = await Promise.all(
-        (companies || []).map(async (company) => {
-          const { count } = await supabase
-            .from('profiles')
-            .select('*', { count: 'exact', head: true })
-            .eq('company_id', company.id);
-
-          return {
-            id: company.id,
-            name: company.name,
-            plan: company.plan as 'starter' | 'professional' | 'enterprise',
-            employees: count || 0,
-            status: company.status,
-            updated_at: company.updated_at,
-            monthly_revenue: company.monthly_revenue || 0,
-          };
-        })
+      const companies = await adminService.listarTenants();
+      const top = (companies || []).slice(0, 5);
+      setTenants(
+        top.map((company: any) => ({
+          id: company.id,
+          name: company.name,
+          plan: company.plan as 'starter' | 'professional' | 'enterprise',
+          employees: company.owner ? 1 : 0,
+          status: company.status,
+          updated_at: company.updated_at,
+          monthly_revenue: company.monthly_revenue || 0,
+        }))
       );
-
-      setTenants(tenantsWithUsers);
     } catch (error) {
       console.error('Error fetching tenants:', error);
     } finally {

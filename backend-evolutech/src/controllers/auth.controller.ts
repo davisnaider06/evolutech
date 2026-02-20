@@ -29,9 +29,12 @@ export class AuthController {
           email: user.email,
           role: user.role,
           tenantId: user.company_id,
-          tenantName: user.company_name
+          tenantName: user.company_name,
+          modules: user.modules,
         },
-        company: user.company_id ? { id: user.company_id, name: user.company_name } : null
+        company: user.company_id
+          ? { id: user.company_id, name: user.company_name, modules: user.modules }
+          : null
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message });

@@ -26,6 +26,7 @@ import {
   Wallet,
   BarChart3,
   ShoppingCart,
+  ReceiptText,
   Warehouse,
   Smartphone,
   Palette,
@@ -42,15 +43,16 @@ interface NavItem {
 
 // Navigation items - dynamically filtered based on company modules
 const navItems: NavItem[] = [
-  // Core items (always shown based on role)
-  { icon: LayoutDashboard, label: 'Dashboard', path: '/empresa/dashboard', moduleCode: 'dashboard', alwaysShow: true },
-  { icon: Smartphone, label: 'Aplicativo', path: '/empresa/app', moduleCode: 'app' },
+  // Core items
+  { icon: LayoutDashboard, label: 'Dashboard', path: '/empresa/dashboard', moduleCode: 'dashboard', ownerOnly: true },
+  { icon: Smartphone, label: 'Aplicativo', path: '/empresa/app', moduleCode: 'app', alwaysShow: true },
   
   // Business modules
   { icon: Users, label: 'Clientes', path: '/empresa/clientes', moduleCode: 'customers' },
   { icon: Package, label: 'Produtos', path: '/empresa/produtos', moduleCode: 'products' },
   { icon: Warehouse, label: 'Estoque', path: '/empresa/estoque', moduleCode: 'inventory' },
   { icon: Calendar, label: 'Agendamentos', path: '/empresa/agendamentos', moduleCode: 'appointments' },
+  { icon: ReceiptText, label: 'PDV', path: '/empresa/pdv', moduleCode: 'pdv' },
   { icon: ShoppingCart, label: 'Pedidos', path: '/empresa/pedidos', moduleCode: 'orders' },
   { icon: Wallet, label: 'Caixa', path: '/empresa/caixa', moduleCode: 'cash', ownerOnly: true },
   { icon: CreditCard, label: 'Financeiro', path: '/empresa/financeiro', moduleCode: 'finance', ownerOnly: true },
@@ -60,7 +62,7 @@ const navItems: NavItem[] = [
   { icon: UserPlus, label: 'Equipe', path: '/empresa/equipe', moduleCode: 'users', ownerOnly: true },
   
   // Support & Training
-  { icon: HeadphonesIcon, label: 'Suporte', path: '/empresa/suporte', moduleCode: 'support', alwaysShow: true },
+  { icon: HeadphonesIcon, label: 'Suporte', path: '/empresa/suporte', moduleCode: 'support' },
   { icon: GraduationCap, label: 'Treinamentos', path: '/empresa/treinamentos', moduleCode: 'training' },
   
   // Customization & Settings (always for owners)
@@ -68,9 +70,29 @@ const navItems: NavItem[] = [
   { icon: Settings, label: 'Configurações', path: '/empresa/configuracoes', moduleCode: 'settings', ownerOnly: true, alwaysShow: true },
 ];
 
+const MODULE_ALIASES: Record<string, string[]> = {
+  customers: ['customers', 'clientes'],
+  products: ['products', 'produtos'],
+  inventory: ['inventory', 'estoque'],
+  appointments: ['appointments', 'agendamentos'],
+  orders: ['orders', 'pedidos'],
+  pdv: ['pdv', 'orders', 'pedidos'],
+  cash: ['cash', 'caixa'],
+  finance: ['finance', 'financeiro'],
+  reports: ['reports', 'relatorios'],
+  users: ['users', 'equipe'],
+  support: ['support', 'suporte'],
+  training: ['training', 'treinamentos'],
+  dashboard: ['dashboard'],
+  settings: ['settings', 'configuracoes'],
+  design: ['design', 'personalizacao'],
+};
+
+const OWNER_DEFAULT_MODULES = new Set(['dashboard', 'reports', 'users']);
+
 export const EmpresaLayout: React.FC = () => {
   const { user, logout, company } = useAuth();
-  const { activeCodes, isLoading: modulesLoading } = useCompanyModules();
+  const { activeCodes } = useCompanyModules();
   const navigate = useNavigate();
   const location = useLocation();
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -85,13 +107,20 @@ export const EmpresaLayout: React.FC = () => {
     // Check owner-only restriction
     if (item.ownerOnly && !isOwner) return false;
     
-    // Always show items marked as alwaysShow
-    if (item.alwaysShow) return true;
+    // App is always available for owner and funcionario
+    if (item.path === '/empresa/app' && item.alwaysShow) return true;
+
+    // Always show utility items only for owners
+    if (item.alwaysShow && isOwner) return true;
     
     // Check module activation (case-insensitive)
     if (item.moduleCode) {
-      const hasModule = activeCodes.some(
-        code => code.toLowerCase() === item.moduleCode?.toLowerCase()
+      const acceptedCodes = MODULE_ALIASES[item.moduleCode] || [item.moduleCode];
+      const isOwnerDefault = acceptedCodes.some((code) => OWNER_DEFAULT_MODULES.has(code));
+      if (isOwner && isOwnerDefault) return true;
+
+      const hasModule = activeCodes.some((code) =>
+        acceptedCodes.includes((code || '').toLowerCase())
       );
       if (!hasModule) return false;
     }
@@ -107,6 +136,7 @@ export const EmpresaLayout: React.FC = () => {
   // White label: use company logo if available
   const companyLogo = company?.logo_url;
   const companyName = company?.name || user.tenantName || 'Minha Empresa';
+  const sidebarTitle = user.name || companyName;
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -124,23 +154,23 @@ export const EmpresaLayout: React.FC = () => {
         isCollapsed ? 'w-20' : 'w-72',
         isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       )}>
-        {/* Company Logo / Name - White Label */}
+        {/* User Name / Avatar */}
         <div className="flex h-16 items-center justify-between border-b border-border px-4">
           <div className={cn('flex items-center gap-3', isCollapsed && 'justify-center w-full')}>
             {companyLogo ? (
               <img 
                 src={companyLogo} 
-                alt={companyName} 
+                alt={sidebarTitle} 
                 className="h-8 w-8 rounded-lg object-cover"
               />
             ) : (
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold">
-                {companyName.charAt(0).toUpperCase()}
+                {sidebarTitle.charAt(0).toUpperCase()}
               </div>
             )}
             {!isCollapsed && (
               <span className="font-semibold text-foreground truncate max-w-[160px]">
-                {companyName}
+                {sidebarTitle}
               </span>
             )}
           </div>
@@ -183,7 +213,9 @@ export const EmpresaLayout: React.FC = () => {
                     )}
                   >
                     <item.icon className={cn('h-5 w-5 flex-shrink-0', isCollapsed && 'mx-auto')} />
-                    {!isCollapsed && <span>{item.label}</span>}
+                    {!isCollapsed && (
+                      <span>{!isOwner && item.path === '/empresa/app' ? 'Dashboard' : item.label}</span>
+                    )}
                   </button>
                 </li>
               );

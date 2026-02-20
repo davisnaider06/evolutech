@@ -4,6 +4,35 @@ import { AdminService } from '../services/admin.service';
 const adminService = new AdminService();
 
 export class AdminController {
+  async getDashboardMetrics(req: Request, res: Response) {
+    try {
+      const metrics = await adminService.getDashboardMetrics();
+      return res.json(metrics);
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message || 'Erro ao carregar métricas do dashboard' });
+    }
+  }
+
+  async listRecentActivity(req: Request, res: Response) {
+    try {
+      const limit = Number(req.query.limit || 10);
+      const logs = await adminService.listRecentActivity(limit);
+      return res.json(
+        logs.map((log) => ({
+          id: log.id,
+          action: log.action.toLowerCase(),
+          entity_type: log.resource,
+          user_email: log.user?.email || null,
+          user_name: log.user?.fullName || null,
+          created_at: log.createdAt,
+          details: log.details,
+        }))
+      );
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message || 'Erro ao carregar atividades recentes' });
+    }
+  }
+
   async listModulos(req: Request, res: Response) {
     try {
       const onlyActive = req.query.active === 'true';
@@ -154,6 +183,20 @@ export class AdminController {
         return res.status(400).json({ error: 'Campo modulos deve ser um array' });
       }
 
+      const hasInvalidItem = modulos.some(
+        (item: unknown) =>
+          !(
+            typeof item === 'string' ||
+            (item !== null &&
+              typeof item === 'object' &&
+              typeof (item as { modulo_id?: unknown }).modulo_id === 'string')
+          )
+      );
+
+      if (hasInvalidItem) {
+        return res.status(400).json({ error: 'Cada item deve ser string ou objeto com modulo_id' });
+      }
+
       const items = await adminService.replaceSistemaBaseModulos(sistemaId, modulos);
       return res.json(items);
     } catch (error: any) {
@@ -173,6 +216,7 @@ export class AdminController {
             slug: company.slug,
             plan: company.plan,
             status: company.status,
+            document: company.document,
             monthly_revenue: Number(company.monthlyRevenue || 0),
             logo_url: company.logoUrl,
             sistema_base_id: company.sistemaBaseId,
@@ -210,6 +254,80 @@ export class AdminController {
       return res.status(204).send();
     } catch (error: any) {
       return res.status(400).json({ error: error.message || 'Erro ao remover tenant' });
+    }
+  }
+
+  async listUsers(req: Request, res: Response) {
+    try {
+      const users = await adminService.listUsers();
+      return res.json(
+        users.map((user) => ({
+          id: user.id,
+          name: user.fullName,
+          email: user.email,
+          is_active: user.isActive,
+          created_at: user.createdAt,
+          updated_at: user.updatedAt,
+          roles: user.roles.map((role) => ({
+            role: role.role,
+            company_id: role.companyId,
+            company_name: role.company?.name || null
+          }))
+        }))
+      );
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message || 'Erro ao listar usuarios' });
+    }
+  }
+
+  async createUser(req: Request, res: Response) {
+    try {
+      const { name, email, password, role, company_id } = req.body || {};
+
+      if (!name || !email || !password) {
+        return res.status(400).json({ error: 'Campos obrigatorios: name, email e password' });
+      }
+
+      const user = await adminService.createUser({
+        name,
+        email,
+        password,
+        role,
+        company_id: company_id || null
+      });
+
+      return res.status(201).json(user);
+    } catch (error: any) {
+      return res.status(400).json({ error: error.message || 'Erro ao criar usuario' });
+    }
+  }
+
+  async toggleUserStatus(req: Request, res: Response) {
+    try {
+      const { userId } = req.params;
+      const user = await adminService.toggleUserStatus(userId);
+      return res.json({
+        id: user.id,
+        is_active: user.isActive
+      });
+    } catch (error: any) {
+      return res.status(400).json({ error: error.message || 'Erro ao alterar status do usuario' });
+    }
+  }
+
+  async changeUserRole(req: Request, res: Response) {
+    try {
+      const { userId } = req.params;
+      const { role, company_id } = req.body || {};
+
+      if (!role) {
+        return res.status(400).json({ error: 'Campo role e obrigatorio' });
+      }
+
+      const user = await adminService.changeUserRole(userId, { role, company_id: company_id || null });
+      return res.json(user);
+    } catch (error: any) {
+      return res.status(400).json({ error: error.message || 'Erro ao alterar perfil do usuario' });
     }
   }
 }

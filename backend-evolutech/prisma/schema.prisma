@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // --- ENUMS (Papéis e Status) ---
@@ -21,6 +22,12 @@ enum Status {
   pending
 }
 
+enum TaskStatus {
+  todo
+  doing
+  done
+}
+
 // --- USUÁRIOS E PERMISSÕES ---
 
 model User {
@@ -35,6 +42,7 @@ model User {
   // Relacionamentos
   roles         UserRole[]
   auditLogs     AuditLog[]
+  tasks         Task[]
 
   @@map("profiles") // Nome real da tabela no banco
 }
@@ -63,6 +71,7 @@ model Company {
   products       Product[]
   appointments   Appointment[]
   orders         Order[]
+  tasks          Task[]
 
   @@index([sistemaBaseId])
   @@map("companies")
@@ -232,4 +241,23 @@ model Order {
 
   company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   @@map("orders")
+}
+
+model Task {
+  id          String     @id @default(uuid())
+  companyId   String     @map("empresa_id")
+  userId      String     @map("user_id")
+  title       String
+  description String?
+  status      TaskStatus @default(todo)
+  position    Int        @default(0)
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  company     Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, userId])
+  @@index([companyId, userId, status, position])
+  @@map("tasks")
 }

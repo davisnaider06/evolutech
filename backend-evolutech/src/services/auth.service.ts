@@ -55,14 +55,32 @@ export class AuthService {
 
     if (!user) return null;
     const activeRole = user.roles[0];
+    const companyId = activeRole?.companyId;
+
+    const modules = companyId
+      ? await prisma.companyModule.findMany({
+          where: {
+            companyId,
+            isActive: true,
+            modulo: { status: 'active' },
+          },
+          include: { modulo: true },
+        })
+      : [];
 
     return {
       id: user.id,
       full_name: user.fullName,
       email: user.email,
       role: activeRole?.role,
-      company_id: activeRole?.companyId,
-      company_name: activeRole?.company?.name
+      company_id: companyId,
+      company_name: activeRole?.company?.name,
+      modules: modules.map((item) => ({
+        id: item.modulo.id,
+        codigo: item.modulo.codigo,
+        nome: item.modulo.nome,
+        icone: item.modulo.icone,
+      })),
     };
   }
 }
