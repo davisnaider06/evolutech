@@ -38,7 +38,6 @@ interface SistemaBase {
 
 interface SistemaModulo {
   modulo_id: string;
-  is_default: boolean;
 }
 
 export default function GestaoSistemasBase() {
@@ -97,7 +96,6 @@ export default function GestaoSistemasBase() {
       setSistemaModulos(
         (data || []).map((item: any) => ({
           modulo_id: item.modulo_id,
-          is_default: !!item.is_default,
         }))
       );
       setIsDialogOpen(true);
@@ -107,21 +105,14 @@ export default function GestaoSistemasBase() {
   };
 
   const isModuloSelected = (moduloId: string) => sistemaModulos.some((m) => m.modulo_id === moduloId);
-  const isModuloDefault = (moduloId: string) => sistemaModulos.some((m) => m.modulo_id === moduloId && m.is_default);
 
   const toggleModulo = (moduloId: string) => {
     setSistemaModulos((prev) => {
       if (prev.some((m) => m.modulo_id === moduloId)) {
         return prev.filter((m) => m.modulo_id !== moduloId);
       }
-      return [...prev, { modulo_id: moduloId, is_default: false }];
+      return [...prev, { modulo_id: moduloId }];
     });
-  };
-
-  const toggleDefault = (moduloId: string) => {
-    setSistemaModulos((prev) =>
-      prev.map((m) => (m.modulo_id === moduloId ? { ...m, is_default: !m.is_default } : m))
-    );
   };
 
   const handleSave = async () => {
@@ -269,15 +260,7 @@ export default function GestaoSistemasBase() {
                       <p className="font-medium">{modulo.nome}</p>
                       <p className="text-sm text-muted-foreground">{modulo.codigo}</p>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <Checkbox checked={isModuloSelected(modulo.id)} onCheckedChange={() => toggleModulo(modulo.id)} />
-                      {isModuloSelected(modulo.id) && (
-                        <div className="flex items-center gap-2">
-                          <Label className="text-xs">Obrigatorio</Label>
-                          <Checkbox checked={isModuloDefault(modulo.id)} onCheckedChange={() => toggleDefault(modulo.id)} />
-                        </div>
-                      )}
-                    </div>
+                    <Checkbox checked={isModuloSelected(modulo.id)} onCheckedChange={() => toggleModulo(modulo.id)} />
                   </div>
                 ))}
               </CardContent>

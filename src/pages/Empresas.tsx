@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Plus, Building2, MoreVertical, Trash2, Power, PowerOff } from 'lucide-react';
+import { Plus, Building2, MoreVertical, Trash2, Power, PowerOff, Pencil } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,6 +40,8 @@ interface Tenant {
   status: 'active' | 'inactive' | 'pending';
   monthly_revenue: number;
   created_at: string;
+  document?: string | null;
+  sistema_base_id?: string | null;
   owner?: {
     name: string;
     email: string;
@@ -51,8 +53,11 @@ const Empresas: React.FC = () => {
   const [sistemas, setSistemas] = useState<SistemaBase[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [updating, setUpdating] = useState(false);
   const [credentials, setCredentials] = useState<{ email: string; password: string } | null>(null);
+  const [selectedEmpresa, setSelectedEmpresa] = useState<Tenant | null>(null);
 
   const [formData, setFormData] = useState({
     empresaNome: '',
@@ -62,6 +67,13 @@ const Empresas: React.FC = () => {
     donoNome: '',
     donoEmail: '',
     donoSenha: '',
+  });
+  const [editFormData, setEditFormData] = useState({
+    name: '',
+    document: '',
+    plan: 'professional',
+    status: 'active' as 'active' | 'inactive' | 'pending',
+    sistema_base_id: '',
   });
 
   const fetchData = async () => {
@@ -138,6 +150,46 @@ const Empresas: React.FC = () => {
     }
   };
 
+  const openEdit = (empresa: Tenant) => {
+    setSelectedEmpresa(empresa);
+    setEditFormData({
+      name: empresa.name || '',
+      document: empresa.document || '',
+      plan: empresa.plan || 'professional',
+      status: empresa.status || 'active',
+      sistema_base_id: empresa.sistema_base_id || '',
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedEmpresa) return;
+    if (!editFormData.name.trim()) {
+      toast.error('Nome da empresa é obrigatório');
+      return;
+    }
+
+    setUpdating(true);
+    try {
+      await adminService.atualizarTenant(selectedEmpresa.id, {
+        name: editFormData.name.trim(),
+        document: editFormData.document.trim() || null,
+        plan: editFormData.plan,
+        status: editFormData.status,
+        sistema_base_id: editFormData.sistema_base_id || null,
+      });
+      toast.success('Empresa atualizada com sucesso');
+      setIsEditDialogOpen(false);
+      setSelectedEmpresa(null);
+      fetchData();
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao atualizar empresa');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   const removeTenant = async (empresa: Tenant) => {
     try {
       await adminService.excluirTenant(empresa.id);
@@ -208,6 +260,9 @@ const Empresas: React.FC = () => {
                           <Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4" /></Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEdit(empresa)}>
+                            <Pencil className="h-4 w-4 mr-2" />Editar
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => toggleStatus(empresa)}>
                             {empresa.status === 'active' ? (
                               <><PowerOff className="h-4 w-4 mr-2" />Desativar</>
@@ -290,6 +345,80 @@ const Empresas: React.FC = () => {
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
               <Button type="submit" disabled={creating}>{creating ? 'Criando...' : 'Criar Empresa'}</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Editar Empresa</DialogTitle>
+            <DialogDescription>Atualize dados da empresa e sistema base vinculado.</DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleUpdate} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nome da empresa *</Label>
+              <Input value={editFormData.name} onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Documento</Label>
+              <Input value={editFormData.document} onChange={(e) => setEditFormData({ ...editFormData, document: e.target.value })} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Plano</Label>
+                <Select value={editFormData.plan} onValueChange={(value) => setEditFormData({ ...editFormData, plan: value })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="starter">Starter</SelectItem>
+                    <SelectItem value="professional">Professional</SelectItem>
+                    <SelectItem value="enterprise">Enterprise</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select
+                  value={editFormData.status}
+                  onValueChange={(value: 'active' | 'inactive' | 'pending') =>
+                    setEditFormData({ ...editFormData, status: value })
+                  }
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Ativo</SelectItem>
+                    <SelectItem value="inactive">Inativo</SelectItem>
+                    <SelectItem value="pending">Pendente</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Sistema Base</Label>
+              <Select
+                value={editFormData.sistema_base_id || '__none__'}
+                onValueChange={(value) =>
+                  setEditFormData({ ...editFormData, sistema_base_id: value === '__none__' ? '' : value })
+                }
+              >
+                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Sem sistema base</SelectItem>
+                  {sistemas.map((sistema) => (
+                    <SelectItem key={sistema.id} value={sistema.id}>{sistema.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancelar</Button>
+              <Button type="submit" disabled={updating}>{updating ? 'Salvando...' : 'Salvar Alterações'}</Button>
             </div>
           </form>
         </DialogContent>

@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import { useCompanyData } from '@/hooks/useCompanyData';
+import React, { useEffect, useMemo, useState } from 'react';
 import { DataTable, Column } from '@/components/crud/DataTable';
 import { PageHeader } from '@/components/crud/PageHeader';
 import { SearchFilters } from '@/components/crud/SearchFilters';
@@ -7,110 +6,155 @@ import { FormDialog } from '@/components/crud/FormDialog';
 import { StatusBadge } from '@/components/crud/StatusBadge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { companyService } from '@/services/company';
+import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 interface Customer {
   id: string;
-  company_id: string;
+  companyId: string;
   name: string;
   email: string | null;
   phone: string | null;
   document: string | null;
-  address: string | null;
-  city: string | null;
-  state: string | null;
-  zip_code: string | null;
-  notes: string | null;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
-const defaultCustomer: Partial<Customer> = {
+interface CustomerFormData {
+  name: string;
+  email: string;
+  phone: string;
+  document: string;
+  isActive: boolean;
+}
+
+const defaultFormData: CustomerFormData = {
   name: '',
   email: '',
   phone: '',
   document: '',
-  address: '',
-  city: '',
-  state: '',
-  zip_code: '',
-  notes: '',
-  is_active: true,
+  isActive: true,
 };
 
 const Clientes: React.FC = () => {
+  const [data, setData] = useState<Customer[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
-  const [formData, setFormData] = useState<Partial<Customer>>(defaultCustomer);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [formData, setFormData] = useState<CustomerFormData>(defaultFormData);
+  const [filters, setFilters] = useState<{ search?: string; is_active?: string }>({});
+  const [pagination, setPagination] = useState({ page: 1, pageSize: 10 });
+  const [totalCount, setTotalCount] = useState(0);
 
-  const {
-    data,
-    loading,
-    totalCount,
-    pagination,
-    setPagination,
-    filters,
-    setFilters,
-    create,
-    update,
-    remove,
-  } = useCompanyData<Customer>('customers', ['name', 'email', 'phone']);
+  const totalPages = useMemo(() => Math.ceil(totalCount / pagination.pageSize), [totalCount, pagination.pageSize]);
+
+  const fetchCustomers = async () => {
+    try {
+      setLoading(true);
+      const result = await companyService.list('customers', {
+        page: pagination.page,
+        pageSize: pagination.pageSize,
+        search: filters.search,
+        is_active: filters.is_active,
+      });
+      setData(result.data || []);
+      setTotalCount(result.total || 0);
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao carregar clientes');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCustomers();
+  }, [pagination.page, pagination.pageSize, filters.search, filters.is_active]);
 
   const columns: Column<Customer>[] = [
     { key: 'name', label: 'Nome' },
-    { key: 'email', label: 'Email' },
+    { key: 'email', label: 'E-mail' },
     { key: 'phone', label: 'Telefone' },
     { key: 'document', label: 'CPF/CNPJ' },
-    { key: 'city', label: 'Cidade' },
     {
-      key: 'is_active',
+      key: 'isActive',
       label: 'Status',
-      render: (item) => (
-        <StatusBadge status={item.is_active ? 'active' : 'inactive'} />
-      ),
+      render: (item) => <StatusBadge status={item.isActive ? 'active' : 'inactive'} />,
     },
     {
-      key: 'created_at',
+      key: 'createdAt',
       label: 'Cadastrado em',
-      render: (item) => format(new Date(item.created_at), 'dd/MM/yyyy', { locale: ptBR }),
+      render: (item) => format(new Date(item.createdAt), 'dd/MM/yyyy', { locale: ptBR }),
     },
   ];
 
   const handleNew = () => {
     setEditingCustomer(null);
-    setFormData(defaultCustomer);
+    setFormData(defaultFormData);
     setIsFormOpen(true);
   };
 
   const handleEdit = (customer: Customer) => {
     setEditingCustomer(customer);
-    setFormData(customer);
+    setFormData({
+      name: customer.name || '',
+      email: customer.email || '',
+      phone: customer.phone || '',
+      document: customer.document || '',
+      isActive: customer.isActive,
+    });
     setIsFormOpen(true);
   };
 
   const handleSubmit = async () => {
-    if (!formData.name?.trim()) return;
+    if (!formData.name.trim()) {
+      toast.error('Nome do cliente é obrigatório');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
+      const payload = {
+        name: formData.name.trim(),
+        email: formData.email.trim() || null,
+        phone: formData.phone.trim() || null,
+        document: formData.document.trim() || null,
+        isActive: formData.isActive,
+      };
+
       if (editingCustomer) {
-        await update(editingCustomer.id, formData);
+        await companyService.update('customers', editingCustomer.id, payload);
+        toast.success('Cliente atualizado com sucesso');
       } else {
-        await create(formData);
+        await companyService.create('customers', payload);
+        toast.success('Cliente criado com sucesso');
       }
+
       setIsFormOpen(false);
+      fetchCustomers();
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao salvar cliente');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDelete = async (customer: Customer) => {
-    await remove(customer.id);
+    try {
+      await companyService.remove('customers', customer.id);
+      toast.success('Cliente excluído com sucesso');
+      if (data.length === 1 && pagination.page > 1) {
+        setPagination((prev) => ({ ...prev, page: prev.page - 1 }));
+      } else {
+        fetchCustomers();
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao excluir cliente');
+    }
   };
 
   return (
@@ -124,16 +168,25 @@ const Clientes: React.FC = () => {
 
       <SearchFilters
         searchValue={filters.search || ''}
-        onSearchChange={(value) => setFilters({ ...filters, search: value })}
-        searchPlaceholder="Buscar por nome, email ou telefone..."
+        onSearchChange={(value) => {
+          setPagination((prev) => ({ ...prev, page: 1 }));
+          setFilters((prev) => ({ ...prev, search: value || undefined }));
+        }}
+        searchPlaceholder="Buscar por nome, e-mail ou telefone..."
         statusOptions={[
           { value: 'true', label: 'Ativos' },
           { value: 'false', label: 'Inativos' },
         ]}
         statusValue={filters.is_active}
-        onStatusChange={(value) => setFilters({ ...filters, is_active: value === 'all' ? undefined : value })}
+        onStatusChange={(value) => {
+          setPagination((prev) => ({ ...prev, page: 1 }));
+          setFilters((prev) => ({ ...prev, is_active: value === 'all' ? undefined : value }));
+        }}
         showClear={!!filters.search || !!filters.is_active}
-        onClear={() => setFilters({})}
+        onClear={() => {
+          setPagination((prev) => ({ ...prev, page: 1 }));
+          setFilters({});
+        }}
       />
 
       <DataTable
@@ -143,8 +196,12 @@ const Clientes: React.FC = () => {
         totalCount={totalCount}
         page={pagination.page}
         pageSize={pagination.pageSize}
-        onPageChange={(page) => setPagination({ ...pagination, page })}
-        onPageSizeChange={(pageSize) => setPagination({ ...pagination, pageSize, page: 1 })}
+        onPageChange={(page) => {
+          if (page >= 1 && page <= Math.max(1, totalPages)) {
+            setPagination((prev) => ({ ...prev, page }));
+          }
+        }}
+        onPageSizeChange={(pageSize) => setPagination({ page: 1, pageSize })}
         onEdit={handleEdit}
         onDelete={handleDelete}
         emptyMessage="Nenhum cliente encontrado"
@@ -157,27 +214,26 @@ const Clientes: React.FC = () => {
         description="Preencha os dados do cliente"
         onSubmit={handleSubmit}
         isSubmitting={isSubmitting}
-        size="lg"
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="name">Nome *</Label>
             <Input
               id="name"
-              value={formData.name || ''}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              value={formData.name}
+              onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
               placeholder="Nome do cliente"
               required
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">E-mail</Label>
             <Input
               id="email"
               type="email"
-              value={formData.email || ''}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              value={formData.email}
+              onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
               placeholder="email@exemplo.com"
             />
           </div>
@@ -186,8 +242,8 @@ const Clientes: React.FC = () => {
             <Label htmlFor="phone">Telefone</Label>
             <Input
               id="phone"
-              value={formData.phone || ''}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              value={formData.phone}
+              onChange={(e) => setFormData((prev) => ({ ...prev, phone: e.target.value }))}
               placeholder="(00) 00000-0000"
             />
           </div>
@@ -196,71 +252,19 @@ const Clientes: React.FC = () => {
             <Label htmlFor="document">CPF/CNPJ</Label>
             <Input
               id="document"
-              value={formData.document || ''}
-              onChange={(e) => setFormData({ ...formData, document: e.target.value })}
+              value={formData.document}
+              onChange={(e) => setFormData((prev) => ({ ...prev, document: e.target.value }))}
               placeholder="000.000.000-00"
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="zip_code">CEP</Label>
-            <Input
-              id="zip_code"
-              value={formData.zip_code || ''}
-              onChange={(e) => setFormData({ ...formData, zip_code: e.target.value })}
-              placeholder="00000-000"
-            />
-          </div>
-
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="address">Endereço</Label>
-            <Input
-              id="address"
-              value={formData.address || ''}
-              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              placeholder="Rua, número, complemento"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="city">Cidade</Label>
-            <Input
-              id="city"
-              value={formData.city || ''}
-              onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-              placeholder="Cidade"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="state">Estado</Label>
-            <Input
-              id="state"
-              value={formData.state || ''}
-              onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-              placeholder="UF"
-              maxLength={2}
-            />
-          </div>
-
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="notes">Observações</Label>
-            <Textarea
-              id="notes"
-              value={formData.notes || ''}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              placeholder="Informações adicionais sobre o cliente"
-              rows={3}
-            />
-          </div>
-
-          <div className="flex items-center space-x-2 sm:col-span-2">
+          <div className="flex items-center space-x-2 pt-7">
             <Switch
-              id="is_active"
-              checked={formData.is_active}
-              onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+              id="isActive"
+              checked={formData.isActive}
+              onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, isActive: checked }))}
             />
-            <Label htmlFor="is_active">Cliente ativo</Label>
+            <Label htmlFor="isActive">Cliente ativo</Label>
           </div>
         </div>
       </FormDialog>

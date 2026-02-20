@@ -1,5 +1,6 @@
 import React from 'react';
 import { useCompanyModules } from '@/hooks/useCompanyModules';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Lock, ArrowLeft } from 'lucide-react';
@@ -14,10 +15,14 @@ interface ModuleGuardProps {
 export const ModuleGuard: React.FC<ModuleGuardProps> = ({
   moduleCode,
   children,
-  fallbackPath = '/empresa/dashboard',
+  fallbackPath,
 }) => {
   const { hasModule, isLoading } = useCompanyModules();
+  const { user } = useAuth();
   const navigate = useNavigate();
+  const resolvedFallbackPath =
+    fallbackPath ||
+    (user?.role === 'FUNCIONARIO_EMPRESA' ? '/empresa/app' : '/empresa/dashboard');
 
   if (isLoading) {
     return (
@@ -47,7 +52,7 @@ export const ModuleGuard: React.FC<ModuleGuardProps> = ({
           <CardContent className="flex flex-col gap-3">
             <Button 
               variant="outline" 
-              onClick={() => navigate(fallbackPath)}
+              onClick={() => navigate(resolvedFallbackPath)}
               className="w-full"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />

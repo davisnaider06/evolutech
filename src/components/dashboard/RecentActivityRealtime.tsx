@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Building2, User, Settings, Shield, LogIn, Trash2, Edit, Plus } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { User, Settings, Shield, LogIn, Trash2, Edit, Plus } from 'lucide-react';
+import { adminService } from '@/services/admin';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -47,13 +47,7 @@ export const RecentActivityRealtime: React.FC = () => {
 
   const fetchActivities = async () => {
     try {
-      const { data, error } = await supabase
-        .from('audit_logs')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(10);
-
-      if (error) throw error;
+      const data = await adminService.dashboardActivities(10);
       setActivities(data || []);
     } catch (error) {
       console.error('Error fetching activities:', error);
