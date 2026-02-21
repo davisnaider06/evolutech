@@ -8,6 +8,11 @@ const mapStatusToIsActive = (status?: SistemaStatusInput): boolean => status ===
 const mapIsActiveToStatus = (isActive: boolean): SistemaStatusInput => (isActive ? 'active' : 'inactive');
 
 export class AdminService {
+  private toNumber(value: unknown): number {
+    const numeric = Number(value ?? 0);
+    return Number.isFinite(numeric) ? numeric : 0;
+  }
+
   private parseRole(role?: string): Role {
     const normalized = (role || '').toUpperCase().trim();
     if (normalized === 'SUPER_ADMIN_EVOLUTECH') return 'SUPER_ADMIN_EVOLUTECH';
@@ -121,6 +126,80 @@ export class AdminService {
       openTickets: 0,
       gatewaysActive: 0,
       modulesActive: activeModules,
+    };
+  }
+
+  async getFinancialOverview() {
+    type FinancialMetricRow = {
+      id: string;
+      company_id: string | null;
+      month: Date | string;
+      revenue: unknown;
+      mrr: unknown;
+      churn_rate: unknown;
+      new_customers: unknown;
+      active_users: unknown;
+      created_at: Date | string;
+    };
+
+    let metricsRows: FinancialMetricRow[] = [];
+
+    try {
+      metricsRows = await prisma.$queryRaw<FinancialMetricRow[]>`
+        SELECT id, company_id, month, revenue, mrr, churn_rate, new_customers, active_users, created_at
+        FROM financial_metrics
+        ORDER BY month ASC
+      `;
+    } catch (error: any) {
+      const relationMissing =
+        error?.code === 'P2010' && (error?.meta as { code?: string } | undefined)?.code === '42P01';
+
+      if (!relationMissing) {
+        throw error;
+      }
+    }
+
+    const companies = await prisma.company.findMany({
+      where: { status: 'active' },
+      orderBy: { monthlyRevenue: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        plan: true,
+        status: true,
+        monthlyRevenue: true,
+        logoUrl: true,
+        sistemaBaseId: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
+
+    return {
+      metrics: metricsRows.map((row) => ({
+        id: row.id,
+        company_id: row.company_id,
+        month: row.month instanceof Date ? row.month.toISOString() : String(row.month),
+        revenue: this.toNumber(row.revenue),
+        mrr: this.toNumber(row.mrr),
+        churn_rate: this.toNumber(row.churn_rate),
+        new_customers: this.toNumber(row.new_customers),
+        active_users: this.toNumber(row.active_users),
+        created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at)
+      })),
+      companies: companies.map((company) => ({
+        id: company.id,
+        name: company.name,
+        slug: company.slug,
+        plan: company.plan,
+        status: company.status,
+        monthly_revenue: this.toNumber(company.monthlyRevenue),
+        logo_url: company.logoUrl,
+        sistema_base_id: company.sistemaBaseId,
+        created_at: company.createdAt,
+        updated_at: company.updatedAt
+      }))
     };
   }
 
