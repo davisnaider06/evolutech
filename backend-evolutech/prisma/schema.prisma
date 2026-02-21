@@ -8,7 +8,210 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// --- ENUMS (Papéis e Status) ---
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  fullName     String     @map("full_name")
+  passwordHash String?    @map("password_hash")
+  isActive     Boolean    @default(true) @map("is_active")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+  auditLogs    AuditLog[]
+  tasks        Task[]
+  roles        UserRole[]
+
+  @@map("profiles")
+}
+
+model Company {
+  id             String          @id @default(uuid())
+  name           String
+  slug           String          @unique
+  document       String?
+  plan           String          @default("free")
+  status         Status          @default(active)
+  logoUrl        String?         @map("logo_url")
+  monthlyRevenue Decimal?        @default(0) @map("monthly_revenue") @db.Decimal(10, 2)
+  sistemaBaseId  String?         @map("sistema_base_id")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  appointments   Appointment[]
+  auditLogs      AuditLog[]
+  sistemaBase    SistemaBase?    @relation(fields: [sistemaBaseId], references: [id])
+  customers      Customer[]
+  modules        CompanyModule[]
+  orders         Order[]
+  products       Product[]
+  tasks          Task[]
+  userRoles      UserRole[]
+
+  @@index([sistemaBaseId])
+  @@map("companies")
+}
+
+model UserRole {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  companyId String?  @map("company_id")
+  role      Role
+  createdAt DateTime @default(now()) @map("created_at")
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+  @@index([companyId])
+  @@index([userId])
+  @@map("user_roles")
+}
+
+model Modulo {
+  id           String              @id @default(uuid())
+  nome         String
+  codigo       String              @unique
+  descricao    String?
+  icone        String?
+  precoMensal  Decimal             @default(0) @map("preco_mensal") @db.Decimal(10, 2)
+  isCore       Boolean             @default(false) @map("is_core")
+  status       Status              @default(active)
+  createdAt    DateTime            @default(now()) @map("created_at")
+  empresas     CompanyModule[]
+  sistemasBase SistemaBaseModulo[]
+
+  @@map("modulos")
+}
+
+model SistemaBase {
+  id        String              @id @default(uuid())
+  nome      String              @unique
+  descricao String?
+  categoria String?
+  icone     String?
+  isActive  Boolean             @default(true) @map("is_active")
+  createdAt DateTime            @default(now()) @map("created_at")
+  empresas  Company[]
+  modulos   SistemaBaseModulo[]
+
+  @@map("sistema_base")
+}
+
+model SistemaBaseModulo {
+  id            String      @id @default(uuid())
+  sistemaBaseId String      @map("sistema_base_id")
+  moduloId      String      @map("modulo_id")
+  isMandatory   Boolean     @default(false) @map("is_mandatory")
+  modulo        Modulo      @relation(fields: [moduloId], references: [id], onDelete: Cascade)
+  sistemaBase   SistemaBase @relation(fields: [sistemaBaseId], references: [id], onDelete: Cascade)
+
+  @@unique([sistemaBaseId, moduloId])
+  @@map("sistema_base_modulos")
+}
+
+model CompanyModule {
+  id          String    @id @default(uuid())
+  companyId   String    @map("empresa_id")
+  moduloId    String    @map("modulo_id")
+  isActive    Boolean   @default(true) @map("is_active")
+  activatedAt DateTime? @default(now()) @map("activated_at")
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  modulo      Modulo    @relation(fields: [moduloId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, moduloId])
+  @@index([companyId])
+  @@index([moduloId])
+  @@map("empresa_modulos")
+}
+
+model Customer {
+  id        String   @id @default(uuid())
+  companyId String   @map("empresa_id")
+  name      String
+  email     String?
+  phone     String?
+  document  String?
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@map("customers")
+}
+
+model Product {
+  id            String   @id @default(uuid())
+  companyId     String   @map("empresa_id")
+  name          String
+  sku           String?
+  price         Decimal  @db.Decimal(10, 2)
+  stockQuantity Int      @default(0) @map("stock_quantity")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@map("products")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?  @map("user_id")
+  companyId String?  @map("empresa_id")
+  action    String
+  resource  String
+  details   Json?
+  ipAddress String?  @map("ip_address")
+  createdAt DateTime @default(now()) @map("created_at")
+  company   Company? @relation(fields: [companyId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
+model Appointment {
+  id           String   @id @default(uuid())
+  companyId    String   @map("empresa_id")
+  customerName String   @map("customer_name")
+  serviceName  String   @map("service_name")
+  scheduledAt  DateTime @map("scheduled_at")
+  status       String   @default("scheduled")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("appointments")
+}
+
+model Order {
+  id           String   @id @default(uuid())
+  companyId    String   @map("empresa_id")
+  customerName String?  @map("customer_name")
+  total        Decimal  @default(0) @db.Decimal(10, 2)
+  status       String   @default("pending")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("orders")
+}
+
+model Task {
+  id          String     @id @default(uuid())
+  companyId   String     @map("empresa_id")
+  userId      String     @map("user_id")
+  title       String
+  description String?
+  status      TaskStatus @default(todo)
+  position    Int        @default(0)
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  company     Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, userId])
+  @@index([companyId, userId, status, position])
+  @@map("tasks")
+}
+
 enum Role {
   SUPER_ADMIN_EVOLUTECH
   ADMIN_EVOLUTECH
@@ -26,238 +229,4 @@ enum TaskStatus {
   todo
   doing
   done
-}
-
-// --- USUÁRIOS E PERMISSÕES ---
-
-model User {
-  id            String    @id @default(uuid())
-  email         String    @unique
-  fullName      String    @map("full_name")
-  passwordHash  String?   @map("password_hash")
-  isActive      Boolean   @default(true) @map("is_active")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
-
-  // Relacionamentos
-  roles         UserRole[]
-  auditLogs     AuditLog[]
-  tasks         Task[]
-
-  @@map("profiles") // Nome real da tabela no banco
-}
-
-model Company {
-  id             String    @id @default(uuid())
-  name           String
-  slug           String    @unique
-  document       String?   // CNPJ/CPF
-  plan           String    @default("free")
-  status         Status    @default(active)
-  logoUrl        String?   @map("logo_url")
-  monthlyRevenue Decimal?  @default(0) @map("monthly_revenue") @db.Decimal(10, 2)
-  sistemaBaseId  String?   @map("sistema_base_id")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
-
-  // Relacionamentos
-  sistemaBase    SistemaBase?     @relation(fields: [sistemaBaseId], references: [id])
-  userRoles      UserRole[]
-  modules        CompanyModule[]
-  auditLogs      AuditLog[]
-  
-  // Dados operacionais (Multi-tenant)
-  customers      Customer[]
-  products       Product[]
-  appointments   Appointment[]
-  orders         Order[]
-  tasks          Task[]
-
-  @@index([sistemaBaseId])
-  @@map("companies")
-}
-
-model UserRole {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  companyId String?  @map("company_id") // Null se for Super Admin
-  role      Role
-  createdAt DateTime @default(now()) @map("created_at")
-
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, companyId]) // Um usuário só pode ter um papel por empresa
-  @@index([companyId])
-  @@index([userId])
-  @@map("user_roles")
-}
-
-// --- SAAS WHITELABEL (Sistemas e Módulos) ---
-
-model Modulo {
-  id          String   @id @default(uuid())
-  nome        String
-  codigo      String   @unique // Ex: 'appointments', 'financial'
-  descricao   String?
-  icone       String?  // Nome do ícone Lucide
-  precoMensal Decimal  @default(0) @map("preco_mensal") @db.Decimal(10, 2)
-  isCore      Boolean  @default(false) @map("is_core") // Se true, é obrigatório
-  status      Status   @default(active)
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  // Relacionamentos
-  sistemasBase SistemaBaseModulo[]
-  empresas     CompanyModule[]
-
-  @@map("modulos")
-}
-
-model SistemaBase {
-  id          String   @id @default(uuid())
-  nome        String   @unique // Ex: 'Barbearia', 'Clínica'
-  descricao   String?
-  categoria   String?  // Ex: 'Beleza', 'Saúde'
-  icone       String?
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  // Relacionamentos
-  modulos     SistemaBaseModulo[]
-  empresas    Company[]
-
-  @@map("sistema_base")
-}
-
-// Tabela Pivô: Quais módulos compõem um Sistema Base?
-model SistemaBaseModulo {
-  id            String   @id @default(uuid())
-  sistemaBaseId String   @map("sistema_base_id")
-  moduloId      String   @map("modulo_id")
-  isMandatory   Boolean  @default(false) @map("is_mandatory")
-
-  sistemaBase   SistemaBase @relation(fields: [sistemaBaseId], references: [id], onDelete: Cascade)
-  modulo        Modulo      @relation(fields: [moduloId], references: [id], onDelete: Cascade)
-
-  @@unique([sistemaBaseId, moduloId])
-  @@map("sistema_base_modulos")
-}
-
-// Tabela Pivô: Quais módulos uma Empresa contratou/ativou?
-model CompanyModule {
-  id          String    @id @default(uuid())
-  companyId   String    @map("empresa_id")
-  moduloId    String    @map("modulo_id")
-  isActive    Boolean   @default(true) @map("is_active")
-  activatedAt DateTime? @default(now()) @map("activated_at")
-
-  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  modulo      Modulo    @relation(fields: [moduloId], references: [id], onDelete: Cascade)
-
-  @@unique([companyId, moduloId])
-  @@index([companyId])
-  @@index([moduloId])
-  @@map("empresa_modulos")
-}
-
-// --- DADOS OPERACIONAIS (Exemplos de tabelas dos clientes) ---
-
-model Customer {
-  id          String   @id @default(uuid())
-  companyId   String   @map("empresa_id")
-  name        String
-  email       String?
-  phone       String?
-  document    String?
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  @@index([companyId])
-  @@map("customers")
-}
-
-model Product {
-  id            String   @id @default(uuid())
-  companyId     String   @map("empresa_id")
-  name          String
-  sku           String?
-  price         Decimal  @db.Decimal(10, 2)
-  stockQuantity Int      @default(0) @map("stock_quantity")
-  isActive      Boolean  @default(true) @map("is_active")
-  createdAt     DateTime @default(now()) @map("created_at")
-  
-  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  @@index([companyId])
-  @@map("products")
-}
-
-// Você pode adicionar Appointments, Orders, etc. aqui seguindo o padrão acima
-
-// --- AUDITORIA ---
-
-model AuditLog {
-  id        String   @id @default(uuid())
-  userId    String?  @map("user_id")
-  companyId String?  @map("empresa_id")
-  action    String   // CREATE, UPDATE, DELETE, LOGIN
-  resource  String   // Nome da tabela (customers, products)
-  details   Json?    // Dados flexíveis (antes/depois)
-  ipAddress String?  @map("ip_address")
-  createdAt DateTime @default(now()) @map("created_at")
-
-  user      User?    @relation(fields: [userId], references: [id])
-  company   Company? @relation(fields: [companyId], references: [id])
-
-  @@map("audit_logs")
-}
-
-// Adicione aqui os modelos Appointment e Order se precisar já
-model Appointment {
-  id          String   @id @default(uuid())
-  companyId   String   @map("empresa_id")
-  customerName String  @map("customer_name") // Simplificado, pode relacionar com Customer
-  serviceName  String  @map("service_name")
-  scheduledAt  DateTime @map("scheduled_at")
-  status       String   @default("scheduled")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-
-  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  @@map("appointments")
-}
-
-model Order {
-  id          String   @id @default(uuid())
-  companyId   String   @map("empresa_id")
-  customerName String? @map("customer_name")
-  total       Decimal  @default(0) @db.Decimal(10, 2)
-  status      String   @default("pending")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  @@map("orders")
-}
-
-model Task {
-  id          String     @id @default(uuid())
-  companyId   String     @map("empresa_id")
-  userId      String     @map("user_id")
-  title       String
-  description String?
-  status      TaskStatus @default(todo)
-  position    Int        @default(0)
-  createdAt   DateTime   @default(now()) @map("created_at")
-  updatedAt   DateTime   @updatedAt @map("updated_at")
-
-  company     Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([companyId, userId])
-  @@index([companyId, userId, status, position])
-  @@map("tasks")
 }
