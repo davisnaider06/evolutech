@@ -66,6 +66,15 @@ export class CompanyController {
     }
   }
 
+  async getFinancialOverview(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.getFinancialOverview(req.user!);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   async checkoutPdv(req: AuthedRequest, res: Response) {
     try {
       const result = await service.checkoutPdv(req.user!, req.body || {});
