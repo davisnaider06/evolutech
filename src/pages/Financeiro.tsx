@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
@@ -32,6 +31,8 @@ import {
   ArrowUpRight,
   ArrowDownRight,
 } from 'lucide-react';
+import { adminService } from '@/services/admin';
+import { companyService } from '@/services/company';
 
 const Financeiro: React.FC = () => {
   const { user } = useAuth();
@@ -42,28 +43,34 @@ const Financeiro: React.FC = () => {
 
   useEffect(() => {
     const fetchData = async () => {
+      const isSuperAdmin = user?.role === 'SUPER_ADMIN_EVOLUTECH';
+      const isOwner = user?.role === 'DONO_EMPRESA';
+      if (!isSuperAdmin && !isOwner) {
+        setMetrics([]);
+        setCompanies([]);
+        setIsLoading(false);
+        return;
+      }
+
       setIsLoading(true);
 
-      const [metricsResult, companiesResult] = await Promise.all([
-        supabase
-          .from('financial_metrics')
-          .select('*')
-          .order('month', { ascending: true }),
-        supabase
-          .from('companies')
-          .select('*')
-          .eq('status', 'active')
-          .order('monthly_revenue', { ascending: false }),
-      ]);
-
-      if (metricsResult.data) setMetrics(metricsResult.data);
-      if (companiesResult.data) setCompanies(companiesResult.data);
+      try {
+        const data = isSuperAdmin
+          ? await adminService.financialOverview()
+          : await companyService.financialOverview();
+        setMetrics(data.metrics || []);
+        setCompanies(data.companies || []);
+      } catch (error) {
+        console.error('Erro ao carregar financeiro:', error);
+        setMetrics([]);
+        setCompanies([]);
+      }
 
       setIsLoading(false);
     };
 
     fetchData();
-  }, []);
+  }, [user?.role]);
 
   // Calculate financial stats
   const currentMonthMetrics = metrics.filter(m => {
@@ -124,7 +131,7 @@ const Financeiro: React.FC = () => {
     return acc;
   }, [] as { plan: string; revenue: number }[]);
 
-  if (user?.role !== 'SUPER_ADMIN_EVOLUTECH') {
+  if (user?.role !== 'SUPER_ADMIN_EVOLUTECH' && user?.role !== 'DONO_EMPRESA') {
     return (
       <div className="flex items-center justify-center h-full">
         <p className="text-muted-foreground">Acesso não autorizado</p>

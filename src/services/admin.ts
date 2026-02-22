@@ -30,6 +30,7 @@ const request = async (path: string, init?: RequestInit) => {
 };
 
 export const adminService = {
+  financialOverview: async () => request('/financeiro/overview'),
   dashboardMetrics: async () => request('/dashboard/metrics'),
   dashboardActivities: async (limit = 10) => request(`/dashboard/activities?limit=${limit}`),
 

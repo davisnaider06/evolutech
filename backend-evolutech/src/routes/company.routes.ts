@@ -9,6 +9,7 @@ const dashboardController = new DashboardController();
 
 router.use(authenticateToken);
 
+router.get('/financeiro/overview', companyController.getFinancialOverview.bind(companyController));
 router.get('/dashboard/metrics', dashboardController.getMetrics.bind(dashboardController));
 router.get('/tasks/my', companyController.listMyTasks.bind(companyController));
 router.post('/tasks/my', companyController.createMyTask.bind(companyController));

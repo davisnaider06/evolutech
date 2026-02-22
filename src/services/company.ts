@@ -27,6 +27,7 @@ const request = async (path: string, init?: RequestInit) => {
 };
 
 export const companyService = {
+  financialOverview: async () => request('/financeiro/overview'),
   list: async (table: string, params?: Record<string, string | number | undefined>) => {
     const searchParams = new URLSearchParams();
     if (params) {

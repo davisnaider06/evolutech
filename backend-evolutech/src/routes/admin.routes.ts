@@ -8,6 +8,7 @@ const controller = new AdminController();
 router.use(authenticateToken);
 router.use(requireRoles(['SUPER_ADMIN_EVOLUTECH']));
 
+router.get('/financeiro/overview', controller.getFinancialOverview.bind(controller));
 router.get('/dashboard/metrics', controller.getDashboardMetrics.bind(controller));
 router.get('/dashboard/activities', controller.listRecentActivity.bind(controller));
 

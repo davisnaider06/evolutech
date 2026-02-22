@@ -4,6 +4,15 @@ import { AdminService } from '../services/admin.service';
 const adminService = new AdminService();
 
 export class AdminController {
+  async getFinancialOverview(req: Request, res: Response) {
+    try {
+      const overview = await adminService.getFinancialOverview();
+      return res.json(overview);
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message || 'Erro ao carregar dados financeiros' });
+    }
+  }
+
   async getDashboardMetrics(req: Request, res: Response) {
     try {
       const metrics = await adminService.getDashboardMetrics();
