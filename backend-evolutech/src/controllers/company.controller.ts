@@ -169,4 +169,34 @@ export class CompanyController {
       return this.handleError(error, res);
     }
   }
+
+  async getPublicBookingCompany(req: AuthedRequest, res: Response) {
+    try {
+      const { slug } = req.params;
+      const result = await service.getPublicBookingCompany(slug);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async listPublicAppointmentsByDate(req: AuthedRequest, res: Response) {
+    try {
+      const { slug } = req.params;
+      const result = await service.listPublicAppointmentsByDate(slug, String(req.query.date || ''));
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async createPublicAppointment(req: AuthedRequest, res: Response) {
+    try {
+      const { slug } = req.params;
+      const result = await service.createPublicAppointment(slug, req.body || {});
+      return res.status(201).json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
 }

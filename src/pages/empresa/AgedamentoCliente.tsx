@@ -1,66 +1,74 @@
-import React, { useState } from 'react';
-import { useCompanyData } from '@/hooks/useCompanyData';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { CalendarCheck, CheckCircle2 } from 'lucide-react';
+import { appointmentsService } from '@/services/appointments';
 
-// Estrutura do registro de agendamento (retornado pela base)
-interface Appointment {
-  id: string;
+interface AppointmentInput {
   customer_name: string;
   customer_phone: string;
   service_name: string;
   scheduled_at: string;
-  status: string;
-  notes: string;
-}
-
-// Payload enviado no create
-interface AppointmentInput extends Record<string, unknown> {
-  customer_name: string;
-  customer_phone: string;
-  service_name: string;
-  scheduled_at: string;
-  status: string;
   notes: string;
 }
 
 const AgendamentoCliente: React.FC = () => {
-  // Estado para controlar se o agendamento foi finalizado com sucesso
+  const { slug = '' } = useParams<{ slug: string }>();
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [companyName, setCompanyName] = useState('');
+  const [error, setError] = useState('');
 
-  // Hook para enviar os dados para a base de dados
-  const { create } = useCompanyData<Appointment>('appointments');
-
-  // Estado do formulário
   const [formData, setFormData] = useState<AppointmentInput>({
     customer_name: '',
     customer_phone: '',
     service_name: '',
     scheduled_at: '',
-    status: 'pendente', // Todo agendamento de cliente começa como pendente
     notes: '',
   });
+
+  useEffect(() => {
+    const loadCompany = async () => {
+      try {
+        const company = await appointmentsService.getPublicBookingCompany(slug);
+        setCompanyName(company.name);
+      } catch (err: any) {
+        setError(err.message || 'Link de agendamento invalido');
+      }
+    };
+
+    if (slug) {
+      loadCompany();
+    } else {
+      setError('Link de agendamento invalido');
+    }
+  }, [slug]);
+
+  const minDateTime = useMemo(() => {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + 30);
+    return now.toISOString().slice(0, 16);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError('');
+
     try {
-      await create(formData);
+      await appointmentsService.createPublicAppointment(slug, formData);
       setSubmitted(true);
-    } catch (error) {
-      console.error("Erro ao agendar:", error);
-      alert("Erro ao realizar agendamento. Tente novamente.");
+    } catch (err: any) {
+      setError(err.message || 'Erro ao realizar agendamento. Tente novamente.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Se o cliente já agendou, mostra uma mensagem de sucesso
   if (submitted) {
     return (
       <div className="flex items-center justify-center min-h-screen p-4">
@@ -69,10 +77,9 @@ const AgendamentoCliente: React.FC = () => {
             <div className="flex justify-center mb-4">
               <CheckCircle2 className="h-16 w-16 text-green-500" />
             </div>
-            <CardTitle>Agendamento Solicitado!</CardTitle>
+            <CardTitle>Agendamento solicitado!</CardTitle>
             <CardDescription>
-              Obrigado, {formData.customer_name}. O seu horário para o serviço de <strong>{formData.service_name}</strong> foi enviado.
-              Aguarde o nosso contacto para confirmação.
+              Obrigado, {formData.customer_name}. Sua solicitacao para <strong>{formData.service_name}</strong> foi enviada para {companyName || 'a empresa'}.
             </CardDescription>
           </CardHeader>
           <CardFooter>
@@ -91,78 +98,83 @@ const AgendamentoCliente: React.FC = () => {
         <CardHeader className="space-y-1 bg-primary text-primary-foreground rounded-t-lg">
           <div className="flex items-center gap-2">
             <CalendarCheck className="h-6 w-6" />
-            <CardTitle className="text-2xl">Agende o seu Horário</CardTitle>
+            <CardTitle className="text-2xl">Agende seu horario</CardTitle>
           </div>
           <CardDescription className="text-primary-foreground/80">
-            Preencha os dados abaixo para solicitar uma reserva.
+            {companyName ? `Empresa: ${companyName}` : 'Preencha os dados abaixo para solicitar seu agendamento.'}
           </CardDescription>
         </CardHeader>
-        
+
         <form onSubmit={handleSubmit}>
           <CardContent className="pt-6 space-y-4">
-            {/* Dados do Cliente */}
+            {error && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {error}
+              </div>
+            )}
+
             <div className="grid gap-2">
-              <Label htmlFor="name">Seu Nome Full</Label>
-              <Input 
-                id="name" 
-                placeholder="Ex: João Silva" 
-                required 
+              <Label htmlFor="name">Seu nome</Label>
+              <Input
+                id="name"
+                placeholder="Ex: Joao Silva"
+                required
                 value={formData.customer_name}
-                onChange={(e) => setFormData({...formData, customer_name: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
               />
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="phone">Telemóvel / WhatsApp</Label>
-              <Input 
-                id="phone" 
-                type="tel" 
-                placeholder="(00) 00000-0000" 
-                required 
+              <Label htmlFor="phone">Telefone / WhatsApp</Label>
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="(00) 00000-0000"
+                required
                 value={formData.customer_phone}
-                onChange={(e) => setFormData({...formData, customer_phone: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, customer_phone: e.target.value })}
               />
             </div>
 
             <hr className="my-4" />
 
-            {/* Dados do Serviço */}
             <div className="grid gap-2">
-              <Label htmlFor="service">Serviço Desejado</Label>
-              <Input 
-                id="service" 
-                placeholder="Ex: Corte de Cabelo, Consultoria, etc." 
-                required 
+              <Label htmlFor="service">Servico desejado</Label>
+              <Input
+                id="service"
+                placeholder="Ex: Corte + Barba"
+                required
                 value={formData.service_name}
-                onChange={(e) => setFormData({...formData, service_name: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, service_name: e.target.value })}
               />
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="date">Data e Hora Preferencial</Label>
-              <Input 
-                id="date" 
-                type="datetime-local" 
-                required 
+              <Label htmlFor="date">Data e hora</Label>
+              <Input
+                id="date"
+                type="datetime-local"
+                required
+                min={minDateTime}
                 value={formData.scheduled_at}
-                onChange={(e) => setFormData({...formData, scheduled_at: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, scheduled_at: e.target.value })}
               />
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="notes">Observações (Opcional)</Label>
-              <Textarea 
-                id="notes" 
-                placeholder="Alguma recomendação especial?" 
+              <Label htmlFor="notes">Observacoes (opcional)</Label>
+              <Textarea
+                id="notes"
+                placeholder="Alguma observacao sobre o atendimento?"
                 value={formData.notes}
-                onChange={(e) => setFormData({...formData, notes: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               />
             </div>
           </CardContent>
 
           <CardFooter>
-            <Button type="submit" className="w-full size-lg" disabled={loading}>
-              {loading ? "A processar..." : "Confirmar Agendamento"}
+            <Button type="submit" className="w-full" disabled={loading || !!error}>
+              {loading ? 'Enviando...' : 'Confirmar agendamento'}
             </Button>
           </CardFooter>
         </form>

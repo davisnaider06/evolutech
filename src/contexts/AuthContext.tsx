@@ -50,6 +50,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             role: data.user.role as UserRole,
             tenantId: data.user.tenantId,
             tenantName: data.user.tenantName,
+            tenantSlug: data.user.tenantSlug,
             avatar: null, // Avatar seria implementado via upload no futuro
             createdAt: new Date(data.user.created_at || Date.now())
         };
@@ -89,6 +90,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role: userData.role as UserRole,
         tenantId: userData.tenantId,
         tenantName: userData.tenantName,
+        tenantSlug: userData.tenantSlug,
     };
 
     setAuthState({

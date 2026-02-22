@@ -17,6 +17,7 @@ export interface User {
   role: UserRole;
   tenantId?: string;
   tenantName?: string;
+  tenantSlug?: string;
   avatar?: string;
   createdAt: Date;
 }

@@ -75,6 +75,7 @@ export class AuthService {
       role: activeRole?.role,
       company_id: companyId,
       company_name: activeRole?.company?.name,
+      company_slug: activeRole?.company?.slug,
       modules: modules.map((item) => ({
         id: item.modulo.id,
         codigo: item.modulo.codigo,

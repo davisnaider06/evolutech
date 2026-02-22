@@ -887,6 +887,189 @@ export class CompanyService {
       updatedAt: moved.updatedAt,
     };
   }
+
+  async getPublicBookingCompany(slug: string) {
+    const cleanSlug = String(slug || '').trim().toLowerCase();
+    if (!cleanSlug) throw new CompanyServiceError('Slug da empresa obrigatorio', 400);
+
+    const company = await prisma.company.findFirst({
+      where: {
+        slug: cleanSlug,
+        status: 'active',
+      },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+      },
+    });
+
+    if (!company) throw new CompanyServiceError('Empresa nao encontrada ou inativa', 404);
+    return company;
+  }
+
+  async listPublicAppointmentsByDate(slug: string, dateISO?: string) {
+    const company = await this.getPublicBookingCompany(slug);
+    const now = new Date();
+
+    let startDate = new Date(now);
+    let endDate = new Date(now);
+    endDate.setDate(endDate.getDate() + 30);
+
+    if (dateISO) {
+      const parsed = new Date(dateISO);
+      if (!Number.isNaN(parsed.getTime())) {
+        startDate = new Date(parsed);
+        startDate.setHours(0, 0, 0, 0);
+        endDate = new Date(parsed);
+        endDate.setHours(23, 59, 59, 999);
+      }
+    }
+
+    const appointments = await prisma.appointment.findMany({
+      where: {
+        companyId: company.id,
+        scheduledAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+        status: {
+          notIn: ['cancelado', 'cancelled'],
+        },
+      },
+      orderBy: { scheduledAt: 'asc' },
+      select: {
+        id: true,
+        customerName: true,
+        serviceName: true,
+        scheduledAt: true,
+        status: true,
+      },
+    });
+
+    return {
+      company,
+      appointments: appointments.map((item) => ({
+        id: item.id,
+        customer_name: item.customerName,
+        service_name: item.serviceName,
+        scheduled_at: item.scheduledAt,
+        status: item.status,
+      })),
+    };
+  }
+
+  async createPublicAppointment(
+    slug: string,
+    payload: {
+      customer_name?: string;
+      customer_phone?: string;
+      service_name?: string;
+      scheduled_at?: string;
+      notes?: string;
+    }
+  ) {
+    const company = await this.getPublicBookingCompany(slug);
+    const customerName = String(payload.customer_name || '').trim();
+    const customerPhone = String(payload.customer_phone || '').trim();
+    const serviceName = String(payload.service_name || '').trim();
+    const scheduledAtRaw = String(payload.scheduled_at || '').trim();
+    const notes = String(payload.notes || '').trim();
+
+    if (!customerName || !serviceName || !scheduledAtRaw) {
+      throw new CompanyServiceError(
+        'Campos obrigatorios: customer_name, service_name, scheduled_at',
+        400
+      );
+    }
+
+    const scheduledAt = new Date(scheduledAtRaw);
+    if (Number.isNaN(scheduledAt.getTime())) {
+      throw new CompanyServiceError('Data/hora de agendamento invalida', 400);
+    }
+
+    if (scheduledAt.getTime() < Date.now()) {
+      throw new CompanyServiceError('Nao e permitido agendar em horario passado', 400);
+    }
+
+    const alreadyBooked = await prisma.appointment.findFirst({
+      where: {
+        companyId: company.id,
+        scheduledAt,
+        status: {
+          notIn: ['cancelado', 'cancelled'],
+        },
+      },
+      select: { id: true },
+    });
+
+    if (alreadyBooked) {
+      throw new CompanyServiceError('Horario ja reservado, escolha outro', 409);
+    }
+
+    const created = await prisma.$transaction(async (tx) => {
+      if (customerPhone) {
+        const existingCustomer = await tx.customer.findFirst({
+          where: { companyId: company.id, phone: customerPhone },
+          select: { id: true },
+        });
+
+        if (existingCustomer) {
+          await tx.customer.update({
+            where: { id: existingCustomer.id },
+            data: { name: customerName, isActive: true },
+          });
+        } else {
+          await tx.customer.create({
+            data: {
+              companyId: company.id,
+              name: customerName,
+              phone: customerPhone,
+              isActive: true,
+            },
+          });
+        }
+      }
+
+      const appointment = await tx.appointment.create({
+        data: {
+          companyId: company.id,
+          customerName,
+          serviceName,
+          scheduledAt,
+          status: 'pendente',
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          companyId: company.id,
+          action: 'PUBLIC_APPOINTMENT_CREATED',
+          resource: 'appointments',
+          details: {
+            appointmentId: appointment.id,
+            customerName,
+            customerPhone: customerPhone || null,
+            serviceName,
+            scheduledAt: scheduledAt.toISOString(),
+            notes: notes || null,
+            source: 'public_link',
+          },
+        },
+      });
+
+      return appointment;
+    });
+
+    return {
+      id: created.id,
+      company_name: company.name,
+      customer_name: created.customerName,
+      service_name: created.serviceName,
+      scheduled_at: created.scheduledAt,
+      status: created.status,
+    };
+  }
 }
 
 export { CompanyServiceError };

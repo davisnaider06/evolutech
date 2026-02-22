@@ -51,6 +51,7 @@ import ConvitesEquipe from "./pages/empresa/ConvitesEquipe";
 import Clientes from "./pages/empresa/Clientes";
 import Produtos from "./pages/empresa/Produtos";
 import Agendamentos from "./pages/empresa/Agendamentos";
+import AgendamentoCliente from "./pages/empresa/AgedamentoCliente";
 import Pedidos from "./pages/empresa/Pedidos";
 import Pdv from "./pages/empresa/Pdv";
 import Caixa from "./pages/empresa/Caixa";
@@ -88,6 +89,7 @@ const App = () => (
                 <Route path="/cadastro/*" element={<SignUp />} />
                 <Route path="/aceitar-convite" element={<AcceptInvite />} />
                 <Route path="/chat/:slug" element={<ChatbotPublic />} />
+                <Route path="/agendar/:slug" element={<AgendamentoCliente />} />
                 
                 {/* Role-based redirect after login */}
                 <Route path="/redirect" element={<RoleRedirect />} />

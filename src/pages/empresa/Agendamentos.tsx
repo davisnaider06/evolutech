@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import { useCompanyData } from '@/hooks/useCompanyData';
+import React, { useCallback, useEffect, useState } from 'react';
 import { DataTable, Column } from '@/components/crud/DataTable';
 import { PageHeader } from '@/components/crud/PageHeader';
 import { SearchFilters } from '@/components/crud/SearchFilters';
@@ -7,80 +6,72 @@ import { FormDialog } from '@/components/crud/FormDialog';
 import { StatusBadge } from '@/components/crud/StatusBadge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Calendar, Clock, User } from 'lucide-react';
+import { Calendar, Clock, Copy } from 'lucide-react';
+import { toast } from 'sonner';
+import { appointmentsService } from '@/services/appointments';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Appointment {
   id: string;
   company_id: string;
-  customer_id: string | null;
-  customer_name: string | null;
-  customer_phone: string | null;
+  customer_name: string;
   service_name: string;
   scheduled_at: string;
-  duration_minutes: number;
   status: string;
-  notes: string | null;
-  price: number | null;
-  assigned_to: string | null;
-  created_by: string | null;
   created_at: string;
   updated_at: string;
 }
-
-const defaultAppointment: Partial<Appointment> = {
-  customer_name: '',
-  customer_phone: '',
-  service_name: '',
-  scheduled_at: '',
-  duration_minutes: 60,
-  status: 'pendente',
-  notes: '',
-  price: 0,
-};
 
 const statusOptions = [
   { value: 'pendente', label: 'Pendente' },
   { value: 'confirmado', label: 'Confirmado' },
   { value: 'cancelado', label: 'Cancelado' },
-  { value: 'concluido', label: 'Concluído' },
+  { value: 'concluido', label: 'Concluido' },
 ];
 
 const Agendamentos: React.FC = () => {
+  const { user } = useAuth();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
-  const [formData, setFormData] = useState<Partial<Appointment>>(defaultAppointment);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<Appointment[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState<string | undefined>(undefined);
+  const [formData, setFormData] = useState({
+    customer_name: '',
+    service_name: '',
+    scheduled_at: '',
+    status: 'pendente',
+  });
 
-  const {
-    data,
-    loading,
-    totalCount,
-    pagination,
-    setPagination,
-    filters,
-    setFilters,
-    create,
-    update,
-    remove,
-  } = useCompanyData<Appointment>('appointments', ['customer_name', 'service_name'], 'scheduled_at');
+  const fetchAppointments = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await appointmentsService.listInternal({
+        page,
+        pageSize,
+        search: search || undefined,
+        status,
+      });
+      setData(result.data || []);
+      setTotal(result.total || 0);
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao carregar agendamentos');
+    } finally {
+      setLoading(false);
+    }
+  }, [page, pageSize, search, status]);
 
-  const formatCurrency = (value: number | null) => {
-    if (value === null) return '-';
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-    }).format(value);
-  };
+  useEffect(() => {
+    fetchAppointments();
+  }, [fetchAppointments]);
 
   const columns: Column<Appointment>[] = [
     {
@@ -98,33 +89,17 @@ const Agendamentos: React.FC = () => {
         </div>
       ),
     },
+    { key: 'customer_name', label: 'Cliente' },
+    { key: 'service_name', label: 'Servico' },
     {
-      key: 'customer_name',
-      label: 'Cliente',
-      render: (item) => (
-        <div>
-          <div className="font-medium">{item.customer_name || 'Não informado'}</div>
-          {item.customer_phone && (
-            <div className="text-sm text-muted-foreground">{item.customer_phone}</div>
-          )}
-        </div>
-      ),
-    },
-    { key: 'service_name', label: 'Serviço' },
-    {
-      key: 'duration_minutes',
-      label: 'Duração',
+      key: 'scheduled_time',
+      label: 'Horario',
       render: (item) => (
         <div className="flex items-center gap-1">
           <Clock className="h-4 w-4 text-muted-foreground" />
-          {item.duration_minutes} min
+          {format(new Date(item.scheduled_at), 'HH:mm', { locale: ptBR })}
         </div>
       ),
-    },
-    {
-      key: 'price',
-      label: 'Valor',
-      render: (item) => formatCurrency(item.price),
     },
     {
       key: 'status',
@@ -134,13 +109,15 @@ const Agendamentos: React.FC = () => {
   ];
 
   const handleNew = () => {
-    setEditingAppointment(null);
     const now = new Date();
-    now.setMinutes(0);
+    now.setMinutes(0, 0, 0);
     now.setHours(now.getHours() + 1);
+    setEditingAppointment(null);
     setFormData({
-      ...defaultAppointment,
+      customer_name: '',
+      service_name: '',
       scheduled_at: now.toISOString().slice(0, 16),
+      status: 'pendente',
     });
     setIsFormOpen(true);
   };
@@ -148,61 +125,113 @@ const Agendamentos: React.FC = () => {
   const handleEdit = (appointment: Appointment) => {
     setEditingAppointment(appointment);
     setFormData({
-      ...appointment,
+      customer_name: appointment.customer_name || '',
+      service_name: appointment.service_name || '',
       scheduled_at: appointment.scheduled_at.slice(0, 16),
+      status: appointment.status || 'pendente',
     });
     setIsFormOpen(true);
   };
 
+  const handleDelete = async (appointment: Appointment) => {
+    try {
+      await appointmentsService.removeInternal(appointment.id);
+      toast.success('Agendamento removido');
+      fetchAppointments();
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao excluir agendamento');
+    }
+  };
+
   const handleSubmit = async () => {
-    if (!formData.service_name?.trim() || !formData.scheduled_at) return;
+    if (!formData.customer_name.trim() || !formData.service_name.trim() || !formData.scheduled_at) {
+      toast.error('Preencha cliente, servico e data/hora');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
       if (editingAppointment) {
-        await update(editingAppointment.id, formData);
+        await appointmentsService.updateInternal(editingAppointment.id, formData);
+        toast.success('Agendamento atualizado');
       } else {
-        await create(formData);
+        await appointmentsService.createInternal(formData);
+        toast.success('Agendamento criado');
       }
       setIsFormOpen(false);
+      fetchAppointments();
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao salvar agendamento');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleDelete = async (appointment: Appointment) => {
-    await remove(appointment.id);
+  const publicLink = user?.tenantSlug
+    ? `${window.location.origin}/agendar/${user.tenantSlug}`
+    : '';
+
+  const copyPublicLink = async () => {
+    if (!publicLink) {
+      toast.error('Nao foi possivel gerar link de agendamento');
+      return;
+    }
+    await navigator.clipboard.writeText(publicLink);
+    toast.success('Link de agendamento copiado');
   };
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Agendamentos"
-        description="Gerencie os agendamentos da sua empresa"
+        description="Gerencie os agendamentos e compartilhe o link publico com seus clientes"
         buttonLabel="Novo Agendamento"
         onButtonClick={handleNew}
       />
 
+      <div className="rounded-lg border p-4 bg-card flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-sm text-muted-foreground break-all">
+          Link publico: <strong>{publicLink || 'indisponivel'}</strong>
+        </div>
+        <Button type="button" variant="outline" onClick={copyPublicLink} className="gap-2">
+          <Copy className="h-4 w-4" />
+          Copiar link
+        </Button>
+      </div>
+
       <SearchFilters
-        searchValue={filters.search || ''}
-        onSearchChange={(value) => setFilters({ ...filters, search: value })}
-        searchPlaceholder="Buscar por cliente ou serviço..."
+        searchValue={search}
+        onSearchChange={(value) => {
+          setSearch(value);
+          setPage(1);
+        }}
+        searchPlaceholder="Buscar por cliente ou servico..."
         statusOptions={statusOptions}
-        statusValue={filters.status}
-        onStatusChange={(value) => setFilters({ ...filters, status: value === 'all' ? undefined : value })}
-        showClear={!!filters.search || !!filters.status}
-        onClear={() => setFilters({})}
+        statusValue={status}
+        onStatusChange={(value) => {
+          setStatus(value === 'all' ? undefined : value);
+          setPage(1);
+        }}
+        showClear={!!search || !!status}
+        onClear={() => {
+          setSearch('');
+          setStatus(undefined);
+          setPage(1);
+        }}
       />
 
       <DataTable
         columns={columns}
         data={data}
         loading={loading}
-        totalCount={totalCount}
-        page={pagination.page}
-        pageSize={pagination.pageSize}
-        onPageChange={(page) => setPagination({ ...pagination, page })}
-        onPageSizeChange={(pageSize) => setPagination({ ...pagination, pageSize, page: 1 })}
+        totalCount={total}
+        page={page}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPage(1);
+        }}
         onEdit={handleEdit}
         onDelete={handleDelete}
         emptyMessage="Nenhum agendamento encontrado"
@@ -219,98 +248,39 @@ const Agendamentos: React.FC = () => {
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="customer_name">Nome do Cliente</Label>
+            <Label htmlFor="customer_name">Cliente *</Label>
             <Input
               id="customer_name"
-              value={formData.customer_name || ''}
+              value={formData.customer_name}
               onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
               placeholder="Nome do cliente"
             />
           </div>
-
           <div className="space-y-2">
-            <Label htmlFor="customer_phone">Telefone</Label>
-            <Input
-              id="customer_phone"
-              value={formData.customer_phone || ''}
-              onChange={(e) => setFormData({ ...formData, customer_phone: e.target.value })}
-              placeholder="(00) 00000-0000"
-            />
-          </div>
-
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="service_name">Serviço *</Label>
+            <Label htmlFor="service_name">Servico *</Label>
             <Input
               id="service_name"
-              value={formData.service_name || ''}
+              value={formData.service_name}
               onChange={(e) => setFormData({ ...formData, service_name: e.target.value })}
-              placeholder="Nome do serviço"
-              required
+              placeholder="Ex: Corte + Barba"
             />
           </div>
-
           <div className="space-y-2">
-            <Label htmlFor="scheduled_at">Data e Hora *</Label>
+            <Label htmlFor="scheduled_at">Data e hora *</Label>
             <Input
               id="scheduled_at"
               type="datetime-local"
-              value={formData.scheduled_at || ''}
+              value={formData.scheduled_at}
               onChange={(e) => setFormData({ ...formData, scheduled_at: e.target.value })}
-              required
             />
           </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="duration_minutes">Duração (minutos)</Label>
-            <Input
-              id="duration_minutes"
-              type="number"
-              min="15"
-              step="15"
-              value={formData.duration_minutes || 60}
-              onChange={(e) => setFormData({ ...formData, duration_minutes: parseInt(e.target.value) || 60 })}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="price">Valor</Label>
-            <Input
-              id="price"
-              type="number"
-              step="0.01"
-              min="0"
-              value={formData.price || 0}
-              onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
-            />
-          </div>
-
           <div className="space-y-2">
             <Label htmlFor="status">Status</Label>
-            <Select
-              value={formData.status || 'pendente'}
-              onValueChange={(value) => setFormData({ ...formData, status: value })}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {statusOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="notes">Observações</Label>
-            <Textarea
-              id="notes"
-              value={formData.notes || ''}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              placeholder="Informações adicionais sobre o agendamento"
-              rows={3}
+            <Input
+              id="status"
+              value={formData.status}
+              onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+              placeholder="pendente / confirmado / concluido / cancelado"
             />
           </div>
         </div>

@@ -30,10 +30,11 @@ export class AuthController {
           role: user.role,
           tenantId: user.company_id,
           tenantName: user.company_name,
+          tenantSlug: user.company_slug,
           modules: user.modules,
         },
         company: user.company_id
-          ? { id: user.company_id, name: user.company_name, modules: user.modules }
+          ? { id: user.company_id, name: user.company_name, slug: user.company_slug, modules: user.modules }
           : null
       });
     } catch (error: any) {
