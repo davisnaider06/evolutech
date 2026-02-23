@@ -114,9 +114,7 @@ export class TenantService {
         where: { email: ownerEmail }
       });
 
-      if (existingOwner) {
-        throw new Error('Já existe usuário com este e-mail');
-      }
+      // Reuse user if this e-mail already exists globally
 
       const slugBase = toSlug(companyName);
       if (!slugBase) {
@@ -151,14 +149,35 @@ export class TenantService {
         }
       });
 
-      const ownerUser = await tx.user.create({
-        data: {
-          email: ownerEmail,
-          fullName: ownerFullName,
-          passwordHash,
-          isActive: true
-        }
+      const ownerUser = existingOwner
+        ? await tx.user.update({
+            where: { id: existingOwner.id },
+            data: {
+              fullName: ownerFullName,
+              passwordHash,
+              isActive: true
+            }
+          })
+        : await tx.user.create({
+            data: {
+              email: ownerEmail,
+              fullName: ownerFullName,
+              passwordHash,
+              isActive: true
+            }
+          });
+
+      const existingRole = await tx.userRole.findFirst({
+        where: {
+          userId: ownerUser.id,
+          companyId: company.id
+        },
+        select: { id: true }
       });
+
+      if (existingRole) {
+        throw new Error('Este usuario ja esta vinculado a esta empresa');
+      }
 
       await tx.userRole.create({
         data: {

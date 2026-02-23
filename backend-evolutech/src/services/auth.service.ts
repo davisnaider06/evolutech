@@ -9,7 +9,12 @@ export class AuthService {
     // Busca usuário e já traz as Roles juntas (JOIN automático)
     const user = await prisma.user.findUnique({
       where: { email },
-      include: { roles: true }, 
+      include: {
+        roles: {
+          include: { company: true },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
     });
 
     if (!user) throw new Error('Credenciais inválidas');
@@ -38,7 +43,9 @@ export class AuthService {
         email: user.email,
         name: user.fullName,
         role: activeRole?.role,
-        tenantId: activeRole?.companyId
+        tenantId: activeRole?.companyId,
+        tenantName: activeRole?.company?.name,
+        tenantSlug: activeRole?.company?.slug,
       }
     };
   }
@@ -48,7 +55,8 @@ export class AuthService {
       where: { id: userId },
       include: {
         roles: {
-          include: { company: true } // Traz dados da empresa
+          include: { company: true }, // Traz dados da empresa
+          orderBy: { createdAt: 'desc' }
         }
       }
     });
@@ -57,16 +65,45 @@ export class AuthService {
     const activeRole = user.roles[0];
     const companyId = activeRole?.companyId;
 
-    const modules = companyId
-      ? await prisma.companyModule.findMany({
-          where: {
-            companyId,
-            isActive: true,
-            modulo: { status: 'active' },
-          },
-          include: { modulo: true },
-        })
-      : [];
+    const [companyModules, sistemaBaseModules] = companyId
+      ? await Promise.all([
+          prisma.companyModule.findMany({
+            where: {
+              companyId,
+              isActive: true,
+              modulo: { status: 'active' },
+            },
+            include: { modulo: true },
+          }),
+          activeRole?.company?.sistemaBaseId
+            ? prisma.sistemaBaseModulo.findMany({
+                where: {
+                  sistemaBaseId: activeRole.company.sistemaBaseId,
+                  modulo: { status: 'active' },
+                },
+                include: { modulo: true },
+              })
+            : Promise.resolve([]),
+        ])
+      : [[], []];
+
+    const moduleMap = new Map<string, { id: string; codigo: string; nome: string; icone: string | null }>();
+    for (const item of companyModules) {
+      moduleMap.set(item.modulo.id, {
+        id: item.modulo.id,
+        codigo: item.modulo.codigo,
+        nome: item.modulo.nome,
+        icone: item.modulo.icone,
+      });
+    }
+    for (const item of sistemaBaseModules) {
+      moduleMap.set(item.modulo.id, {
+        id: item.modulo.id,
+        codigo: item.modulo.codigo,
+        nome: item.modulo.nome,
+        icone: item.modulo.icone,
+      });
+    }
 
     return {
       id: user.id,
@@ -76,12 +113,7 @@ export class AuthService {
       company_id: companyId,
       company_name: activeRole?.company?.name,
       company_slug: activeRole?.company?.slug,
-      modules: modules.map((item) => ({
-        id: item.modulo.id,
-        codigo: item.modulo.codigo,
-        nome: item.modulo.nome,
-        icone: item.modulo.icone,
-      })),
+      modules: Array.from(moduleMap.values()),
     };
   }
 }

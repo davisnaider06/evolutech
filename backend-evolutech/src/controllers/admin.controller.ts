@@ -4,6 +4,44 @@ import { AdminService } from '../services/admin.service';
 const adminService = new AdminService();
 
 export class AdminController {
+  async listPaymentGateways(req: Request, res: Response) {
+    try {
+      const gateways = await adminService.listPaymentGateways();
+      return res.json(gateways);
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message || 'Erro ao listar gateways' });
+    }
+  }
+
+  async createPaymentGateway(req: Request, res: Response) {
+    try {
+      const gateway = await adminService.createPaymentGateway(req.body || {});
+      return res.status(201).json(gateway);
+    } catch (error: any) {
+      return res.status(400).json({ error: error.message || 'Erro ao criar gateway' });
+    }
+  }
+
+  async updatePaymentGateway(req: Request, res: Response) {
+    try {
+      const { gatewayId } = req.params;
+      const gateway = await adminService.updatePaymentGateway(gatewayId, req.body || {});
+      return res.json(gateway);
+    } catch (error: any) {
+      return res.status(400).json({ error: error.message || 'Erro ao atualizar gateway' });
+    }
+  }
+
+  async deletePaymentGateway(req: Request, res: Response) {
+    try {
+      const { gatewayId } = req.params;
+      await adminService.deletePaymentGateway(gatewayId);
+      return res.status(204).send();
+    } catch (error: any) {
+      return res.status(400).json({ error: error.message || 'Erro ao remover gateway' });
+    }
+  }
+
   async getFinancialOverview(req: Request, res: Response) {
     try {
       const overview = await adminService.getFinancialOverview();
@@ -54,7 +92,7 @@ export class AdminController {
 
   async createModulo(req: Request, res: Response) {
     try {
-      const { nome, codigo, preco_mensal, is_core, icone, descricao, status } = req.body;
+      const { nome, codigo, preco_mensal, is_core, icone, descricao, nicho, status } = req.body;
 
       if (!nome || !codigo) {
         return res.status(400).json({ error: 'Nome e codigo sao obrigatorios' });
@@ -67,6 +105,7 @@ export class AdminController {
         is_core,
         icone,
         descricao,
+        nicho,
         status: status || 'active'
       });
 

@@ -10,6 +10,17 @@ export class CompanyController {
       return res.status(error.statusCode).json({ error: error.message });
     }
 
+    if (
+      error &&
+      typeof error === 'object' &&
+      'statusCode' in error &&
+      typeof (error as any).statusCode === 'number'
+    ) {
+      const statusCode = Number((error as any).statusCode) || 500;
+      const message = (error as any).message || 'Erro interno';
+      return res.status(statusCode).json({ error: message });
+    }
+
     if (error instanceof Error) {
       return res.status(500).json({ error: error.message });
     }
@@ -189,10 +200,38 @@ export class CompanyController {
     }
   }
 
+  async getPublicBookingOptions(req: AuthedRequest, res: Response) {
+    try {
+      const { slug } = req.params;
+      const result = await service.getPublicBookingOptions(slug);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   async listPublicAppointmentsByDate(req: AuthedRequest, res: Response) {
     try {
       const { slug } = req.params;
-      const result = await service.listPublicAppointmentsByDate(slug, String(req.query.date || ''));
+      const result = await service.listPublicAppointmentsByDate(
+        slug,
+        String(req.query.date || ''),
+        String(req.query.professional_id || '')
+      );
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async listPublicAvailableSlots(req: AuthedRequest, res: Response) {
+    try {
+      const { slug } = req.params;
+      const result = await service.listPublicAvailableSlots(slug, {
+        date: String(req.query.date || ''),
+        service_id: String(req.query.service_id || ''),
+        professional_id: String(req.query.professional_id || ''),
+      });
       return res.json(result);
     } catch (error: unknown) {
       return this.handleError(error, res);
@@ -204,6 +243,81 @@ export class CompanyController {
       const { slug } = req.params;
       const result = await service.createPublicAppointment(slug, req.body || {});
       return res.status(201).json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async listAppointmentAvailability(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.listAppointmentAvailability(req.user!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async saveAppointmentAvailability(req: AuthedRequest, res: Response) {
+    try {
+      const { professionalId } = req.params;
+      const result = await service.saveAppointmentAvailability(req.user!, professionalId, req.body || {});
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async listBillingCharges(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.listBillingCharges(req.user!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async createBillingCharge(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.createBillingCharge(req.user!, req.body || {});
+      return res.status(201).json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async listMyPaymentGateways(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.listMyPaymentGateways(req.user!);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async connectMyPaymentGateway(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.connectMyPaymentGateway(req.user!, req.body || {});
+      return res.status(201).json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async activateMyPaymentGateway(req: AuthedRequest, res: Response) {
+    try {
+      const { gatewayId } = req.params;
+      const result = await service.activateMyPaymentGateway(req.user!, gatewayId);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async deleteMyPaymentGateway(req: AuthedRequest, res: Response) {
+    try {
+      const { gatewayId } = req.params;
+      const result = await service.deleteMyPaymentGateway(req.user!, gatewayId);
+      return res.json(result);
     } catch (error: unknown) {
       return this.handleError(error, res);
     }

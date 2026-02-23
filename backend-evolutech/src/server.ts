@@ -8,12 +8,14 @@ import adminRoutes from './routes/admin.routes';
 import companyRoutes from './routes/company.routes';
 import tenantRoutes from './routes/tenant.routes';
 import publicRoutes from './routes/public.routes';
+import paymentWebhookRoutes from './routes/payment-webhook.routes';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middlewares Globais
 app.use(cors());
+app.use('/api/public/payments/webhook', paymentWebhookRoutes);
 app.use(express.json());
 
 // Logger de Requisições

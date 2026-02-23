@@ -3,6 +3,8 @@ import { AuthenticatedUser } from '../types';
 import { TABLE_CONFIG } from '../config/tableConfig';
 import bcrypt from 'bcryptjs';
 import { TaskStatus } from '@prisma/client';
+import { PaymentService } from './payment.service';
+import { decryptSecret, encryptSecret } from '../utils/crypto.util';
 
 class CompanyServiceError extends Error {
   statusCode: number;
@@ -15,9 +17,45 @@ class CompanyServiceError extends Error {
 }
 
 export class CompanyService {
+  private paymentService = new PaymentService();
+
   private toNumber(value: unknown): number {
     const numeric = Number(value ?? 0);
     return Number.isFinite(numeric) ? numeric : 0;
+  }
+
+  private getMonthBounds(referenceDate: Date) {
+    const start = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), 1);
+    const end = new Date(referenceDate.getFullYear(), referenceDate.getMonth() + 1, 1);
+    return { start, end };
+  }
+
+  private monthKey(date: Date): string {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}-01`;
+  }
+
+  private async syncCompanyMonthlyRevenue(
+    tx: any,
+    companyId: string,
+    referenceDate: Date
+  ) {
+    const { start, end } = this.getMonthBounds(referenceDate);
+
+    const agg = await tx.order.aggregate({
+      where: {
+        companyId,
+        status: 'paid',
+        createdAt: { gte: start, lt: end },
+      },
+      _sum: { total: true },
+    });
+
+    await tx.company.update({
+      where: { id: companyId },
+      data: { monthlyRevenue: Number(agg._sum.total || 0) },
+    });
   }
 
   private getModel(tableName: string) {
@@ -25,9 +63,25 @@ export class CompanyService {
       customers: prisma.customer,
       products: prisma.product,
       appointments: prisma.appointment,
+      appointment_services: (prisma as any).appointmentService,
+      appointment_availability: (prisma as any).appointmentAvailability,
       orders: prisma.order,
     };
     return map[tableName];
+  }
+
+  private timeStringToMinutes(value: string) {
+    const [h, m] = String(value || '').split(':').map((v) => Number(v));
+    if (!Number.isInteger(h) || !Number.isInteger(m) || h < 0 || h > 23 || m < 0 || m > 59) {
+      throw new CompanyServiceError('Horario invalido. Use HH:mm', 400);
+    }
+    return h * 60 + m;
+  }
+
+  private minutesToTimeString(value: number) {
+    const h = Math.floor(value / 60);
+    const m = value % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   }
 
   private isAdminRole(role: AuthenticatedUser['role']) {
@@ -179,6 +233,115 @@ export class CompanyService {
     return { success: true };
   }
 
+  async listAppointmentAvailability(
+    user: AuthenticatedUser,
+    queryParams: { professional_id?: string; company_id?: string }
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, ['appointments', 'agendamentos']);
+
+    const requestedProfessionalId = String(queryParams.professional_id || '').trim();
+    const professionalId =
+      user.role === 'FUNCIONARIO_EMPRESA' ? user.id : requestedProfessionalId || undefined;
+
+    const where: any = { companyId };
+    if (professionalId) where.professionalId = professionalId;
+
+    const rows = await (prisma as any).appointmentAvailability.findMany({
+      where,
+      orderBy: [{ professionalId: 'asc' }, { weekday: 'asc' }, { startTime: 'asc' }],
+    });
+
+    return rows.map((item: any) => ({
+      id: item.id,
+      company_id: item.companyId,
+      professional_id: item.professionalId,
+      weekday: item.weekday,
+      start_time: item.startTime,
+      end_time: item.endTime,
+      is_active: item.isActive,
+    }));
+  }
+
+  async saveAppointmentAvailability(
+    user: AuthenticatedUser,
+    professionalIdParam: string,
+    payload: {
+      company_id?: string;
+      days: Array<{
+        weekday: number;
+        start_time: string;
+        end_time: string;
+        is_active?: boolean;
+      }>;
+    }
+  ) {
+    const companyId = this.resolveCompanyId(user, payload);
+    await this.ensureAnyModuleAccess(user, companyId, ['appointments', 'agendamentos']);
+
+    const professionalIdRaw = String(professionalIdParam || '').trim();
+    const professionalId = user.role === 'FUNCIONARIO_EMPRESA' ? user.id : professionalIdRaw;
+    if (!professionalId) throw new CompanyServiceError('professional_id obrigatorio', 400);
+
+    const days = Array.isArray(payload.days) ? payload.days : [];
+    if (days.length === 0) {
+      throw new CompanyServiceError('Envie ao menos um horario no campo days', 400);
+    }
+
+    const professional = await prisma.userRole.findFirst({
+      where: {
+        companyId,
+        userId: professionalId,
+        role: { in: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+      },
+      select: { id: true },
+    });
+    if (!professional) {
+      throw new CompanyServiceError('Profissional nao encontrado nesta empresa', 404);
+    }
+
+    const normalized = days.map((item) => {
+      const weekday = Number(item.weekday);
+      if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) {
+        throw new CompanyServiceError('weekday deve ser entre 0 (domingo) e 6 (sabado)', 400);
+      }
+
+      const startTime = String(item.start_time || '').trim();
+      const endTime = String(item.end_time || '').trim();
+      const startMin = this.timeStringToMinutes(startTime);
+      const endMin = this.timeStringToMinutes(endTime);
+      if (endMin <= startMin) {
+        throw new CompanyServiceError('end_time deve ser maior que start_time', 400);
+      }
+
+      return {
+        weekday,
+        startTime,
+        endTime,
+        isActive: item.is_active !== false,
+      };
+    });
+
+    await prisma.$transaction(async (tx) => {
+      await (tx as any).appointmentAvailability.deleteMany({
+        where: { companyId, professionalId },
+      });
+
+      await (tx as any).appointmentAvailability.createMany({
+        data: normalized.map((item) => ({
+          companyId,
+          professionalId,
+          weekday: item.weekday,
+          startTime: item.startTime,
+          endTime: item.endTime,
+          isActive: item.isActive,
+        })),
+      });
+    });
+
+    return this.listAppointmentAvailability(user, { company_id: companyId, professional_id: professionalId });
+  }
+
   private async ensureAnyModuleAccess(user: AuthenticatedUser, companyId: string, moduleCodes: string[]) {
     if (this.isAdminRole(user.role)) return;
 
@@ -310,6 +473,37 @@ export class CompanyService {
         },
       });
 
+      let gatewayPayment: any = null;
+      if (data.paymentMethod === 'pix') {
+        const activeGateway = await this.paymentService.getCompanyActiveGateway(companyId);
+        if (activeGateway?.provider === 'stripe') {
+          gatewayPayment = await this.paymentService.createStripePixPayment(tx, {
+            companyId,
+            orderId: order.id,
+            amount: total,
+            customerName: order.customerName,
+          });
+        } else if (activeGateway?.provider === 'mercadopago') {
+          gatewayPayment = await this.paymentService.createMercadoPagoPixPayment(tx, {
+            companyId,
+            orderId: order.id,
+            amount: total,
+            customerName: order.customerName,
+          });
+        } else if (activeGateway?.provider === 'pagbank') {
+          gatewayPayment = await this.paymentService.createPagBankPixPayment(tx, {
+            companyId,
+            orderId: order.id,
+            amount: total,
+            customerName: order.customerName,
+          });
+        }
+      }
+
+      if (order.status === 'paid') {
+        await this.syncCompanyMonthlyRevenue(tx, companyId, order.createdAt);
+      }
+
       await tx.auditLog.create({
         data: {
           userId: user.id,
@@ -319,6 +513,13 @@ export class CompanyService {
           details: {
             orderId: order.id,
             paymentMethod: data.paymentMethod,
+            paymentGateway: gatewayPayment
+              ? {
+                  provider: gatewayPayment.provider,
+                  externalPaymentId: gatewayPayment.externalPaymentId,
+                  status: gatewayPayment.status,
+                }
+              : null,
             subtotal,
             discount,
             total,
@@ -341,6 +542,234 @@ export class CompanyService {
           total,
           items: soldItems,
         },
+        payment_gateway: gatewayPayment
+          ? {
+              provider: gatewayPayment.provider,
+              status: gatewayPayment.status,
+              externalPaymentId: gatewayPayment.externalPaymentId,
+              qrCodeText: gatewayPayment.qrCodeText,
+              qrCodeImageUrl: gatewayPayment.qrCodeImageUrl,
+            }
+          : null,
+      };
+    });
+  }
+
+  async listBillingCharges(
+    user: AuthenticatedUser,
+    queryParams: { status?: string; page?: number; pageSize?: number; search?: string }
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, ['billing', 'cobrancas']);
+
+    const status = String(queryParams.status || '').trim().toLowerCase();
+    const search = String(queryParams.search || '').trim();
+    const page = Math.max(1, Number(queryParams.page || 1));
+    const pageSize = Math.min(100, Math.max(1, Number(queryParams.pageSize || 20)));
+
+    const where: any = {
+      companyId,
+      ...(status ? { status } : {}),
+      ...(search
+        ? {
+            OR: [
+              { title: { contains: search, mode: 'insensitive' as const } },
+              { customerName: { contains: search, mode: 'insensitive' as const } },
+              { customerEmail: { contains: search, mode: 'insensitive' as const } },
+              { orderId: { contains: search, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
+
+    const [items, total] = await Promise.all([
+      (prisma as any).billingCharge.findMany({
+        where,
+        include: {
+          order: {
+            select: {
+              id: true,
+              status: true,
+              createdAt: true,
+              paymentTransactions: {
+                orderBy: { createdAt: 'desc' },
+                take: 1,
+                select: {
+                  id: true,
+                  provider: true,
+                  status: true,
+                  qrCodeText: true,
+                  qrCodeImageUrl: true,
+                  externalPaymentId: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: pageSize,
+        skip: (page - 1) * pageSize,
+      }),
+      (prisma as any).billingCharge.count({ where }),
+    ]);
+
+    return {
+      data: items.map((item: any) => ({
+        id: item.id,
+        company_id: item.companyId,
+        order_id: item.orderId,
+        title: item.title,
+        description: item.description,
+        customer_name: item.customerName,
+        customer_email: item.customerEmail,
+        customer_phone: item.customerPhone,
+        amount: Number(item.amount || 0),
+        payment_method: item.paymentMethod,
+        status: item.status,
+        due_date: item.dueDate,
+        paid_at: item.paidAt,
+        created_at: item.createdAt,
+        updated_at: item.updatedAt,
+        transaction: item.order?.paymentTransactions?.[0] || null,
+      })),
+      total,
+      page,
+      pageSize,
+    };
+  }
+
+  async createBillingCharge(
+    user: AuthenticatedUser,
+    data: {
+      title?: string;
+      description?: string;
+      customer_name?: string;
+      customer_email?: string;
+      customer_phone?: string;
+      amount?: number;
+      due_date?: string;
+      payment_method?: string;
+    }
+  ) {
+    const companyId = this.resolveCompanyId(user, data);
+    await this.ensureAnyModuleAccess(user, companyId, ['billing', 'cobrancas']);
+
+    const title = String(data.title || '').trim();
+    const customerName = String(data.customer_name || '').trim();
+    const customerEmail = String(data.customer_email || '').trim() || null;
+    const customerPhone = String(data.customer_phone || '').trim() || null;
+    const amount = Number(data.amount || 0);
+    const paymentMethod = String(data.payment_method || 'pix').trim().toLowerCase();
+    const description = String(data.description || '').trim() || null;
+    const dueDate = data.due_date ? new Date(String(data.due_date)) : null;
+
+    if (!title || !customerName || amount <= 0) {
+      throw new CompanyServiceError('Campos obrigatorios: title, customer_name, amount', 400);
+    }
+    if (paymentMethod !== 'pix') {
+      throw new CompanyServiceError('No momento, cobrancas aceitam apenas payment_method = pix', 400);
+    }
+    if (dueDate && Number.isNaN(dueDate.getTime())) {
+      throw new CompanyServiceError('due_date invalida', 400);
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const activeGateway = await this.paymentService.getCompanyActiveGateway(companyId);
+      if (!activeGateway) {
+        throw new CompanyServiceError('Configure e ative um gateway antes de criar cobrancas', 400);
+      }
+
+      const order = await tx.order.create({
+        data: {
+          companyId,
+          customerName,
+          total: amount,
+          status: 'pending_pix',
+        },
+      });
+
+      const charge = await (tx as any).billingCharge.create({
+        data: {
+          companyId,
+          orderId: order.id,
+          title,
+          description,
+          customerName,
+          customerEmail,
+          customerPhone,
+          amount,
+          paymentMethod,
+          status: 'pending',
+          dueDate,
+        },
+      });
+
+      let gatewayPayment: any = null;
+      if (activeGateway.provider === 'stripe') {
+        gatewayPayment = await this.paymentService.createStripePixPayment(tx, {
+          companyId,
+          orderId: order.id,
+          amount,
+          customerName,
+        });
+      } else if (activeGateway.provider === 'mercadopago') {
+        gatewayPayment = await this.paymentService.createMercadoPagoPixPayment(tx, {
+          companyId,
+          orderId: order.id,
+          amount,
+          customerName,
+        });
+      } else if (activeGateway.provider === 'pagbank') {
+        gatewayPayment = await this.paymentService.createPagBankPixPayment(tx, {
+          companyId,
+          orderId: order.id,
+          amount,
+          customerName,
+        });
+      } else {
+        throw new CompanyServiceError(`Gateway ${activeGateway.provider} ainda nao suportado`, 400);
+      }
+
+      await tx.auditLog.create({
+        data: {
+          userId: user.id,
+          companyId,
+          action: 'BILLING_CHARGE_CREATED',
+          resource: 'billing_charges',
+          details: {
+            billingChargeId: charge.id,
+            orderId: order.id,
+            provider: activeGateway.provider,
+            amount,
+            customerName,
+          },
+        },
+      });
+
+      return {
+        id: charge.id,
+        company_id: charge.companyId,
+        order_id: charge.orderId,
+        title: charge.title,
+        description: charge.description,
+        customer_name: charge.customerName,
+        customer_email: charge.customerEmail,
+        customer_phone: charge.customerPhone,
+        amount: Number(charge.amount || 0),
+        payment_method: charge.paymentMethod,
+        status: charge.status,
+        due_date: charge.dueDate,
+        created_at: charge.createdAt,
+        updated_at: charge.updatedAt,
+        payment_gateway: gatewayPayment
+          ? {
+              provider: gatewayPayment.provider,
+              status: gatewayPayment.status,
+              externalPaymentId: gatewayPayment.externalPaymentId,
+              qrCodeText: gatewayPayment.qrCodeText,
+              qrCodeImageUrl: gatewayPayment.qrCodeImageUrl,
+            }
+          : null,
       };
     });
   }
@@ -368,23 +797,29 @@ export class CompanyService {
       };
     }
 
-    const updated = await prisma.order.update({
-      where: { id: order.id },
-      data: { status: 'paid' },
-    });
+    const updated = await prisma.$transaction(async (tx) => {
+      const paidOrder = await tx.order.update({
+        where: { id: order.id },
+        data: { status: 'paid' },
+      });
 
-    await prisma.auditLog.create({
-      data: {
-        userId: user.id,
-        companyId,
-        action: 'PIX_CONFIRMED',
-        resource: 'orders',
-        details: {
-          orderId: updated.id,
-          previousStatus: order.status,
-          newStatus: updated.status,
+      await this.syncCompanyMonthlyRevenue(tx, companyId, paidOrder.createdAt);
+
+      await tx.auditLog.create({
+        data: {
+          userId: user.id,
+          companyId,
+          action: 'PIX_CONFIRMED',
+          resource: 'orders',
+          details: {
+            orderId: paidOrder.id,
+            previousStatus: order.status,
+            newStatus: paidOrder.status,
+          },
         },
-      },
+      });
+
+      return paidOrder;
     });
 
     return {
@@ -562,10 +997,190 @@ export class CompanyService {
     return `Func@${randomBlock}`;
   }
 
+  private maskSecret(value?: string | null) {
+    const raw = String(value || '');
+    if (!raw) return null;
+    if (raw.length <= 6) return '***';
+    return `${raw.slice(0, 3)}***${raw.slice(-3)}`;
+  }
+
   private ensureOwner(user: AuthenticatedUser) {
     if (user.role !== 'DONO_EMPRESA') {
       throw new CompanyServiceError('Somente dono da empresa pode executar esta acao', 403);
     }
+  }
+
+  private ensureOwnerCompanyId(user: AuthenticatedUser) {
+    this.ensureOwner(user);
+    const companyId = user.companyId;
+    if (!companyId) throw new CompanyServiceError('Company ID obrigatorio', 400);
+    return companyId;
+  }
+
+  async listMyPaymentGateways(user: AuthenticatedUser) {
+    const companyId = this.ensureOwnerCompanyId(user);
+
+    const gateways = await (prisma as any).paymentGateway.findMany({
+      where: { companyId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return gateways.map((gateway: any) => ({
+      id: gateway.id,
+      empresa_id: gateway.companyId,
+      provedor: gateway.provider,
+      nome_exibicao: gateway.displayName,
+      public_key: gateway.publicKey,
+      secret_key_masked: this.maskSecret(
+        gateway.secretKeyEncrypted ? decryptSecret(gateway.secretKeyEncrypted) : null
+      ),
+      webhook_secret_masked: this.maskSecret(
+        gateway.webhookSecretEncrypted ? decryptSecret(gateway.webhookSecretEncrypted) : null
+      ),
+      ambiente: gateway.environment,
+      is_active: gateway.isActive,
+      webhook_url: gateway.webhookUrl,
+      configuracoes: gateway.settings,
+      created_at: gateway.createdAt,
+      updated_at: gateway.updatedAt,
+    }));
+  }
+
+  async connectMyPaymentGateway(
+    user: AuthenticatedUser,
+    data: {
+      provedor?: string;
+      nome_exibicao?: string;
+      public_key?: string;
+      secret_key?: string;
+      webhook_secret?: string;
+      ambiente?: string;
+      webhook_url?: string;
+      configuracoes?: unknown;
+    }
+  ) {
+    const companyId = this.ensureOwnerCompanyId(user);
+    const provider = String(data.provedor || '').trim().toLowerCase();
+    const allowedProviders = new Set(['stripe', 'mercadopago', 'pagbank']);
+    if (!allowedProviders.has(provider)) {
+      throw new CompanyServiceError('Provedor nao suportado. Use stripe, mercadopago ou pagbank', 400);
+    }
+
+    const secretKey = String(data.secret_key || '').trim();
+    const publicKey = String(data.public_key || '').trim() || null;
+    const webhookSecret = String(data.webhook_secret || '').trim() || null;
+    const environment = String(data.ambiente || 'sandbox').trim().toLowerCase();
+
+    const validation = await this.paymentService.validateGatewayCredentials({
+      provider,
+      environment,
+      publicKey,
+      secretKey,
+    });
+
+    const displayName =
+      String(data.nome_exibicao || '').trim() ||
+      `${provider.toUpperCase()} ${validation?.accountName ? `- ${validation.accountName}` : ''}`.trim();
+
+    const saved = await prisma.$transaction(async (tx) => {
+      await (tx as any).paymentGateway.updateMany({
+        where: { companyId },
+        data: { isActive: false },
+      });
+
+      const existing = await (tx as any).paymentGateway.findFirst({
+        where: { companyId, provider },
+        select: { id: true },
+      });
+
+      if (existing) {
+        return (tx as any).paymentGateway.update({
+          where: { id: existing.id },
+          data: {
+            displayName,
+            publicKey,
+            secretKeyEncrypted: encryptSecret(secretKey),
+            webhookSecretEncrypted: webhookSecret ? encryptSecret(webhookSecret) : null,
+            environment,
+            webhookUrl: data.webhook_url || null,
+            settings: {
+              ...(data.configuracoes as any),
+              accountValidation: validation,
+            },
+            isActive: true,
+          },
+        });
+      }
+
+      return (tx as any).paymentGateway.create({
+        data: {
+          companyId,
+          provider,
+          displayName,
+          publicKey,
+          secretKeyEncrypted: encryptSecret(secretKey),
+          webhookSecretEncrypted: webhookSecret ? encryptSecret(webhookSecret) : null,
+          environment,
+          webhookUrl: data.webhook_url || null,
+          settings: {
+            ...(data.configuracoes as any),
+            accountValidation: validation,
+          },
+          isActive: true,
+        },
+      });
+    });
+
+    return {
+      id: saved.id,
+      empresa_id: saved.companyId,
+      provedor: saved.provider,
+      nome_exibicao: saved.displayName,
+      public_key: saved.publicKey,
+      secret_key_masked: this.maskSecret(secretKey),
+      webhook_secret_masked: this.maskSecret(webhookSecret),
+      ambiente: saved.environment,
+      is_active: saved.isActive,
+      webhook_url: saved.webhookUrl,
+      configuracoes: saved.settings,
+      validation,
+    };
+  }
+
+  async activateMyPaymentGateway(user: AuthenticatedUser, gatewayId: string) {
+    const companyId = this.ensureOwnerCompanyId(user);
+
+    const target = await (prisma as any).paymentGateway.findFirst({
+      where: { id: gatewayId, companyId },
+      select: { id: true },
+    });
+    if (!target) throw new CompanyServiceError('Gateway nao encontrado', 404);
+
+    await prisma.$transaction(async (tx) => {
+      await (tx as any).paymentGateway.updateMany({
+        where: { companyId },
+        data: { isActive: false },
+      });
+      await (tx as any).paymentGateway.update({
+        where: { id: gatewayId },
+        data: { isActive: true },
+      });
+    });
+
+    return { success: true };
+  }
+
+  async deleteMyPaymentGateway(user: AuthenticatedUser, gatewayId: string) {
+    const companyId = this.ensureOwnerCompanyId(user);
+
+    const target = await (prisma as any).paymentGateway.findFirst({
+      where: { id: gatewayId, companyId },
+      select: { id: true },
+    });
+    if (!target) throw new CompanyServiceError('Gateway nao encontrado', 404);
+
+    await (prisma as any).paymentGateway.delete({ where: { id: gatewayId } });
+    return { success: true };
   }
 
   async getFinancialOverview(user: AuthenticatedUser) {
@@ -574,49 +1189,94 @@ export class CompanyService {
       throw new CompanyServiceError('Sem permissao para acessar o financeiro', 403);
     }
 
-    type FinancialMetricRow = {
-      id: string;
-      company_id: string | null;
-      month: Date | string;
-      revenue: unknown;
-      mrr: unknown;
-      churn_rate: unknown;
-      new_customers: unknown;
-      active_users: unknown;
-      created_at: Date | string;
-    };
-
     const isOwner = user.role === 'DONO_EMPRESA';
     const companyId = user.companyId;
 
     if (isOwner && !companyId) {
       throw new CompanyServiceError('Company ID obrigatorio', 400);
     }
+    const [paidOrders, monthlyNewCustomers, activeUsersByCompany] = await Promise.all([
+      prisma.order.findMany({
+        where: {
+          ...(isOwner && companyId ? { companyId } : {}),
+          status: 'paid',
+        },
+        select: {
+          id: true,
+          companyId: true,
+          total: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
+      prisma.customer.findMany({
+        where: isOwner && companyId ? { companyId } : undefined,
+        select: {
+          companyId: true,
+          createdAt: true,
+        },
+      }),
+      prisma.userRole.groupBy({
+        by: ['companyId'],
+        where: {
+          companyId: { not: null },
+          role: { in: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+          ...(isOwner && companyId ? { companyId } : {}),
+        },
+        _count: { _all: true },
+      }),
+    ]);
 
-    let metricsRows: FinancialMetricRow[] = [];
+    const customerMap = new Map<string, number>();
+    for (const customer of monthlyNewCustomers) {
+      const key = `${customer.companyId}:${this.monthKey(customer.createdAt)}`;
+      customerMap.set(key, (customerMap.get(key) || 0) + 1);
+    }
 
-    try {
-      if (isOwner && companyId) {
-        metricsRows = await prisma.$queryRaw<FinancialMetricRow[]>`
-          SELECT id, company_id, month, revenue, mrr, churn_rate, new_customers, active_users, created_at
-          FROM financial_metrics
-          WHERE company_id = ${companyId}
-          ORDER BY month ASC
-        `;
-      } else {
-        metricsRows = await prisma.$queryRaw<FinancialMetricRow[]>`
-          SELECT id, company_id, month, revenue, mrr, churn_rate, new_customers, active_users, created_at
-          FROM financial_metrics
-          ORDER BY month ASC
-        `;
-      }
-    } catch (error: any) {
-      const relationMissing =
-        error?.code === 'P2010' && (error?.meta as { code?: string } | undefined)?.code === '42P01';
-      if (!relationMissing) {
-        throw error;
+    const activeUsersMap = new Map<string, number>();
+    for (const item of activeUsersByCompany) {
+      if (item.companyId) {
+        activeUsersMap.set(item.companyId, item._count._all);
       }
     }
+
+    const metricMap = new Map<
+      string,
+      { companyId: string; month: Date; revenue: number; mrr: number }
+    >();
+
+    for (const order of paidOrders) {
+      const monthStart = new Date(order.createdAt.getFullYear(), order.createdAt.getMonth(), 1);
+      const key = `${order.companyId}:${this.monthKey(monthStart)}`;
+      const current = metricMap.get(key);
+      const amount = this.toNumber(order.total);
+
+      if (current) {
+        current.revenue += amount;
+        current.mrr += amount;
+      } else {
+        metricMap.set(key, {
+          companyId: order.companyId,
+          month: monthStart,
+          revenue: amount,
+          mrr: amount,
+        });
+      }
+    }
+
+    const metricsRows = Array.from(metricMap.entries())
+      .map(([key, value]) => ({
+        id: key,
+        company_id: value.companyId,
+        month: value.month,
+        revenue: value.revenue,
+        mrr: value.mrr,
+        churn_rate: 0,
+        new_customers: customerMap.get(key) || 0,
+        active_users: activeUsersMap.get(value.companyId) || 0,
+        created_at: value.month,
+      }))
+      .sort((a, b) => a.month.getTime() - b.month.getTime());
 
     const companies = await prisma.company.findMany({
       where: isOwner && companyId ? { id: companyId } : { status: 'active' },
@@ -716,26 +1376,47 @@ export class CompanyService {
       throw new CompanyServiceError('Senha deve ter ao menos 6 caracteres', 400);
     }
 
-    const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) {
-      throw new CompanyServiceError('Ja existe usuario com este e-mail', 409);
-    }
-
-    const passwordHash = await bcrypt.hash(temporaryPassword, 10);
-
     const created = await prisma.$transaction(async (tx) => {
-      const newUser = await tx.user.create({
-        data: {
-          email,
-          fullName,
-          passwordHash,
-          isActive: true,
+      const existingUser = await tx.user.findUnique({ where: { email } });
+      let targetUser = existingUser;
+
+      if (!existingUser) {
+        const passwordHash = await bcrypt.hash(temporaryPassword, 10);
+        targetUser = await tx.user.create({
+          data: {
+            email,
+            fullName,
+            passwordHash,
+            isActive: true,
+          },
+        });
+      } else {
+        const passwordHash = await bcrypt.hash(temporaryPassword, 10);
+        targetUser = await tx.user.update({
+          where: { id: existingUser.id },
+          data: {
+            fullName: fullName || existingUser.fullName,
+            passwordHash,
+            isActive: true,
+          },
+        });
+      }
+
+      const existingRole = await tx.userRole.findFirst({
+        where: {
+          userId: targetUser.id,
+          companyId,
         },
+        select: { id: true },
       });
+
+      if (existingRole) {
+        throw new CompanyServiceError('Este usuario ja esta vinculado a esta empresa', 409);
+      }
 
       await tx.userRole.create({
         data: {
-          userId: newUser.id,
+          userId: targetUser.id,
           companyId,
           role: 'FUNCIONARIO_EMPRESA',
         },
@@ -748,14 +1429,14 @@ export class CompanyService {
           action: 'TEAM_MEMBER_CREATED',
           resource: 'profiles',
           details: {
-            memberId: newUser.id,
-            memberEmail: newUser.email,
+            memberId: targetUser.id,
+            memberEmail: targetUser.email,
             memberRole: 'FUNCIONARIO_EMPRESA',
           },
         },
       });
 
-      return newUser;
+      return targetUser;
     });
 
     return {
@@ -1007,9 +1688,166 @@ export class CompanyService {
     return company;
   }
 
-  async listPublicAppointmentsByDate(slug: string, dateISO?: string) {
+  async getPublicBookingOptions(slug: string) {
+    const company = await this.getPublicBookingCompany(slug);
+
+    const [professionals, services] = await Promise.all([
+      prisma.userRole.findMany({
+        where: {
+          companyId: company.id,
+          role: { in: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+          user: { isActive: true },
+        },
+        select: {
+          userId: true,
+          user: { select: { fullName: true } },
+        },
+        orderBy: { user: { fullName: 'asc' } },
+      }),
+      (prisma as any).appointmentService.findMany({
+        where: { companyId: company.id, isActive: true },
+        select: {
+          id: true,
+          name: true,
+          durationMinutes: true,
+          price: true,
+        },
+        orderBy: { name: 'asc' },
+      }),
+    ]);
+
+    return {
+      company,
+      professionals: professionals.map((item: any) => ({
+        id: item.userId,
+        name: item.user.fullName,
+      })),
+      services: services.map((item: any) => ({
+        id: item.id,
+        name: item.name,
+        duration_minutes: item.durationMinutes,
+        price: Number(item.price || 0),
+      })),
+    };
+  }
+
+  async listPublicAvailableSlots(
+    slug: string,
+    params: { date?: string; service_id?: string; professional_id?: string }
+  ) {
+    const company = await this.getPublicBookingCompany(slug);
+    const dateRaw = String(params.date || '').trim();
+    const serviceId = String(params.service_id || '').trim();
+    const professionalId = String(params.professional_id || '').trim();
+
+    if (!dateRaw || !serviceId || !professionalId) {
+      throw new CompanyServiceError('Parametros obrigatorios: date, service_id, professional_id', 400);
+    }
+
+    const [year, month, day] = dateRaw.split('-').map((v) => Number(v));
+    const date = new Date(year, (month || 1) - 1, day || 1, 0, 0, 0, 0);
+    if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day) || Number.isNaN(date.getTime())) {
+      throw new CompanyServiceError('Data invalida', 400);
+    }
+
+    const service = await (prisma as any).appointmentService.findFirst({
+      where: { id: serviceId, companyId: company.id, isActive: true },
+      select: { id: true, durationMinutes: true },
+    });
+    if (!service) throw new CompanyServiceError('Servico invalido', 400);
+
+    const professional = await prisma.userRole.findFirst({
+      where: {
+        companyId: company.id,
+        userId: professionalId,
+        role: { in: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+        user: { isActive: true },
+      },
+      select: { id: true },
+    });
+    if (!professional) throw new CompanyServiceError('Profissional invalido', 400);
+
+    const weekday = date.getDay();
+    const schedules = await (prisma as any).appointmentAvailability.findMany({
+      where: { companyId: company.id, professionalId, weekday, isActive: true },
+      orderBy: { startTime: 'asc' },
+    });
+    if (schedules.length === 0) {
+      return { company, slots: [] };
+    }
+
+    const startDate = new Date(date);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(date);
+    endDate.setHours(23, 59, 59, 999);
+
+    const booked = await (prisma as any).appointment.findMany({
+      where: {
+        companyId: company.id,
+        professionalId,
+        scheduledAt: { gte: startDate, lte: endDate },
+        status: { notIn: ['cancelado', 'cancelled'] },
+      },
+      select: { scheduledAt: true, serviceId: true },
+      orderBy: { scheduledAt: 'asc' },
+    });
+
+    const bookedServiceIds = Array.from(
+      new Set(booked.map((item: any) => item.serviceId).filter((id: any) => typeof id === 'string'))
+    );
+    const bookedServices = bookedServiceIds.length
+      ? await (prisma as any).appointmentService.findMany({
+          where: { id: { in: bookedServiceIds } },
+          select: { id: true, durationMinutes: true },
+        })
+      : [];
+    const durationMap = new Map<string, number>(
+      bookedServices.map((item: any) => [item.id, Number(item.durationMinutes || 30)])
+    );
+
+    const now = new Date();
+    const slotDuration = Number(service.durationMinutes || 30);
+    const slots: Array<{ time: string; scheduled_at: string }> = [];
+    const overlaps = (aStart: number, aEnd: number, bStart: number, bEnd: number) =>
+      aStart < bEnd && bStart < aEnd;
+
+    for (const schedule of schedules) {
+      const windowStart = this.timeStringToMinutes(schedule.startTime);
+      const windowEnd = this.timeStringToMinutes(schedule.endTime);
+
+      for (let cursor = windowStart; cursor + slotDuration <= windowEnd; cursor += slotDuration) {
+        const slotStart = new Date(startDate);
+        slotStart.setHours(0, cursor, 0, 0);
+        const slotEnd = new Date(slotStart);
+        slotEnd.setMinutes(slotEnd.getMinutes() + slotDuration);
+        if (slotStart <= now) continue;
+
+        const slotStartMs = slotStart.getTime();
+        const slotEndMs = slotEnd.getTime();
+        const isBlocked = booked.some((item: any) => {
+          const bookedStart = new Date(item.scheduledAt);
+          const bookedDuration = Number(durationMap.get(item.serviceId || '') || slotDuration);
+          const bookedEnd = new Date(bookedStart);
+          bookedEnd.setMinutes(bookedEnd.getMinutes() + bookedDuration);
+          return overlaps(slotStartMs, slotEndMs, bookedStart.getTime(), bookedEnd.getTime());
+        });
+
+        if (!isBlocked) {
+          slots.push({
+            time: this.minutesToTimeString(cursor),
+            scheduled_at: slotStart.toISOString(),
+          });
+        }
+      }
+    }
+
+    return { company, slots };
+  }
+
+  async listPublicAppointmentsByDate(slug: string, dateISO?: string, professionalId?: string) {
     const company = await this.getPublicBookingCompany(slug);
     const now = new Date();
+    const cleanProfessionalId = String(professionalId || '').trim();
 
     let startDate = new Date(now);
     let endDate = new Date(now);
@@ -1025,9 +1863,10 @@ export class CompanyService {
       }
     }
 
-    const appointments = await prisma.appointment.findMany({
+    const appointments = await (prisma as any).appointment.findMany({
       where: {
         companyId: company.id,
+        ...(cleanProfessionalId ? { professionalId: cleanProfessionalId } : {}),
         scheduledAt: {
           gte: startDate,
           lte: endDate,
@@ -1041,6 +1880,8 @@ export class CompanyService {
         id: true,
         customerName: true,
         serviceName: true,
+        professionalName: true,
+        professionalId: true,
         scheduledAt: true,
         status: true,
       },
@@ -1048,10 +1889,12 @@ export class CompanyService {
 
     return {
       company,
-      appointments: appointments.map((item) => ({
+      appointments: appointments.map((item: any) => ({
         id: item.id,
         customer_name: item.customerName,
         service_name: item.serviceName,
+        professional_name: item.professionalName,
+        professional_id: item.professionalId,
         scheduled_at: item.scheduledAt,
         status: item.status,
       })),
@@ -1063,7 +1906,8 @@ export class CompanyService {
     payload: {
       customer_name?: string;
       customer_phone?: string;
-      service_name?: string;
+      service_id?: string;
+      professional_id?: string;
       scheduled_at?: string;
       notes?: string;
     }
@@ -1071,15 +1915,47 @@ export class CompanyService {
     const company = await this.getPublicBookingCompany(slug);
     const customerName = String(payload.customer_name || '').trim();
     const customerPhone = String(payload.customer_phone || '').trim();
-    const serviceName = String(payload.service_name || '').trim();
+    const serviceId = String(payload.service_id || '').trim();
+    const professionalId = String(payload.professional_id || '').trim();
     const scheduledAtRaw = String(payload.scheduled_at || '').trim();
     const notes = String(payload.notes || '').trim();
 
-    if (!customerName || !serviceName || !scheduledAtRaw) {
+    if (!customerName || !serviceId || !professionalId || !scheduledAtRaw) {
       throw new CompanyServiceError(
-        'Campos obrigatorios: customer_name, service_name, scheduled_at',
+        'Campos obrigatorios: customer_name, service_id, professional_id, scheduled_at',
         400
       );
+    }
+
+    const [service, professional] = await Promise.all([
+      (prisma as any).appointmentService.findFirst({
+        where: {
+          id: serviceId,
+          companyId: company.id,
+          isActive: true,
+        },
+        select: { id: true, name: true },
+      }),
+      prisma.userRole.findFirst({
+        where: {
+          companyId: company.id,
+          userId: professionalId,
+          role: { in: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+          user: { isActive: true },
+        },
+        select: {
+          userId: true,
+          user: { select: { fullName: true } },
+        },
+      }),
+    ]);
+
+    if (!service) {
+      throw new CompanyServiceError('Servico invalido para esta empresa', 400);
+    }
+
+    if (!professional) {
+      throw new CompanyServiceError('Profissional invalido para esta empresa', 400);
     }
 
     const scheduledAt = new Date(scheduledAtRaw);
@@ -1091,18 +1967,47 @@ export class CompanyService {
       throw new CompanyServiceError('Nao e permitido agendar em horario passado', 400);
     }
 
-    const alreadyBooked = await prisma.appointment.findFirst({
+    const newStart = scheduledAt.getTime();
+    const newDuration = Number((service as any).durationMinutes || 30);
+    const newEnd = newStart + newDuration * 60 * 1000;
+    const dayStart = new Date(scheduledAt);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(scheduledAt);
+    dayEnd.setHours(23, 59, 59, 999);
+
+    const booked = await (prisma as any).appointment.findMany({
       where: {
         companyId: company.id,
-        scheduledAt,
-        status: {
-          notIn: ['cancelado', 'cancelled'],
-        },
+        professionalId: professional.userId,
+        scheduledAt: { gte: dayStart, lte: dayEnd },
+        status: { notIn: ['cancelado', 'cancelled'] },
       },
-      select: { id: true },
+      select: { id: true, scheduledAt: true, serviceId: true },
     });
 
-    if (alreadyBooked) {
+    const bookedServiceIds = Array.from(
+      new Set(booked.map((item: any) => item.serviceId).filter((id: any) => typeof id === 'string'))
+    );
+    const bookedServices = bookedServiceIds.length
+      ? await (prisma as any).appointmentService.findMany({
+          where: { id: { in: bookedServiceIds } },
+          select: { id: true, durationMinutes: true },
+        })
+      : [];
+    const durationMap = new Map<string, number>(
+      bookedServices.map((item: any) => [item.id, Number(item.durationMinutes || 30)])
+    );
+    const overlaps = (aStart: number, aEnd: number, bStart: number, bEnd: number) =>
+      aStart < bEnd && bStart < aEnd;
+
+    const hasConflict = booked.some((item: any) => {
+      const bookedStart = new Date(item.scheduledAt).getTime();
+      const bookedDuration = Number(durationMap.get(item.serviceId || '') || newDuration);
+      const bookedEnd = bookedStart + bookedDuration * 60 * 1000;
+      return overlaps(newStart, newEnd, bookedStart, bookedEnd);
+    });
+
+    if (hasConflict) {
       throw new CompanyServiceError('Horario ja reservado, escolha outro', 409);
     }
 
@@ -1130,14 +2035,17 @@ export class CompanyService {
         }
       }
 
-      const appointment = await tx.appointment.create({
+      const appointment = await (tx as any).appointment.create({
         data: {
           companyId: company.id,
+          serviceId: service.id,
+          professionalId: professional.userId,
           customerName,
-          serviceName,
+          serviceName: service.name,
+          professionalName: professional.user.fullName,
           scheduledAt,
-          status: 'pendente',
-        },
+          status: 'confirmado',
+        } as any,
       });
 
       await tx.auditLog.create({
@@ -1149,7 +2057,10 @@ export class CompanyService {
             appointmentId: appointment.id,
             customerName,
             customerPhone: customerPhone || null,
-            serviceName,
+            serviceId: service.id,
+            serviceName: service.name,
+            professionalId: professional.userId,
+            professionalName: professional.user.fullName,
             scheduledAt: scheduledAt.toISOString(),
             notes: notes || null,
             source: 'public_link',
@@ -1165,6 +2076,9 @@ export class CompanyService {
       company_name: company.name,
       customer_name: created.customerName,
       service_name: created.serviceName,
+      professional_name: created.professionalName,
+      service_id: created.serviceId,
+      professional_id: created.professionalId,
       scheduled_at: created.scheduledAt,
       status: created.status,
     };

@@ -1,6 +1,7 @@
 import { prisma } from '../db';
 import { Prisma, Role, Status } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { decryptSecret, encryptSecret } from '../utils/crypto.util';
 
 type SistemaStatusInput = 'active' | 'inactive' | 'pending';
 
@@ -11,6 +12,12 @@ export class AdminService {
   private toNumber(value: unknown): number {
     const numeric = Number(value ?? 0);
     return Number.isFinite(numeric) ? numeric : 0;
+  }
+
+  private monthKey(date: Date): string {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}-01`;
   }
 
   private parseRole(role?: string): Role {
@@ -130,34 +137,82 @@ export class AdminService {
   }
 
   async getFinancialOverview() {
-    type FinancialMetricRow = {
-      id: string;
-      company_id: string | null;
-      month: Date | string;
-      revenue: unknown;
-      mrr: unknown;
-      churn_rate: unknown;
-      new_customers: unknown;
-      active_users: unknown;
-      created_at: Date | string;
-    };
+    const [paidOrders, monthlyNewCustomers, activeUsersByCompany] = await Promise.all([
+      prisma.order.findMany({
+        where: { status: 'paid' },
+        select: {
+          companyId: true,
+          total: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
+      prisma.customer.findMany({
+        select: {
+          companyId: true,
+          createdAt: true,
+        },
+      }),
+      prisma.userRole.groupBy({
+        by: ['companyId'],
+        where: {
+          companyId: { not: null },
+          role: { in: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+        },
+        _count: { _all: true },
+      }),
+    ]);
 
-    let metricsRows: FinancialMetricRow[] = [];
+    const customerMap = new Map<string, number>();
+    for (const customer of monthlyNewCustomers) {
+      const key = `${customer.companyId}:${this.monthKey(customer.createdAt)}`;
+      customerMap.set(key, (customerMap.get(key) || 0) + 1);
+    }
 
-    try {
-      metricsRows = await prisma.$queryRaw<FinancialMetricRow[]>`
-        SELECT id, company_id, month, revenue, mrr, churn_rate, new_customers, active_users, created_at
-        FROM financial_metrics
-        ORDER BY month ASC
-      `;
-    } catch (error: any) {
-      const relationMissing =
-        error?.code === 'P2010' && (error?.meta as { code?: string } | undefined)?.code === '42P01';
-
-      if (!relationMissing) {
-        throw error;
+    const activeUsersMap = new Map<string, number>();
+    for (const item of activeUsersByCompany) {
+      if (item.companyId) {
+        activeUsersMap.set(item.companyId, item._count._all);
       }
     }
+
+    const metricMap = new Map<
+      string,
+      { companyId: string; month: Date; revenue: number; mrr: number }
+    >();
+
+    for (const order of paidOrders) {
+      const monthStart = new Date(order.createdAt.getFullYear(), order.createdAt.getMonth(), 1);
+      const key = `${order.companyId}:${this.monthKey(monthStart)}`;
+      const current = metricMap.get(key);
+      const amount = this.toNumber(order.total);
+
+      if (current) {
+        current.revenue += amount;
+        current.mrr += amount;
+      } else {
+        metricMap.set(key, {
+          companyId: order.companyId,
+          month: monthStart,
+          revenue: amount,
+          mrr: amount,
+        });
+      }
+    }
+
+    const metricsRows = Array.from(metricMap.entries())
+      .map(([key, value]) => ({
+        id: key,
+        company_id: value.companyId,
+        month: value.month,
+        revenue: value.revenue,
+        mrr: value.mrr,
+        churn_rate: 0,
+        new_customers: customerMap.get(key) || 0,
+        active_users: activeUsersMap.get(value.companyId) || 0,
+        created_at: value.month,
+      }))
+      .sort((a, b) => a.month.getTime() - b.month.getTime());
 
     const companies = await prisma.company.findMany({
       where: { status: 'active' },
@@ -230,6 +285,7 @@ export class AdminService {
     descricao?: string;
     codigo: string;
     icone?: string;
+    nicho?: string;
     preco_mensal?: number;
     is_core?: boolean;
     status?: Status;
@@ -240,17 +296,150 @@ export class AdminService {
         descricao: data.descricao,
         codigo: data.codigo,
         icone: data.icone,
+        nicho: data.nicho || 'geral',
         precoMensal: data.preco_mensal || 0,
         isCore: data.is_core || false,
         status: data.status || 'active'
-      }
+      } as any
     });
+  }
+
+  async listPaymentGateways() {
+    const gateways = await (prisma as any).paymentGateway.findMany({
+      include: {
+        company: {
+          select: { id: true, name: true, status: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return gateways.map((gateway: any) => ({
+      id: gateway.id,
+      empresa_id: gateway.companyId,
+      provedor: gateway.provider,
+      nome_exibicao: gateway.displayName,
+      public_key: gateway.publicKey,
+      secret_key_encrypted: gateway.secretKeyEncrypted ? decryptSecret(gateway.secretKeyEncrypted) : null,
+      webhook_secret_encrypted: gateway.webhookSecretEncrypted
+        ? decryptSecret(gateway.webhookSecretEncrypted)
+        : null,
+      ambiente: gateway.environment,
+      is_active: gateway.isActive,
+      webhook_url: gateway.webhookUrl,
+      configuracoes: gateway.settings,
+      created_at: gateway.createdAt,
+      updated_at: gateway.updatedAt,
+      company: gateway.company,
+    }));
+  }
+
+  async createPaymentGateway(data: {
+    empresa_id: string;
+    provedor: string;
+    nome_exibicao: string;
+    public_key?: string | null;
+    secret_key?: string | null;
+    webhook_secret?: string | null;
+    ambiente?: string;
+    webhook_url?: string | null;
+    configuracoes?: unknown;
+    is_active?: boolean;
+  }) {
+    const companyId = String(data.empresa_id || '').trim();
+    const provider = String(data.provedor || '').trim().toLowerCase();
+    const displayName = String(data.nome_exibicao || '').trim();
+
+    if (!companyId || !provider || !displayName) {
+      throw new Error('Campos obrigatorios: empresa_id, provedor, nome_exibicao');
+    }
+
+    const company = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: { id: true, status: true },
+    });
+    if (!company) throw new Error('Empresa nao encontrada');
+
+    return prisma.$transaction(async (tx) => {
+      if (data.is_active === true) {
+        await (tx as any).paymentGateway.updateMany({
+          where: { companyId },
+          data: { isActive: false },
+        });
+      }
+
+      return (tx as any).paymentGateway.create({
+        data: {
+          companyId,
+          provider,
+          displayName,
+          publicKey: data.public_key || null,
+          secretKeyEncrypted: data.secret_key ? encryptSecret(data.secret_key) : null,
+          webhookSecretEncrypted: data.webhook_secret ? encryptSecret(data.webhook_secret) : null,
+          environment: String(data.ambiente || 'sandbox'),
+          webhookUrl: data.webhook_url || null,
+          settings: (data.configuracoes as any) ?? null,
+          isActive: data.is_active === true,
+        },
+      });
+    });
+  }
+
+  async updatePaymentGateway(
+    gatewayId: string,
+    data: {
+      nome_exibicao?: string;
+      public_key?: string | null;
+      secret_key?: string | null;
+      webhook_secret?: string | null;
+      ambiente?: string;
+      webhook_url?: string | null;
+      configuracoes?: unknown;
+      is_active?: boolean;
+    }
+  ) {
+    const payload: any = {};
+    if (typeof data.nome_exibicao === 'string') payload.displayName = data.nome_exibicao.trim();
+    if (Object.prototype.hasOwnProperty.call(data, 'public_key')) payload.publicKey = data.public_key || null;
+    if (typeof data.secret_key === 'string') payload.secretKeyEncrypted = encryptSecret(data.secret_key);
+    if (typeof data.webhook_secret === 'string') {
+      payload.webhookSecretEncrypted = encryptSecret(data.webhook_secret);
+    }
+    if (typeof data.ambiente === 'string') payload.environment = data.ambiente;
+    if (Object.prototype.hasOwnProperty.call(data, 'webhook_url')) payload.webhookUrl = data.webhook_url || null;
+    if (Object.prototype.hasOwnProperty.call(data, 'configuracoes')) payload.settings = data.configuracoes as any;
+    if (typeof data.is_active === 'boolean') payload.isActive = data.is_active;
+
+    return prisma.$transaction(async (tx) => {
+      const existing = await (tx as any).paymentGateway.findUnique({
+        where: { id: gatewayId },
+        select: { companyId: true },
+      });
+      if (!existing) throw new Error('Gateway nao encontrado');
+
+      if (payload.isActive === true) {
+        await (tx as any).paymentGateway.updateMany({
+          where: { companyId: existing.companyId },
+          data: { isActive: false },
+        });
+      }
+
+      return (tx as any).paymentGateway.update({
+        where: { id: gatewayId },
+        data: payload,
+      });
+    });
+  }
+
+  async deletePaymentGateway(gatewayId: string) {
+    return (prisma as any).paymentGateway.delete({ where: { id: gatewayId } });
   }
 
   async updateModulo(moduloId: string, data: {
     nome?: string;
     descricao?: string;
     icone?: string;
+    nicho?: string;
     preco_mensal?: number;
     is_core?: boolean;
     status?: Status;
@@ -261,10 +450,11 @@ export class AdminService {
         nome: data.nome,
         descricao: data.descricao,
         icone: data.icone,
+        nicho: data.nicho,
         precoMensal: data.preco_mensal,
         isCore: data.is_core,
         status: data.status
-      }
+      } as any
     });
   }
 
@@ -501,11 +691,6 @@ export class AdminService {
     }
 
     return prisma.$transaction(async (tx) => {
-      const existingUser = await tx.user.findUnique({ where: { email } });
-      if (existingUser) {
-        throw new Error('Ja existe usuario com este e-mail');
-      }
-
       if (requiresCompany && companyId) {
         const company = await tx.company.findUnique({
           where: { id: companyId },
@@ -516,14 +701,36 @@ export class AdminService {
       }
 
       const passwordHash = await bcrypt.hash(password, 10);
-      const user = await tx.user.create({
-        data: {
-          fullName,
-          email,
-          passwordHash,
-          isActive: true
-        }
+      const existingUser = await tx.user.findUnique({ where: { email } });
+      const user = existingUser
+        ? await tx.user.update({
+            where: { id: existingUser.id },
+            data: {
+              fullName,
+              passwordHash,
+              isActive: true
+            }
+          })
+        : await tx.user.create({
+            data: {
+              fullName,
+              email,
+              passwordHash,
+              isActive: true
+            }
+          });
+
+      const existingRole = await tx.userRole.findFirst({
+        where: {
+          userId: user.id,
+          companyId: requiresCompany ? companyId : null
+        },
+        select: { id: true }
       });
+
+      if (existingRole) {
+        throw new Error('Este usuario ja possui acesso neste escopo');
+      }
 
       await tx.userRole.create({
         data: {

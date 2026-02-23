@@ -36,6 +36,8 @@ model Company {
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
   appointments   Appointment[]
+  appointmentServices AppointmentService[]
+  appointmentAvailability AppointmentAvailability[]
   auditLogs      AuditLog[]
   sistemaBase    SistemaBase?    @relation(fields: [sistemaBaseId], references: [id])
   customers      Customer[]
@@ -44,6 +46,9 @@ model Company {
   products       Product[]
   tasks          Task[]
   userRoles      UserRole[]
+  paymentGateways PaymentGateway[]
+  paymentTransactions PaymentTransaction[]
+  billingCharges BillingCharge[]
 
   @@index([sistemaBaseId])
   @@map("companies")
@@ -70,6 +75,7 @@ model Modulo {
   codigo       String              @unique
   descricao    String?
   icone        String?
+  nicho        String?             @default("geral")
   precoMensal  Decimal             @default(0) @map("preco_mensal") @db.Decimal(10, 2)
   isCore       Boolean             @default(false) @map("is_core")
   status       Status              @default(active)
@@ -167,19 +173,6 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-model Appointment {
-  id           String   @id @default(uuid())
-  companyId    String   @map("empresa_id")
-  customerName String   @map("customer_name")
-  serviceName  String   @map("service_name")
-  scheduledAt  DateTime @map("scheduled_at")
-  status       String   @default("scheduled")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  @@map("appointments")
-}
 
 model Order {
   id           String   @id @default(uuid())
@@ -190,8 +183,84 @@ model Order {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
   company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  paymentTransactions PaymentTransaction[]
+  billingCharge BillingCharge?
 
   @@map("orders")
+}
+
+model PaymentGateway {
+  id                String   @id @default(uuid())
+  companyId         String   @map("empresa_id")
+  provider          String   @map("provedor")
+  displayName       String   @map("nome_exibicao")
+  publicKey         String?  @map("public_key")
+  secretKeyEncrypted String? @map("secret_key_encrypted")
+  webhookSecretEncrypted String? @map("webhook_secret_encrypted")
+  environment       String   @default("sandbox") @map("ambiente")
+  isActive          Boolean  @default(false) @map("is_active")
+  webhookUrl        String?  @map("webhook_url")
+  settings          Json?    @map("configuracoes")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  transactions      PaymentTransaction[]
+
+  @@unique([companyId, provider])
+  @@index([companyId, isActive])
+  @@map("payment_gateways")
+}
+
+model PaymentTransaction {
+  id                String   @id @default(uuid())
+  companyId         String   @map("empresa_id")
+  orderId           String   @map("order_id")
+  gatewayId         String?  @map("gateway_id")
+  provider          String
+  paymentMethod     String   @map("payment_method")
+  externalPaymentId String?  @map("external_payment_id")
+  status            String   @default("pending")
+  amount            Decimal  @db.Decimal(10, 2)
+  currency          String   @default("brl")
+  qrCodeText        String?  @map("qr_code_text")
+  qrCodeImageUrl    String?  @map("qr_code_image_url")
+  gatewayResponse   Json?    @map("gateway_response")
+  paidAt            DateTime? @map("paid_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  order             Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  gateway           PaymentGateway? @relation(fields: [gatewayId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, status, createdAt])
+  @@index([externalPaymentId, provider])
+  @@map("payment_transactions")
+}
+
+model BillingCharge {
+  id            String   @id @default(uuid())
+  companyId     String   @map("empresa_id")
+  orderId       String   @unique @map("order_id")
+  title         String
+  description   String?
+  customerName  String   @map("customer_name")
+  customerEmail String?  @map("customer_email")
+  customerPhone String?  @map("customer_phone")
+  amount        Decimal  @db.Decimal(10, 2)
+  paymentMethod String   @default("pix") @map("payment_method")
+  status        String   @default("pending")
+  dueDate       DateTime? @map("due_date")
+  paidAt        DateTime? @map("paid_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, status, createdAt])
+  @@map("billing_charges")
 }
 
 model Task {
@@ -211,6 +280,64 @@ model Task {
   @@index([companyId, userId, status, position])
   @@map("tasks")
 }
+
+model Appointment {
+  id           String   @id @default(uuid())
+  companyId    String   @map("empresa_id")
+  serviceId    String?  @map("service_id")
+  professionalId String? @map("professional_id")
+  customerName String   @map("customer_name")
+  serviceName  String   @map("service_name")
+  professionalName String?  @map("professional_name")
+  scheduledAt  DateTime @map("scheduled_at")
+  status       String   @default("scheduled")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  service      AppointmentService? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, serviceId])
+  @@index([companyId, professionalId, scheduledAt])
+
+  @@map("appointments")
+}
+
+model AppointmentService {
+  id              String   @id @default(uuid())
+  companyId       String   @map("empresa_id")
+  name            String
+  description     String?
+  durationMinutes Int      @default(30) @map("duration_minutes")
+  price           Decimal? @db.Decimal(10, 2)
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  appointments    Appointment[]
+
+  @@index([companyId, isActive])
+  @@map("appointment_services")
+}
+
+model AppointmentAvailability {
+  id             String   @id @default(uuid())
+  companyId      String   @map("empresa_id")
+  professionalId String   @map("professional_id")
+  weekday        Int
+  startTime      String   @map("start_time")
+  endTime        String   @map("end_time")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, professionalId, weekday, startTime, endTime])
+  @@index([companyId, professionalId, weekday, isActive])
+  @@map("appointment_availability")
+}
+
 
 enum Role {
   SUPER_ADMIN_EVOLUTECH

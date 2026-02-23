@@ -22,10 +22,24 @@ export const TABLE_CONFIG: Record<string, TableConfig> = {
     moduleCodes: ['products', 'produtos'],
   },
   appointments: {
-    searchFields: ['customerName', 'serviceName'],
+    searchFields: ['customerName', 'serviceName', 'professionalName'],
     allowedOrderBy: ['scheduledAt', 'createdAt', 'updatedAt', 'status'],
     defaultOrderBy: 'scheduledAt',
     dateField: 'scheduledAt',
+    moduleCodes: ['appointments', 'agendamentos'],
+  },
+  appointment_services: {
+    searchFields: ['name', 'description'],
+    allowedOrderBy: ['name', 'createdAt', 'updatedAt', 'isActive'],
+    defaultOrderBy: 'name',
+    dateField: 'createdAt',
+    moduleCodes: ['appointments', 'agendamentos'],
+  },
+  appointment_availability: {
+    searchFields: ['professionalId', 'startTime', 'endTime'],
+    allowedOrderBy: ['weekday', 'startTime', 'endTime', 'createdAt'],
+    defaultOrderBy: 'weekday',
+    dateField: 'createdAt',
     moduleCodes: ['appointments', 'agendamentos'],
   },
   orders: {
