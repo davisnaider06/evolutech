@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { DataTable, Column } from '@/components/crud/DataTable';
 import { PageHeader } from '@/components/crud/PageHeader';
 import { SearchFilters } from '@/components/crud/SearchFilters';
@@ -87,7 +87,7 @@ const Produtos: React.FC = () => {
     { key: 'sku', label: 'SKU' },
     {
       key: 'price',
-      label: 'Preço',
+      label: 'PreÃ§o',
       render: (item) => formatCurrency(Number(item.price)),
     },
     {
@@ -122,7 +122,7 @@ const Produtos: React.FC = () => {
 
   const handleSubmit = async () => {
     if (!formData.name.trim()) {
-      toast.error('Nome do produto é obrigatório');
+      toast.error('Nome do produto Ã© obrigatÃ³rio');
       return;
     }
 
@@ -156,7 +156,7 @@ const Produtos: React.FC = () => {
   const handleDelete = async (product: Product) => {
     try {
       await companyService.remove('products', product.id);
-      toast.success('Produto excluído com sucesso');
+      toast.success('Produto excluÃ­do com sucesso');
       if (data.length === 1 && pagination.page > 1) {
         setPagination((prev) => ({ ...prev, page: prev.page - 1 }));
       } else {
@@ -168,9 +168,31 @@ const Produtos: React.FC = () => {
   };
 
   const parseRowToProduct = (row: Record<string, unknown>) => {
+    const normalizedEntries = Object.entries(row).map(([key, value]) => [
+      String(key)
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[\s_]/g, ''),
+      value,
+    ]) as Array<[string, unknown]>;
+    const normalizedRow = Object.fromEntries(normalizedEntries);
+
     const get = (...keys: string[]) => {
       for (const key of keys) {
-        const value = row[key];
+        const directValue = row[key];
+        if (directValue !== undefined && directValue !== null && String(directValue).trim() !== '') {
+          return directValue;
+        }
+
+        const normalizedKey = String(key)
+          .trim()
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[\s_]/g, '');
+        const value = normalizedRow[normalizedKey];
         if (value !== undefined && value !== null && String(value).trim() !== '') return value;
       }
       return undefined;
@@ -179,8 +201,15 @@ const Produtos: React.FC = () => {
     const name = String(get('name', 'nome', 'produto') || '').trim();
     const skuRaw = get('sku', 'codigo', 'código', 'cod');
     const priceRaw = get('price', 'preco', 'preço', 'valor');
-    const stockRaw = get('stock', 'estoque', 'stockquantity', 'quantidade');
-    const activeRaw = get('ativo', 'isactive', 'status');
+    const stockRaw = get(
+      'stock',
+      'estoque',
+      'stockQuantity',
+      'stock_quantity',
+      'stockquantity',
+      'quantidade'
+    );
+    const activeRaw = get('ativo', 'isActive', 'is_active', 'isactive', 'status');
 
     const price = Number(String(priceRaw ?? '0').replace(',', '.'));
     const stockQuantity = Number(String(stockRaw ?? '0').replace(',', '.'));
@@ -211,7 +240,7 @@ const Produtos: React.FC = () => {
       const workbook = XLSX.read(buffer, { type: 'array' });
       const firstSheet = workbook.SheetNames[0];
       if (!firstSheet) {
-        toast.error('Arquivo sem planilha válida');
+        toast.error('Arquivo sem planilha vÃ¡lida');
         return;
       }
 
@@ -225,13 +254,13 @@ const Produtos: React.FC = () => {
         .filter((item) => item.name && item.price >= 0 && item.stockQuantity >= 0);
 
       if (products.length === 0) {
-        toast.error('Nenhum produto válido encontrado no arquivo');
+        toast.error('Nenhum produto vÃ¡lido encontrado no arquivo');
         return;
       }
 
       const result = await companyService.importProducts(products);
       toast.success(
-        `Importação concluída: ${result.created} criados, ${result.updated} atualizados, ${result.skipped} ignorados`
+        `ImportaÃ§Ã£o concluÃ­da: ${result.created} criados, ${result.updated} atualizados, ${result.skipped} ignorados`
       );
       fetchProducts();
     } catch (error: any) {
@@ -335,12 +364,12 @@ const Produtos: React.FC = () => {
               id="sku"
               value={formData.sku}
               onChange={(e) => setFormData((prev) => ({ ...prev, sku: e.target.value }))}
-              placeholder="Código interno"
+              placeholder="CÃ³digo interno"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="price">Preço de Venda *</Label>
+            <Label htmlFor="price">PreÃ§o de Venda *</Label>
             <Input
               id="price"
               type="number"
@@ -378,3 +407,4 @@ const Produtos: React.FC = () => {
 };
 
 export default Produtos;
+

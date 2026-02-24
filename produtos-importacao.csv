@@ -1,0 +1,11 @@
+name,sku,price,stockQuantity,isActive
+Shampoo Profissional,SHMP-001,39.90,25,true
+Pomada Modeladora,PMD-002,29.90,40,true
+Gel Fixador Extra Forte,GEL-003,19.90,30,true
+Condicionador Hidratante,CND-004,34.90,20,true
+Kit Barba Premium,KBP-005,89.90,12,true
+Escova de Cabelo Profissional,ESC-006,24.90,18,true
+Toalha Microfibra,TLM-007,14.90,50,true
+Creme de Pentear,CRP-008,27.50,22,true
+Desodorante Corporal,DSD-009,17.90,35,true
+Sabonete Liquido,SBL-010,12.90,28,true
