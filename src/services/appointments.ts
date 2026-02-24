@@ -1,5 +1,7 @@
-const COMPANY_API_URL = 'http://localhost:3001/api/company';
-const PUBLIC_API_URL = 'http://localhost:3001/api/public';
+import { API_URL } from '@/config/api';
+
+const COMPANY_API_URL = `${API_URL}/company`;
+const PUBLIC_API_URL = `${API_URL}/public`;
 
 const getAuthHeaders = () => {
   const token = localStorage.getItem('evolutech_token');

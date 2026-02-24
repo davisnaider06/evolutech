@@ -18,6 +18,20 @@ class CompanyServiceError extends Error {
 
 export class CompanyService {
   private paymentService = new PaymentService();
+  private ownerDefaultModuleAliases = new Set([
+    'dashboard',
+    'reports',
+    'relatorios',
+    'finance',
+    'financeiro',
+    'financial',
+    'users',
+    'equipe',
+    'funcionarios',
+    'team',
+    'gateway',
+    'gateways',
+  ]);
 
   private toNumber(value: unknown): number {
     const numeric = Number(value ?? 0);
@@ -110,6 +124,7 @@ export class CompanyService {
     const config = TABLE_CONFIG[table];
     const moduleCodes = config?.moduleCodes || [];
     if (moduleCodes.length === 0) return;
+    if (this.hasOwnerDefaultAccess(user, moduleCodes)) return;
 
     const hasModule = await prisma.companyModule.findFirst({
       where: {
@@ -344,6 +359,7 @@ export class CompanyService {
 
   private async ensureAnyModuleAccess(user: AuthenticatedUser, companyId: string, moduleCodes: string[]) {
     if (this.isAdminRole(user.role)) return;
+    if (this.hasOwnerDefaultAccess(user, moduleCodes)) return;
 
     const hasModule = await prisma.companyModule.findFirst({
       where: {
@@ -362,37 +378,243 @@ export class CompanyService {
     }
   }
 
+  private hasOwnerDefaultAccess(user: AuthenticatedUser, moduleCodes: string[]) {
+    if (user.role !== 'DONO_EMPRESA') return false;
+    return moduleCodes.some((code) =>
+      this.ownerDefaultModuleAliases.has(String(code || '').trim().toLowerCase())
+    );
+  }
+
   async listPdvProducts(user: AuthenticatedUser, queryParams: any) {
     const companyId = this.resolveCompanyId(user, queryParams);
     await this.ensureAnyModuleAccess(user, companyId, ['pdv', 'orders', 'pedidos']);
-    await this.ensureAnyModuleAccess(user, companyId, ['products', 'produtos']);
 
     const search = String(queryParams.search || '').trim();
+    const [products, services] = await Promise.all([
+      prisma.product.findMany({
+        where: {
+          companyId,
+          isActive: true,
+          ...(search
+            ? {
+                OR: [
+                  { name: { contains: search, mode: 'insensitive' } },
+                  { sku: { contains: search, mode: 'insensitive' } },
+                ],
+              }
+            : {}),
+        },
+        orderBy: { name: 'asc' },
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          price: true,
+          stockQuantity: true,
+        },
+        take: 200,
+      }),
+      (prisma as any).appointmentService.findMany({
+        where: {
+          companyId,
+          isActive: true,
+          ...(search
+            ? {
+                OR: [
+                  { name: { contains: search, mode: 'insensitive' } },
+                  { description: { contains: search, mode: 'insensitive' } },
+                ],
+              }
+            : {}),
+        },
+        orderBy: { name: 'asc' },
+        select: {
+          id: true,
+          name: true,
+          price: true,
+          durationMinutes: true,
+        },
+        take: 200,
+      }),
+    ]);
 
-    return prisma.product.findMany({
-      where: {
-        companyId,
-        isActive: true,
-        stockQuantity: { gt: 0 },
-        ...(search
-          ? {
-              OR: [
-                { name: { contains: search, mode: 'insensitive' } },
-                { sku: { contains: search, mode: 'insensitive' } },
-              ],
-            }
-          : {}),
+    return [
+      ...products.map((item) => ({
+        id: item.id,
+        type: 'product',
+        name: item.name,
+        sku: item.sku,
+        price: Number(item.price || 0),
+        stockQuantity: item.stockQuantity,
+        durationMinutes: null,
+      })),
+      ...services.map((item: any) => ({
+        id: item.id,
+        type: 'service',
+        name: item.name,
+        sku: null,
+        price: Number(item.price || 0),
+        stockQuantity: null,
+        durationMinutes: Number(item.durationMinutes || 0),
+      })),
+    ];
+  }
+
+  private parseDateRange(
+    queryParams: { dateFrom?: string; dateTo?: string } | undefined,
+    fallbackDays = 30
+  ) {
+    const parseLocalDate = (raw: string) => {
+      const value = String(raw || '').trim();
+      const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!match) return new Date(NaN);
+      const year = Number(match[1]);
+      const month = Number(match[2]);
+      const day = Number(match[3]);
+      return new Date(year, month - 1, day, 0, 0, 0, 0);
+    };
+
+    const now = new Date();
+    const rawFrom = String(queryParams?.dateFrom || '').trim();
+    const rawTo = String(queryParams?.dateTo || '').trim();
+
+    const end = rawTo ? parseLocalDate(rawTo) : new Date(now);
+    if (Number.isNaN(end.getTime())) {
+      throw new CompanyServiceError('dateTo invalida', 400);
+    }
+    end.setHours(23, 59, 59, 999);
+
+    const start = rawFrom ? parseLocalDate(rawFrom) : new Date(end);
+    if (Number.isNaN(start.getTime())) {
+      throw new CompanyServiceError('dateFrom invalida', 400);
+    }
+    if (!rawFrom) {
+      start.setDate(start.getDate() - fallbackDays);
+    }
+    start.setHours(0, 0, 0, 0);
+
+    if (start > end) {
+      throw new CompanyServiceError('dateFrom nao pode ser maior que dateTo', 400);
+    }
+
+    return { start, end };
+  }
+
+  async getReportsOverview(
+    user: AuthenticatedUser,
+    queryParams: { dateFrom?: string; dateTo?: string; company_id?: string; companyId?: string } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, ['relatorios', 'reports']);
+    const { start, end } = this.parseDateRange(queryParams, 30);
+
+    const [customersTotal, productsTotal, customersInRange, ordersInRange, appointmentsInRange, pdvLogs] =
+      await Promise.all([
+        prisma.customer.count({ where: { companyId } }),
+        prisma.product.count({ where: { companyId, isActive: true } }),
+        prisma.customer.findMany({
+          where: { companyId, createdAt: { gte: start, lte: end } },
+          select: { id: true, createdAt: true },
+        }),
+        prisma.order.findMany({
+          where: { companyId, createdAt: { gte: start, lte: end } },
+          select: { id: true, status: true, total: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
+        }),
+        (prisma as any).appointment.findMany({
+          where: { companyId, createdAt: { gte: start, lte: end } },
+          select: { id: true, status: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
+        }),
+        prisma.auditLog.findMany({
+          where: {
+            companyId,
+            action: 'PDV_CHECKOUT',
+            createdAt: { gte: start, lte: end },
+          },
+          select: { details: true },
+        }),
+      ]);
+
+    const paidOrders = ordersInRange.filter((order) => String(order.status).toLowerCase() === 'paid');
+    const totalRevenue = paidOrders.reduce((sum, order) => sum + this.toNumber(order.total), 0);
+
+    const ordersByStatusMap = new Map<string, number>();
+    for (const order of ordersInRange) {
+      const key = String(order.status || 'unknown').toLowerCase();
+      ordersByStatusMap.set(key, (ordersByStatusMap.get(key) || 0) + 1);
+    }
+
+    const appointmentsByStatusMap = new Map<string, number>();
+    for (const appointment of appointmentsInRange) {
+      const key = String(appointment.status || 'unknown').toLowerCase();
+      appointmentsByStatusMap.set(key, (appointmentsByStatusMap.get(key) || 0) + 1);
+    }
+
+    const dayMap = new Map<string, number>();
+    const dayCursor = new Date(start);
+    while (dayCursor <= end) {
+      const key = dayCursor.toISOString().slice(0, 10);
+      dayMap.set(key, 0);
+      dayCursor.setDate(dayCursor.getDate() + 1);
+    }
+    for (const order of paidOrders) {
+      const key = order.createdAt.toISOString().slice(0, 10);
+      dayMap.set(key, (dayMap.get(key) || 0) + this.toNumber(order.total));
+    }
+
+    const topItemsMap = new Map<
+      string,
+      { itemType: 'product' | 'service'; itemName: string; quantity: number; revenue: number }
+    >();
+    for (const log of pdvLogs) {
+      const details = (log.details || {}) as any;
+      const items = Array.isArray(details.items) ? details.items : [];
+      for (const item of items) {
+        const itemType = item?.itemType === 'service' ? 'service' : 'product';
+        const itemName = String(item?.itemName || '').trim();
+        if (!itemName) continue;
+        const quantity = Number(item?.quantity || 0);
+        const revenue = Number(item?.lineTotal || 0);
+        const key = `${itemType}:${itemName}`;
+        const current = topItemsMap.get(key);
+        if (current) {
+          current.quantity += quantity;
+          current.revenue += revenue;
+        } else {
+          topItemsMap.set(key, { itemType, itemName, quantity, revenue });
+        }
+      }
+    }
+
+    const topItems = Array.from(topItemsMap.values())
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10);
+
+    return {
+      period: {
+        date_from: start.toISOString(),
+        date_to: end.toISOString(),
       },
-      orderBy: { name: 'asc' },
-      select: {
-        id: true,
-        name: true,
-        sku: true,
-        price: true,
-        stockQuantity: true,
+      summary: {
+        customers_total: customersTotal,
+        products_total: productsTotal,
+        new_customers: customersInRange.length,
+        orders_total: ordersInRange.length,
+        paid_orders: paidOrders.length,
+        appointments_total: appointmentsInRange.length,
+        revenue_total: totalRevenue,
       },
-      take: 200,
-    });
+      charts: {
+        revenue_by_day: Array.from(dayMap.entries()).map(([date, revenue]) => ({ date, revenue })),
+        orders_by_status: Array.from(ordersByStatusMap.entries()).map(([status, value]) => ({ status, value })),
+        appointments_by_status: Array.from(appointmentsByStatusMap.entries()).map(([status, value]) => ({
+          status,
+          value,
+        })),
+        top_items: topItems,
+      },
+    };
   }
 
   async checkoutPdv(
@@ -401,36 +623,83 @@ export class CompanyService {
       customerName?: string;
       paymentMethod: string;
       discount?: number;
-      items: Array<{ productId: string; quantity: number }>;
+      items: Array<{
+        itemType?: 'product' | 'service';
+        itemId?: string;
+        productId?: string;
+        quantity: number;
+      }>;
     }
   ) {
     const companyId = this.resolveCompanyId(user, data);
     await this.ensureAnyModuleAccess(user, companyId, ['pdv', 'orders', 'pedidos']);
-    await this.ensureAnyModuleAccess(user, companyId, ['products', 'produtos']);
 
     const items = Array.isArray(data.items) ? data.items : [];
     if (items.length === 0) throw new CompanyServiceError('Carrinho vazio', 400);
     if (!data.paymentMethod) throw new CompanyServiceError('Forma de pagamento obrigatoria', 400);
 
     const normalizedItems = items.map((item) => ({
-      productId: String(item.productId || '').trim(),
+      itemType: item.itemType === 'service' ? 'service' : 'product',
+      itemId: String(item.itemId || item.productId || '').trim(),
       quantity: Number(item.quantity || 0),
     }));
 
-    if (normalizedItems.some((item) => !item.productId || item.quantity <= 0)) {
+    if (normalizedItems.some((item) => !item.itemId || item.quantity <= 0)) {
       throw new CompanyServiceError('Itens invalidos no carrinho', 400);
     }
 
     return prisma.$transaction(async (tx) => {
-      const ids = Array.from(new Set(normalizedItems.map((item) => item.productId)));
-      const products = await tx.product.findMany({
-        where: { id: { in: ids }, companyId, isActive: true },
-      });
-      const map = new Map(products.map((product) => [product.id, product]));
+      const productIds = Array.from(
+        new Set(normalizedItems.filter((item) => item.itemType === 'product').map((item) => item.itemId))
+      );
+      const serviceIds = Array.from(
+        new Set(normalizedItems.filter((item) => item.itemType === 'service').map((item) => item.itemId))
+      );
+
+      const [products, services] = await Promise.all([
+        productIds.length
+          ? tx.product.findMany({
+              where: { id: { in: productIds }, companyId, isActive: true },
+            })
+          : Promise.resolve([]),
+        serviceIds.length
+          ? (tx as any).appointmentService.findMany({
+              where: { id: { in: serviceIds }, companyId, isActive: true },
+            })
+          : Promise.resolve([]),
+      ]);
+
+      const productMap = new Map<string, (typeof products)[number]>(
+        products.map((product) => [product.id, product])
+      );
+      const serviceMap = new Map<string, any>(
+        (services as any[]).map((service: any) => [service.id, service])
+      );
 
       let subtotal = 0;
       const soldItems = normalizedItems.map((item) => {
-        const product = map.get(item.productId);
+        if (item.itemType === 'service') {
+          const service = serviceMap.get(item.itemId);
+          if (!service) {
+            throw new CompanyServiceError('Servico nao encontrado', 400);
+          }
+
+          const unitPrice = Number(service.price || 0);
+          const lineTotal = unitPrice * item.quantity;
+          subtotal += lineTotal;
+
+          return {
+            itemType: 'service',
+            itemId: service.id,
+            itemName: service.name,
+            quantity: item.quantity,
+            unitPrice,
+            lineTotal,
+            remainingStock: null as number | null,
+          };
+        }
+
+        const product = productMap.get(item.itemId);
         if (!product) {
           throw new CompanyServiceError('Produto nao encontrado no estoque da empresa', 400);
         }
@@ -443,8 +712,9 @@ export class CompanyService {
         subtotal += lineTotal;
 
         return {
-          productId: product.id,
-          productName: product.name,
+          itemType: 'product',
+          itemId: product.id,
+          itemName: product.name,
           quantity: item.quantity,
           unitPrice,
           lineTotal,
@@ -453,10 +723,11 @@ export class CompanyService {
       });
 
       for (const item of soldItems) {
+        if (item.itemType !== 'product') continue;
         await tx.product.update({
-          where: { id: item.productId },
+          where: { id: item.itemId },
           data: {
-            stockQuantity: item.remainingStock,
+            stockQuantity: item.remainingStock as number,
           },
         });
       }
@@ -464,33 +735,52 @@ export class CompanyService {
       const discount = Math.max(0, Number(data.discount || 0));
       const total = Math.max(0, subtotal - discount);
 
+      const paymentMethod = String(data.paymentMethod || '').trim().toLowerCase();
+      const allowedPaymentMethods = ['dinheiro', 'pix', 'credito', 'debito', 'cartao'];
+      if (!allowedPaymentMethods.includes(paymentMethod)) {
+        throw new CompanyServiceError('Forma de pagamento invalida', 400);
+      }
+
+      const isPix = paymentMethod === 'pix';
+      const activeGateway = isPix
+        ? await this.paymentService.getCompanyActiveGateway(companyId)
+        : null;
+
+      if (isPix && !activeGateway) {
+        throw new CompanyServiceError('Configure um gateway ativo para processar PIX', 400);
+      }
+
+      if (total <= 0) {
+        throw new CompanyServiceError('Total invalido para checkout', 400);
+      }
+
       const order = await tx.order.create({
         data: {
           companyId,
           customerName: data.customerName?.trim() || null,
-          status: data.paymentMethod === 'pix' ? 'pending_pix' : 'paid',
+          status: isPix ? 'pending_pix' : 'paid',
           total,
         },
       });
 
       let gatewayPayment: any = null;
-      if (data.paymentMethod === 'pix') {
-        const activeGateway = await this.paymentService.getCompanyActiveGateway(companyId);
-        if (activeGateway?.provider === 'stripe') {
+      if (isPix && activeGateway) {
+        if (activeGateway.provider === 'stripe') {
           gatewayPayment = await this.paymentService.createStripePixPayment(tx, {
             companyId,
             orderId: order.id,
             amount: total,
             customerName: order.customerName,
           });
-        } else if (activeGateway?.provider === 'mercadopago') {
+        } else if (activeGateway.provider === 'mercadopago') {
           gatewayPayment = await this.paymentService.createMercadoPagoPixPayment(tx, {
             companyId,
             orderId: order.id,
             amount: total,
             customerName: order.customerName,
+            customerEmail: null,
           });
-        } else if (activeGateway?.provider === 'pagbank') {
+        } else if (activeGateway.provider === 'pagbank') {
           gatewayPayment = await this.paymentService.createPagBankPixPayment(tx, {
             companyId,
             orderId: order.id,
@@ -512,7 +802,7 @@ export class CompanyService {
           resource: 'orders',
           details: {
             orderId: order.id,
-            paymentMethod: data.paymentMethod,
+            paymentMethod,
             paymentGateway: gatewayPayment
               ? {
                   provider: gatewayPayment.provider,
@@ -549,10 +839,11 @@ export class CompanyService {
               externalPaymentId: gatewayPayment.externalPaymentId,
               qrCodeText: gatewayPayment.qrCodeText,
               qrCodeImageUrl: gatewayPayment.qrCodeImageUrl,
+              paymentUrl: gatewayPayment.paymentUrl || null,
             }
           : null,
       };
-    });
+    }, { maxWait: 10000, timeout: 30000 });
   }
 
   async listBillingCharges(
@@ -600,6 +891,7 @@ export class CompanyService {
                   status: true,
                   qrCodeText: true,
                   qrCodeImageUrl: true,
+                  paymentLinkUrl: true,
                   externalPaymentId: true,
                 },
               },
@@ -666,8 +958,8 @@ export class CompanyService {
     if (!title || !customerName || amount <= 0) {
       throw new CompanyServiceError('Campos obrigatorios: title, customer_name, amount', 400);
     }
-    if (paymentMethod !== 'pix') {
-      throw new CompanyServiceError('No momento, cobrancas aceitam apenas payment_method = pix', 400);
+    if (!['pix', 'credito', 'debito', 'cartao'].includes(paymentMethod)) {
+      throw new CompanyServiceError('payment_method invalido. Use pix, credito, debito ou cartao', 400);
     }
     if (dueDate && Number.isNaN(dueDate.getTime())) {
       throw new CompanyServiceError('due_date invalida', 400);
@@ -679,12 +971,15 @@ export class CompanyService {
         throw new CompanyServiceError('Configure e ative um gateway antes de criar cobrancas', 400);
       }
 
+      const orderStatus =
+        paymentMethod === 'pix' ? 'pending_pix' : 'pending_gateway';
+
       const order = await tx.order.create({
         data: {
           companyId,
           customerName,
           total: amount,
-          status: 'pending_pix',
+          status: orderStatus,
         },
       });
 
@@ -705,29 +1000,56 @@ export class CompanyService {
       });
 
       let gatewayPayment: any = null;
-      if (activeGateway.provider === 'stripe') {
-        gatewayPayment = await this.paymentService.createStripePixPayment(tx, {
-          companyId,
-          orderId: order.id,
-          amount,
-          customerName,
-        });
-      } else if (activeGateway.provider === 'mercadopago') {
-        gatewayPayment = await this.paymentService.createMercadoPagoPixPayment(tx, {
-          companyId,
-          orderId: order.id,
-          amount,
-          customerName,
-        });
-      } else if (activeGateway.provider === 'pagbank') {
-        gatewayPayment = await this.paymentService.createPagBankPixPayment(tx, {
-          companyId,
-          orderId: order.id,
-          amount,
-          customerName,
-        });
+      if (paymentMethod === 'pix') {
+        if (activeGateway.provider === 'stripe') {
+          gatewayPayment = await this.paymentService.createStripePixPayment(tx, {
+            companyId,
+            orderId: order.id,
+            amount,
+            customerName,
+          });
+        } else if (activeGateway.provider === 'mercadopago') {
+          gatewayPayment = await this.paymentService.createMercadoPagoPixPayment(tx, {
+            companyId,
+            orderId: order.id,
+            amount,
+            customerName,
+            customerEmail,
+          });
+        } else if (activeGateway.provider === 'pagbank') {
+          gatewayPayment = await this.paymentService.createPagBankPixPayment(tx, {
+            companyId,
+            orderId: order.id,
+            amount,
+            customerName,
+          });
+        }
       } else {
-        throw new CompanyServiceError(`Gateway ${activeGateway.provider} ainda nao suportado`, 400);
+        if (activeGateway.provider === 'stripe') {
+          gatewayPayment = await this.paymentService.createStripeCardPaymentLink(tx, {
+            companyId,
+            orderId: order.id,
+            amount,
+            customerName,
+            paymentMethod: paymentMethod as 'credito' | 'debito' | 'cartao',
+          });
+        } else if (activeGateway.provider === 'mercadopago') {
+          gatewayPayment = await this.paymentService.createMercadoPagoPaymentLink(tx, {
+            companyId,
+            orderId: order.id,
+            amount,
+            customerName,
+            paymentMethod: paymentMethod as 'credito' | 'debito' | 'cartao',
+          });
+        } else if (activeGateway.provider === 'pagbank') {
+          gatewayPayment = await this.paymentService.createPagBankPaymentLink(tx, {
+            companyId,
+            orderId: order.id,
+            amount,
+            customerName,
+            paymentMethod: paymentMethod as 'credito' | 'debito' | 'cartao',
+          });
+        }
       }
 
       await tx.auditLog.create({
@@ -768,10 +1090,11 @@ export class CompanyService {
               externalPaymentId: gatewayPayment.externalPaymentId,
               qrCodeText: gatewayPayment.qrCodeText,
               qrCodeImageUrl: gatewayPayment.qrCodeImageUrl,
+              paymentUrl: gatewayPayment.paymentUrl || null,
             }
           : null,
       };
-    });
+    }, { maxWait: 10000, timeout: 30000 });
   }
 
   async confirmPixPayment(user: AuthenticatedUser, orderId: string, payload?: any) {
@@ -1183,19 +1506,29 @@ export class CompanyService {
     return { success: true };
   }
 
-  async getFinancialOverview(user: AuthenticatedUser) {
+  async getFinancialOverview(
+    user: AuthenticatedUser,
+    queryParams: { dateFrom?: string; dateTo?: string; company_id?: string; companyId?: string } = {}
+  ) {
     const allowedRole = user.role === 'SUPER_ADMIN_EVOLUTECH' || user.role === 'DONO_EMPRESA';
     if (!allowedRole) {
       throw new CompanyServiceError('Sem permissao para acessar o financeiro', 403);
     }
 
     const isOwner = user.role === 'DONO_EMPRESA';
-    const companyId = user.companyId;
+    const companyId = isOwner
+      ? this.resolveCompanyId(user, queryParams)
+      : String(queryParams.company_id || queryParams.companyId || '').trim() || null;
 
     if (isOwner && !companyId) {
       throw new CompanyServiceError('Company ID obrigatorio', 400);
     }
-    const [paidOrders, monthlyNewCustomers, activeUsersByCompany] = await Promise.all([
+    if (isOwner) {
+      await this.ensureAnyModuleAccess(user, companyId, ['financeiro', 'financial']);
+    }
+    const { start, end } = this.parseDateRange(queryParams, 180);
+
+    const [paidOrders, monthlyNewCustomers, activeUsersByCompany, paidOrdersInRange, pendingOrdersInRange, paidTransactionsInRange, auditLogsInRange, customersTotalCount] = await Promise.all([
       prisma.order.findMany({
         where: {
           ...(isOwner && companyId ? { companyId } : {}),
@@ -1224,6 +1557,42 @@ export class CompanyService {
           ...(isOwner && companyId ? { companyId } : {}),
         },
         _count: { _all: true },
+      }),
+      prisma.order.findMany({
+        where: {
+          ...(isOwner && companyId ? { companyId } : {}),
+          status: 'paid',
+          createdAt: { gte: start, lte: end },
+        },
+        select: { id: true, total: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
+      }),
+      prisma.order.findMany({
+        where: {
+          ...(isOwner && companyId ? { companyId } : {}),
+          status: { in: ['pending', 'pending_gateway', 'pending_pix'] },
+          createdAt: { gte: start, lte: end },
+        },
+        select: { total: true, createdAt: true },
+      }),
+      (prisma as any).paymentTransaction.findMany({
+        where: {
+          ...(isOwner && companyId ? { companyId } : {}),
+          status: 'paid',
+          createdAt: { gte: start, lte: end },
+        },
+        select: { orderId: true, paymentMethod: true, amount: true },
+      }),
+      prisma.auditLog.findMany({
+        where: {
+          ...(isOwner && companyId ? { companyId } : {}),
+          action: 'PDV_CHECKOUT',
+          createdAt: { gte: start, lte: end },
+        },
+        select: { details: true },
+      }),
+      prisma.customer.count({
+        where: isOwner && companyId ? { companyId } : undefined,
       }),
     ]);
 
@@ -1295,7 +1664,98 @@ export class CompanyService {
       }
     });
 
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+
+    const mrrCurrent = paidOrders
+      .filter((item) => item.createdAt >= monthStart)
+      .reduce((sum, item) => sum + this.toNumber(item.total), 0);
+    const mrrPrevious = paidOrders
+      .filter((item) => item.createdAt >= prevMonthStart && item.createdAt <= prevMonthEnd)
+      .reduce((sum, item) => sum + this.toNumber(item.total), 0);
+    const mrrGrowth = mrrPrevious > 0 ? ((mrrCurrent - mrrPrevious) / mrrPrevious) * 100 : 0;
+
+    const lifetimeRevenue = paidOrders.reduce((sum, item) => sum + this.toNumber(item.total), 0);
+    const ltv = customersTotalCount > 0 ? lifetimeRevenue / customersTotalCount : 0;
+    const paidRevenueInRange = paidOrdersInRange.reduce((sum, item) => sum + this.toNumber(item.total), 0);
+    const ticketMedio = paidOrdersInRange.length > 0 ? paidRevenueInRange / paidOrdersInRange.length : 0;
+    const pendingAmount = pendingOrdersInRange.reduce((sum, item) => sum + this.toNumber(item.total), 0);
+
+    const dailyMap = new Map<string, { paid: number; pending: number }>();
+    const cursor = new Date(start);
+    while (cursor <= end) {
+      dailyMap.set(cursor.toISOString().slice(0, 10), { paid: 0, pending: 0 });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    for (const item of paidOrdersInRange) {
+      const key = item.createdAt.toISOString().slice(0, 10);
+      const current = dailyMap.get(key) || { paid: 0, pending: 0 };
+      current.paid += this.toNumber(item.total);
+      dailyMap.set(key, current);
+    }
+    for (const item of pendingOrdersInRange) {
+      const key = item.createdAt.toISOString().slice(0, 10);
+      const current = dailyMap.get(key) || { paid: 0, pending: 0 };
+      current.pending += this.toNumber(item.total);
+      dailyMap.set(key, current);
+    }
+
+    const paidOrdersById = new Map<string, number>();
+    for (const order of paidOrdersInRange as any[]) {
+      if (order?.id) paidOrdersById.set(String(order.id), this.toNumber(order.total));
+    }
+
+    const paymentMethodsMap = new Map<string, number>();
+    const ordersAlreadyCounted = new Set<string>();
+
+    for (const tx of paidTransactionsInRange) {
+      const method = String(tx.paymentMethod || 'desconhecido').toLowerCase();
+      paymentMethodsMap.set(method, (paymentMethodsMap.get(method) || 0) + this.toNumber(tx.amount));
+      if (tx.orderId) {
+        ordersAlreadyCounted.add(String(tx.orderId));
+      }
+    }
+
+    for (const log of auditLogsInRange) {
+      const details = (log.details || {}) as any;
+      const orderId = String(details?.orderId || '').trim();
+      const paymentMethod = String(details?.paymentMethod || '').trim().toLowerCase();
+      if (!orderId || !paymentMethod) continue;
+      if (ordersAlreadyCounted.has(orderId)) continue;
+      const paidAmount = paidOrdersById.get(orderId);
+      if (!paidAmount || paidAmount <= 0) continue;
+      paymentMethodsMap.set(paymentMethod, (paymentMethodsMap.get(paymentMethod) || 0) + paidAmount);
+      ordersAlreadyCounted.add(orderId);
+    }
+
     return {
+      period: {
+        date_from: start.toISOString(),
+        date_to: end.toISOString(),
+      },
+      summary: {
+        mrr_current: mrrCurrent,
+        mrr_previous: mrrPrevious,
+        mrr_growth_percent: mrrGrowth,
+        ltv,
+        ticket_medio: ticketMedio,
+        revenue_in_period: paidRevenueInRange,
+        pending_amount: pendingAmount,
+        customers_total: customersTotalCount,
+      },
+      charts: {
+        cashflow_by_day: Array.from(dailyMap.entries()).map(([date, values]) => ({
+          date,
+          paid: values.paid,
+          pending: values.pending,
+        })),
+        payment_methods: Array.from(paymentMethodsMap.entries()).map(([payment_method, total]) => ({
+          payment_method,
+          total,
+        })),
+      },
       metrics: metricsRows.map((row) => ({
         id: row.id,
         company_id: row.company_id,

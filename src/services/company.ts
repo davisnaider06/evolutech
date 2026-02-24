@@ -1,4 +1,6 @@
-const API_URL = 'http://localhost:3001/api/company';
+import { API_URL } from '@/config/api';
+
+const API_COMPANY_URL = `${API_URL}/company`;
 
 const getHeaders = () => {
   const token = localStorage.getItem('evolutech_token');
@@ -9,7 +11,7 @@ const getHeaders = () => {
 };
 
 const request = async (path: string, init?: RequestInit) => {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${API_COMPANY_URL}${path}`, {
     ...init,
     headers: {
       ...getHeaders(),
@@ -27,7 +29,22 @@ const request = async (path: string, init?: RequestInit) => {
 };
 
 export const companyService = {
-  financialOverview: async () => request('/financeiro/overview'),
+  financialOverview: async (params?: { dateFrom?: string; dateTo?: string; companyId?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.dateFrom) searchParams.set('dateFrom', params.dateFrom);
+    if (params?.dateTo) searchParams.set('dateTo', params.dateTo);
+    if (params?.companyId) searchParams.set('company_id', params.companyId);
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return request(`/financeiro/overview${suffix}`);
+  },
+  reportsOverview: async (params?: { dateFrom?: string; dateTo?: string; companyId?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.dateFrom) searchParams.set('dateFrom', params.dateFrom);
+    if (params?.dateTo) searchParams.set('dateTo', params.dateTo);
+    if (params?.companyId) searchParams.set('company_id', params.companyId);
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return request(`/reports/overview${suffix}`);
+  },
   list: async (table: string, params?: Record<string, string | number | undefined>) => {
     const searchParams = new URLSearchParams();
     if (params) {
@@ -70,9 +87,9 @@ export const companyService = {
   },
   checkoutPdv: async (data: {
     customerName?: string;
-    paymentMethod: string;
+    paymentMethod: 'dinheiro' | 'pix' | 'cartao' | 'credito' | 'debito';
     discount?: number;
-    items: Array<{ productId: string; quantity: number }>;
+    items: Array<{ itemType: 'product' | 'service'; itemId: string; quantity: number }>;
   }) => request('/pdv/checkout', { method: 'POST', body: JSON.stringify(data) }),
   listBillingCharges: async (params?: {
     status?: string;
@@ -96,7 +113,7 @@ export const companyService = {
     customer_phone?: string;
     amount: number;
     due_date?: string;
-    payment_method?: 'pix';
+    payment_method?: 'pix' | 'credito' | 'debito' | 'cartao';
   }) => request('/billing/charges', { method: 'POST', body: JSON.stringify(data) }),
   confirmPdvPixPayment: async (orderId: string, company_id?: string) =>
     request(`/pdv/orders/${orderId}/confirm-pix`, {

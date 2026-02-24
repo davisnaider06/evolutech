@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Copy, QrCode, ReceiptText } from 'lucide-react';
+import { Copy, ExternalLink, QrCode, ReceiptText } from 'lucide-react';
 
 type ChargeItem = {
   id: string;
@@ -21,6 +22,7 @@ type ChargeItem = {
     status?: string;
     qrCodeText?: string | null;
     qrCodeImageUrl?: string | null;
+    paymentLinkUrl?: string | null;
   } | null;
 };
 
@@ -35,6 +37,7 @@ const Cobrancas: React.FC = () => {
     customer_phone: '',
     amount: '',
     description: '',
+    payment_method: 'pix' as 'pix' | 'credito' | 'debito',
   });
 
   const load = async () => {
@@ -43,7 +46,7 @@ const Cobrancas: React.FC = () => {
       const payload = await companyService.listBillingCharges({ page: 1, pageSize: 30 });
       setCharges(Array.isArray(payload?.data) ? payload.data : []);
     } catch (error: any) {
-      toast.error(error?.message || 'Erro ao carregar cobranças');
+      toast.error(error?.message || 'Erro ao carregar cobrancas');
       setCharges([]);
     } finally {
       setLoading(false);
@@ -70,10 +73,10 @@ const Cobrancas: React.FC = () => {
         customer_phone: form.customer_phone.trim() || undefined,
         amount,
         description: form.description.trim() || undefined,
-        payment_method: 'pix',
+        payment_method: form.payment_method,
       });
 
-      toast.success('Cobrança criada com sucesso');
+      toast.success('Cobranca criada com sucesso');
       setForm({
         title: '',
         customer_name: '',
@@ -81,6 +84,7 @@ const Cobrancas: React.FC = () => {
         customer_phone: '',
         amount: '',
         description: '',
+        payment_method: 'pix',
       });
 
       await load();
@@ -88,10 +92,10 @@ const Cobrancas: React.FC = () => {
       const qr = created?.payment_gateway?.qrCodeText;
       if (qr) {
         navigator.clipboard.writeText(qr).catch(() => null);
-        toast.info('PIX copia e cola copiado para área de transferência');
+        toast.info('PIX copia e cola copiado para area de transferencia');
       }
     } catch (error: any) {
-      toast.error(error?.message || 'Erro ao criar cobrança');
+      toast.error(error?.message || 'Erro ao criar cobranca');
     } finally {
       setSaving(false);
     }
@@ -101,18 +105,18 @@ const Cobrancas: React.FC = () => {
     if (!value) return;
     try {
       await navigator.clipboard.writeText(value);
-      toast.success('Código PIX copiado');
+      toast.success('Codigo PIX copiado');
     } catch {
-      toast.error('Não foi possível copiar');
+      toast.error('Nao foi possivel copiar');
     }
   };
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold lg:text-3xl">Cobranças</h1>
+        <h1 className="text-2xl font-bold lg:text-3xl">Cobrancas</h1>
         <p className="text-muted-foreground">
-          Gere cobranças com PIX no gateway ativo da empresa.
+          Gere cobrancas com PIX ou link para cartao no gateway ativo da empresa.
         </p>
       </div>
 
@@ -120,15 +124,15 @@ const Cobrancas: React.FC = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <ReceiptText className="h-5 w-5" />
-            Nova cobrança
+            Nova cobranca
           </CardTitle>
           <CardDescription>
-            Ao criar, o sistema gera a cobrança no gateway e salva no Financeiro/Relatórios.
+            A cobranca ja nasce integrada ao gateway e entra no financeiro/relatorios.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label>Título</Label>
+            <Label>Titulo</Label>
             <Input
               value={form.title}
               onChange={(e) => setForm((old) => ({ ...old, title: e.target.value }))}
@@ -171,16 +175,34 @@ const Cobrancas: React.FC = () => {
             />
           </div>
           <div className="space-y-2">
-            <Label>Descrição (opcional)</Label>
+            <Label>Forma de pagamento</Label>
+            <Select
+              value={form.payment_method}
+              onValueChange={(value: 'pix' | 'credito' | 'debito') =>
+                setForm((old) => ({ ...old, payment_method: value }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pix">PIX (QR Code)</SelectItem>
+                <SelectItem value="credito">Credito (link)</SelectItem>
+                <SelectItem value="debito">Debito (link)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <Label>Descricao (opcional)</Label>
             <Input
               value={form.description}
               onChange={(e) => setForm((old) => ({ ...old, description: e.target.value }))}
-              placeholder="Detalhes da cobrança"
+              placeholder="Detalhes da cobranca"
             />
           </div>
           <div className="md:col-span-2">
             <Button onClick={submit} disabled={saving} className="w-full sm:w-auto">
-              {saving ? 'Gerando cobrança...' : 'Gerar cobrança PIX'}
+              {saving ? 'Gerando cobranca...' : 'Gerar cobranca'}
             </Button>
           </div>
         </CardContent>
@@ -188,12 +210,12 @@ const Cobrancas: React.FC = () => {
 
       <Card className="glass">
         <CardHeader>
-          <CardTitle>Cobranças geradas</CardTitle>
+          <CardTitle>Cobrancas geradas</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {loading && <p className="text-muted-foreground">Carregando...</p>}
           {!loading && charges.length === 0 && (
-            <p className="text-muted-foreground">Nenhuma cobrança criada.</p>
+            <p className="text-muted-foreground">Nenhuma cobranca criada.</p>
           )}
           {!loading &&
             charges.map((item) => (
@@ -222,12 +244,8 @@ const Cobrancas: React.FC = () => {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline">
-                    {item.transaction?.provider || 'gateway'}
-                  </Badge>
-                  <Badge variant="outline">
-                    {item.transaction?.status || 'pending'}
-                  </Badge>
+                  <Badge variant="outline">{item.transaction?.provider || 'gateway'}</Badge>
+                  <Badge variant="outline">{item.transaction?.status || 'pending'}</Badge>
                   {item.transaction?.qrCodeText && (
                     <Button
                       size="sm"
@@ -239,17 +257,28 @@ const Cobrancas: React.FC = () => {
                       Copiar PIX
                     </Button>
                   )}
+                  {item.transaction?.paymentLinkUrl && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-2"
+                      onClick={() => window.open(item.transaction?.paymentLinkUrl || '#', '_blank')}
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      Abrir link de pagamento
+                    </Button>
+                  )}
                 </div>
 
                 {item.transaction?.qrCodeImageUrl && (
                   <div className="rounded-md border border-border p-3 inline-block">
                     <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
                       <QrCode className="h-3 w-3" />
-                      QR Code da cobrança
+                      QR Code da cobranca
                     </p>
                     <img
                       src={item.transaction.qrCodeImageUrl}
-                      alt="QR Code cobrança"
+                      alt="QR Code cobranca"
                       className="h-44 w-44 object-contain"
                     />
                   </div>

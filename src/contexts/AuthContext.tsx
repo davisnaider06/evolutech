@@ -1,9 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { UserRole, AuthState, Company } from '@/types/auth';
 import { toast } from 'sonner';
-
-// URL do seu backend local
-const API_URL = 'http://localhost:3001/api';
+import { API_URL } from '@/config/api';
 
 interface AuthContextType extends AuthState {
   login: (token: string, userData: any) => void;

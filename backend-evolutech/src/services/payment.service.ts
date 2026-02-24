@@ -347,6 +347,7 @@ export class PaymentService {
         currency: 'brl',
         qrCodeText: qrText,
         qrCodeImageUrl: qrImageUrl,
+        paymentLinkUrl: null,
         gatewayResponse: intent,
       },
     });
@@ -362,6 +363,73 @@ export class PaymentService {
     };
   }
 
+  async createStripeCardPaymentLink(
+    tx: any,
+    params: {
+      companyId: string;
+      orderId: string;
+      amount: number;
+      customerName?: string | null;
+      paymentMethod: 'credito' | 'debito' | 'cartao';
+    }
+  ) {
+    const gateway = await (tx as any).paymentGateway.findFirst({
+      where: { companyId: params.companyId, provider: 'stripe', isActive: true },
+    });
+    if (!gateway) throw new PaymentServiceError('Nenhum gateway Stripe ativo para esta empresa', 400);
+
+    const secretKey = decryptSecret(gateway.secretKeyEncrypted || '');
+    if (!secretKey) throw new PaymentServiceError('Secret key do Stripe nao configurada', 400);
+
+    const amountInCents = Math.round(Number(params.amount || 0) * 100);
+    if (amountInCents <= 0) throw new PaymentServiceError('Valor invalido para pagamento', 400);
+
+    const appUrl = process.env.APP_PUBLIC_URL || 'http://localhost:5173';
+    const formBody = this.buildStripeForm({
+      mode: 'payment',
+      'line_items[0][price_data][currency]': 'brl',
+      'line_items[0][price_data][product_data][name]': `Pedido ${params.orderId}`,
+      'line_items[0][price_data][unit_amount]': amountInCents,
+      'line_items[0][quantity]': 1,
+      success_url: `${appUrl}/empresa/pedidos?payment=success&order=${params.orderId}`,
+      cancel_url: `${appUrl}/empresa/pedidos?payment=cancel&order=${params.orderId}`,
+      'metadata[order_id]': params.orderId,
+      'metadata[company_id]': params.companyId,
+      ...(params.customerName ? { 'metadata[customer_name]': params.customerName } : {}),
+    });
+
+    const session = await requestStripe('POST', '/v1/checkout/sessions', secretKey, formBody);
+
+    const created = await (tx as any).paymentTransaction.create({
+      data: {
+        companyId: params.companyId,
+        orderId: params.orderId,
+        gatewayId: gateway.id,
+        provider: 'stripe',
+        paymentMethod: params.paymentMethod,
+        externalPaymentId: session?.id || null,
+        status: String(session?.payment_status || 'pending'),
+        amount: params.amount,
+        currency: 'brl',
+        qrCodeText: null,
+        qrCodeImageUrl: null,
+        paymentLinkUrl: session?.url || null,
+        gatewayResponse: session,
+      },
+    });
+
+    return {
+      paymentId: created.id,
+      externalPaymentId: created.externalPaymentId,
+      provider: 'stripe',
+      status: created.status,
+      paymentUrl: created.paymentLinkUrl,
+      qrCodeText: null,
+      qrCodeImageUrl: null,
+      raw: session,
+    };
+  }
+
   async createMercadoPagoPixPayment(
     tx: any,
     params: {
@@ -369,6 +437,7 @@ export class PaymentService {
       orderId: string;
       amount: number;
       customerName?: string | null;
+      customerEmail?: string | null;
     }
   ) {
     const gateway = await (tx as any).paymentGateway.findFirst({
@@ -398,7 +467,7 @@ export class PaymentService {
       description: `Pedido ${params.orderId}`,
       payment_method_id: 'pix',
       payer: {
-        email: 'pagamento@cliente.local',
+        email: String(params.customerEmail || '').trim() || 'no-reply@evolutech.com.br',
         first_name: params.customerName || 'Cliente',
       },
       metadata: {
@@ -412,7 +481,8 @@ export class PaymentService {
       'api.mercadopago.com',
       '/v1/payments',
       secretKey,
-      payload
+      payload,
+      { 'X-Idempotency-Key': `${params.companyId}-${params.orderId}-pix` }
     );
 
     const txData = payment?.point_of_interaction?.transaction_data || {};
@@ -434,6 +504,7 @@ export class PaymentService {
         currency: String(payment?.currency_id || 'BRL').toLowerCase(),
         qrCodeText: qrText,
         qrCodeImageUrl: qrImageUrl,
+        paymentLinkUrl: null,
         gatewayResponse: payment,
       },
     });
@@ -446,6 +517,90 @@ export class PaymentService {
       qrCodeText: created.qrCodeText,
       qrCodeImageUrl: created.qrCodeImageUrl,
       raw: payment,
+    };
+  }
+
+  async createMercadoPagoPaymentLink(
+    tx: any,
+    params: {
+      companyId: string;
+      orderId: string;
+      amount: number;
+      customerName?: string | null;
+      paymentMethod: 'credito' | 'debito' | 'cartao';
+    }
+  ) {
+    const gateway = await (tx as any).paymentGateway.findFirst({
+      where: { companyId: params.companyId, provider: 'mercadopago', isActive: true },
+    });
+    if (!gateway) {
+      throw new PaymentServiceError('Nenhum gateway Mercado Pago ativo para esta empresa', 400);
+    }
+
+    const secretKey = decryptSecret(gateway.secretKeyEncrypted || '');
+    if (!secretKey) throw new PaymentServiceError('Access token do Mercado Pago nao configurado', 400);
+
+    const amount = Number(params.amount || 0);
+    if (amount <= 0) throw new PaymentServiceError('Valor invalido para pagamento', 400);
+
+    const appUrl = process.env.APP_PUBLIC_URL || 'http://localhost:5173';
+    const preference = await requestJson(
+      'POST',
+      'api.mercadopago.com',
+      '/checkout/preferences',
+      secretKey,
+      {
+        items: [
+          {
+            title: `Pedido ${params.orderId}`,
+            quantity: 1,
+            unit_price: amount,
+            currency_id: 'BRL',
+          },
+        ],
+        metadata: {
+          order_id: params.orderId,
+          company_id: params.companyId,
+          customer_name: params.customerName || null,
+        },
+        back_urls: {
+          success: `${appUrl}/empresa/pedidos?payment=success&order=${params.orderId}`,
+          failure: `${appUrl}/empresa/pedidos?payment=failure&order=${params.orderId}`,
+          pending: `${appUrl}/empresa/pedidos?payment=pending&order=${params.orderId}`,
+        },
+        auto_return: 'approved',
+      },
+      { 'X-Idempotency-Key': `${params.companyId}-${params.orderId}-link` }
+    );
+
+    const link = preference?.init_point || preference?.sandbox_init_point || null;
+    const created = await (tx as any).paymentTransaction.create({
+      data: {
+        companyId: params.companyId,
+        orderId: params.orderId,
+        gatewayId: gateway.id,
+        provider: 'mercadopago',
+        paymentMethod: params.paymentMethod,
+        externalPaymentId: preference?.id ? String(preference.id) : null,
+        status: 'pending',
+        amount,
+        currency: 'brl',
+        qrCodeText: null,
+        qrCodeImageUrl: null,
+        paymentLinkUrl: link,
+        gatewayResponse: preference,
+      },
+    });
+
+    return {
+      paymentId: created.id,
+      externalPaymentId: created.externalPaymentId,
+      provider: 'mercadopago',
+      status: created.status,
+      paymentUrl: created.paymentLinkUrl,
+      qrCodeText: null,
+      qrCodeImageUrl: null,
+      raw: preference,
     };
   }
 
@@ -540,6 +695,7 @@ export class PaymentService {
         currency: 'brl',
         qrCodeText: qrText,
         qrCodeImageUrl: qrImageUrl,
+        paymentLinkUrl: null,
         gatewayResponse: order,
       },
     });
@@ -551,6 +707,89 @@ export class PaymentService {
       status: created.status,
       qrCodeText: created.qrCodeText,
       qrCodeImageUrl: created.qrCodeImageUrl,
+      raw: order,
+    };
+  }
+
+  async createPagBankPaymentLink(
+    tx: any,
+    params: {
+      companyId: string;
+      orderId: string;
+      amount: number;
+      customerName?: string | null;
+      paymentMethod: 'credito' | 'debito' | 'cartao';
+    }
+  ) {
+    const gateway = await (tx as any).paymentGateway.findFirst({
+      where: { companyId: params.companyId, provider: 'pagbank', isActive: true },
+    });
+    if (!gateway) throw new PaymentServiceError('Nenhum gateway PagBank ativo para esta empresa', 400);
+
+    const secretKey = decryptSecret(gateway.secretKeyEncrypted || '');
+    if (!secretKey) throw new PaymentServiceError('Token do PagBank nao configurado', 400);
+
+    const amount = Number(params.amount || 0);
+    if (amount <= 0) throw new PaymentServiceError('Valor invalido para pagamento', 400);
+
+    const env = String(gateway.environment || 'sandbox').toLowerCase();
+    const host = env === 'producao' ? 'api.pagseguro.com' : 'sandbox.api.pagseguro.com';
+    const payload = {
+      reference_id: `order_${params.orderId}`,
+      customer: {
+        name: params.customerName || 'Cliente',
+      },
+      items: [
+        {
+          reference_id: params.orderId,
+          name: `Pedido ${params.orderId}`,
+          quantity: 1,
+          unit_amount: Math.round(amount * 100),
+        },
+      ],
+      payment_methods: ['CREDIT_CARD', 'DEBIT_CARD'],
+    };
+
+    const order = await requestJson(
+      'POST',
+      host,
+      '/orders',
+      secretKey,
+      payload,
+      { 'x-idempotency-key': `${params.companyId}-${params.orderId}-card` }
+    );
+
+    const paymentUrl =
+      order?.links?.find?.((l: any) => l?.rel === 'PAY')?.href ||
+      order?.links?.find?.((l: any) => l?.rel === 'SELF')?.href ||
+      null;
+
+    const created = await (tx as any).paymentTransaction.create({
+      data: {
+        companyId: params.companyId,
+        orderId: params.orderId,
+        gatewayId: gateway.id,
+        provider: 'pagbank',
+        paymentMethod: params.paymentMethod,
+        externalPaymentId: String(order?.id || `order_${params.orderId}`),
+        status: String(order?.status || 'pending'),
+        amount,
+        currency: 'brl',
+        qrCodeText: null,
+        qrCodeImageUrl: null,
+        paymentLinkUrl: paymentUrl,
+        gatewayResponse: order,
+      },
+    });
+
+    return {
+      paymentId: created.id,
+      externalPaymentId: created.externalPaymentId,
+      provider: 'pagbank',
+      status: created.status,
+      paymentUrl: created.paymentLinkUrl,
+      qrCodeText: null,
+      qrCodeImageUrl: null,
       raw: order,
     };
   }

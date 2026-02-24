@@ -79,7 +79,16 @@ export class CompanyController {
 
   async getFinancialOverview(req: AuthedRequest, res: Response) {
     try {
-      const result = await service.getFinancialOverview(req.user!);
+      const result = await service.getFinancialOverview(req.user!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async getReportsOverview(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.getReportsOverview(req.user!, req.query as any);
       return res.json(result);
     } catch (error: unknown) {
       return this.handleError(error, res);

@@ -3,6 +3,13 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret_fallback_dev';
+const OWNER_DEFAULT_MODULES = [
+  { codigo: 'dashboard', nome: 'Dashboard' },
+  { codigo: 'reports', nome: 'Relatorios' },
+  { codigo: 'finance', nome: 'Financeiro' },
+  { codigo: 'users', nome: 'Equipe' },
+  { codigo: 'gateways', nome: 'Gateways' },
+];
 
 export class AuthService {
   async login(email: string, passwordPlain: string) {
@@ -103,6 +110,22 @@ export class AuthService {
         nome: item.modulo.nome,
         icone: item.modulo.icone,
       });
+    }
+
+    if (activeRole?.role === 'DONO_EMPRESA') {
+      for (const moduleItem of OWNER_DEFAULT_MODULES) {
+        const hasCode = Array.from(moduleMap.values()).some(
+          (item) => String(item.codigo || '').toLowerCase() === moduleItem.codigo
+        );
+        if (!hasCode) {
+          moduleMap.set(`owner-default-${moduleItem.codigo}`, {
+            id: `owner-default-${moduleItem.codigo}`,
+            codigo: moduleItem.codigo,
+            nome: moduleItem.nome,
+            icone: null,
+          });
+        }
+      }
     }
 
     return {

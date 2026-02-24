@@ -12,9 +12,18 @@ import paymentWebhookRoutes from './routes/payment-webhook.routes';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const corsOrigins = String(process.env.CORS_ORIGIN || '*')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 // Middlewares Globais
-app.use(cors());
+app.use(
+  cors({
+    origin: corsOrigins.includes('*') ? true : corsOrigins,
+    credentials: true,
+  })
+);
 app.use('/api/public/payments/webhook', paymentWebhookRoutes);
 app.use(express.json());
 

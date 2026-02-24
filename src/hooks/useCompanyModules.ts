@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { API_URL } from '@/config/api';
 
 export interface CompanyModule {
   id: string;
@@ -8,8 +9,7 @@ export interface CompanyModule {
   icone: string | null;
 }
 
-const API_URL = 'http://localhost:3001/api';
-const OWNER_DEFAULT_CODES = ['dashboard', 'reports', 'users', 'finance'];
+const OWNER_DEFAULT_CODES = ['dashboard', 'reports', 'users', 'finance', 'gateways'];
 
 const MODULE_ALIASES: Record<string, string[]> = {
   customers: ['customers', 'clientes'],
@@ -21,6 +21,7 @@ const MODULE_ALIASES: Record<string, string[]> = {
   billing: ['billing', 'cobrancas', 'cobranca'],
   cash: ['cash', 'caixa'],
   finance: ['finance', 'financeiro'],
+  gateways: ['gateways', 'gateway'],
   reports: ['reports', 'relatorios'],
   users: ['users', 'equipe', 'funcionarios', 'team'],
   support: ['support', 'suporte'],

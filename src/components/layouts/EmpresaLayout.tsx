@@ -82,6 +82,7 @@ const MODULE_ALIASES: Record<string, string[]> = {
   billing: ['billing', 'cobrancas', 'cobranca'],
   cash: ['cash', 'caixa'],
   finance: ['finance', 'financeiro'],
+  gateways: ['gateways', 'gateway'],
   reports: ['reports', 'relatorios'],
   users: ['users', 'equipe', 'funcionarios', 'team'],
   support: ['support', 'suporte'],
@@ -101,7 +102,7 @@ const codeMatchesAlias = (rawCode: string, alias: string) => {
   );
 };
 
-const OWNER_DEFAULT_MODULES = new Set(['dashboard', 'reports', 'users', 'finance']);
+const OWNER_DEFAULT_MODULES = new Set(['dashboard', 'reports', 'users', 'finance', 'gateways', 'gateway']);
 
 export const EmpresaLayout: React.FC = () => {
   const { user, logout, company } = useAuth();

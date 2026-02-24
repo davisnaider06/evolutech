@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Lock, Mail, ArrowRight, Loader2 } from 'lucide-react';
+import { API_URL } from '@/config/api';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -21,7 +22,7 @@ const Login: React.FC = () => {
 
     try {
       // Bate no nosso backend local na nova rota de auth
-      const response = await fetch('http://localhost:3001/api/auth/login', {
+      const response = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),

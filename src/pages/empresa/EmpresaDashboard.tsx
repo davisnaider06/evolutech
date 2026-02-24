@@ -14,6 +14,7 @@ import {
   CalendarClock,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { API_URL } from '@/config/api';
 
 interface DashboardMetricsResponse {
   summary: {
@@ -26,7 +27,7 @@ interface DashboardMetricsResponse {
   };
 }
 
-const API_URL = 'http://localhost:3001/api/company';
+const API_COMPANY_URL = `${API_URL}/company`;
 
 const EmpresaDashboard: React.FC = () => {
   const { user, company } = useAuth();
@@ -55,7 +56,7 @@ const EmpresaDashboard: React.FC = () => {
     const fetchMetrics = async () => {
       try {
         const token = localStorage.getItem('evolutech_token');
-        const response = await fetch(`${API_URL}/dashboard/metrics`, {
+        const response = await fetch(`${API_COMPANY_URL}/dashboard/metrics`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
