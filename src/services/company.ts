@@ -74,6 +74,30 @@ export const companyService = {
     discount?: number;
     items: Array<{ productId: string; quantity: number }>;
   }) => request('/pdv/checkout', { method: 'POST', body: JSON.stringify(data) }),
+  listBillingCharges: async (params?: {
+    status?: string;
+    page?: number;
+    pageSize?: number;
+    search?: string;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+    if (params?.search) searchParams.set('search', params.search);
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return request(`/billing/charges${suffix}`);
+  },
+  createBillingCharge: async (data: {
+    title: string;
+    description?: string;
+    customer_name: string;
+    customer_email?: string;
+    customer_phone?: string;
+    amount: number;
+    due_date?: string;
+    payment_method?: 'pix';
+  }) => request('/billing/charges', { method: 'POST', body: JSON.stringify(data) }),
   confirmPdvPixPayment: async (orderId: string, company_id?: string) =>
     request(`/pdv/orders/${orderId}/confirm-pix`, {
       method: 'POST',
@@ -98,4 +122,29 @@ export const companyService = {
     request(`/tasks/my/${taskId}`, { method: 'DELETE' }),
   moveMyTask: async (taskId: string, data: { status: 'todo' | 'doing' | 'done'; targetIndex?: number }) =>
     request(`/tasks/my/${taskId}/move`, { method: 'POST', body: JSON.stringify(data) }),
+  listAppointmentAvailability: async (professionalId?: string) =>
+    request(`/appointments/availability${professionalId ? `?professional_id=${encodeURIComponent(professionalId)}` : ''}`),
+  saveAppointmentAvailability: async (
+    professionalId: string,
+    days: Array<{ weekday: number; start_time: string; end_time: string; is_active?: boolean }>
+  ) =>
+    request(`/appointments/availability/${professionalId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ days }),
+    }),
+  listMyGateways: async () => request('/gateways'),
+  connectGateway: async (data: {
+    provedor: 'stripe' | 'mercadopago' | 'pagbank';
+    nome_exibicao?: string;
+    public_key?: string;
+    secret_key: string;
+    webhook_secret?: string;
+    ambiente?: 'sandbox' | 'producao';
+    webhook_url?: string;
+  }) =>
+    request('/gateways/connect', { method: 'POST', body: JSON.stringify(data) }),
+  activateGateway: async (gatewayId: string) =>
+    request(`/gateways/${gatewayId}/activate`, { method: 'POST' }),
+  deleteGateway: async (gatewayId: string) =>
+    request(`/gateways/${gatewayId}`, { method: 'DELETE' }),
 };

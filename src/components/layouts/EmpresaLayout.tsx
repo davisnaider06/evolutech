@@ -53,9 +53,11 @@ const navItems: NavItem[] = [
   { icon: Warehouse, label: 'Estoque', path: '/empresa/estoque', moduleCode: 'inventory' },
   { icon: Calendar, label: 'Agendamentos', path: '/empresa/agendamentos', moduleCode: 'appointments' },
   { icon: ReceiptText, label: 'PDV', path: '/empresa/pdv', moduleCode: 'pdv' },
+  { icon: ReceiptText, label: 'Cobranças', path: '/empresa/cobrancas', moduleCode: 'billing' },
   { icon: ShoppingCart, label: 'Pedidos', path: '/empresa/pedidos', moduleCode: 'orders' },
   { icon: Wallet, label: 'Caixa', path: '/empresa/caixa', moduleCode: 'cash', ownerOnly: true },
   { icon: CreditCard, label: 'Financeiro', path: '/empresa/financeiro', moduleCode: 'finance', ownerOnly: true },
+  { icon: CreditCard, label: 'Gateways', path: '/empresa/gateways', moduleCode: 'finance', ownerOnly: true, alwaysShow: true },
   { icon: BarChart3, label: 'Relatórios', path: '/empresa/relatorios', moduleCode: 'reports', ownerOnly: true },
   
   // Team management (core for owners)
@@ -77,10 +79,11 @@ const MODULE_ALIASES: Record<string, string[]> = {
   appointments: ['appointments', 'agendamentos'],
   orders: ['orders', 'pedidos'],
   pdv: ['pdv', 'orders', 'pedidos'],
+  billing: ['billing', 'cobrancas', 'cobranca'],
   cash: ['cash', 'caixa'],
   finance: ['finance', 'financeiro'],
   reports: ['reports', 'relatorios'],
-  users: ['users', 'equipe'],
+  users: ['users', 'equipe', 'funcionarios', 'team'],
   support: ['support', 'suporte'],
   training: ['training', 'treinamentos'],
   dashboard: ['dashboard'],
@@ -88,7 +91,17 @@ const MODULE_ALIASES: Record<string, string[]> = {
   design: ['design', 'personalizacao'],
 };
 
-const OWNER_DEFAULT_MODULES = new Set(['dashboard', 'reports', 'users']);
+const codeMatchesAlias = (rawCode: string, alias: string) => {
+  const code = (rawCode || '').toLowerCase();
+  const normalizedAlias = alias.toLowerCase();
+  return (
+    code === normalizedAlias ||
+    code.startsWith(`${normalizedAlias}_`) ||
+    code.startsWith(`${normalizedAlias}-`)
+  );
+};
+
+const OWNER_DEFAULT_MODULES = new Set(['dashboard', 'reports', 'users', 'finance']);
 
 export const EmpresaLayout: React.FC = () => {
   const { user, logout, company } = useAuth();
@@ -120,7 +133,7 @@ export const EmpresaLayout: React.FC = () => {
       if (isOwner && isOwnerDefault) return true;
 
       const hasModule = activeCodes.some((code) =>
-        acceptedCodes.includes((code || '').toLowerCase())
+        acceptedCodes.some((alias) => codeMatchesAlias(code || '', alias))
       );
       if (!hasModule) return false;
     }

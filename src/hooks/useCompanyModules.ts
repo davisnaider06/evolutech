@@ -9,7 +9,7 @@ export interface CompanyModule {
 }
 
 const API_URL = 'http://localhost:3001/api';
-const OWNER_DEFAULT_CODES = ['dashboard', 'reports', 'users'];
+const OWNER_DEFAULT_CODES = ['dashboard', 'reports', 'users', 'finance'];
 
 const MODULE_ALIASES: Record<string, string[]> = {
   customers: ['customers', 'clientes'],
@@ -18,15 +18,26 @@ const MODULE_ALIASES: Record<string, string[]> = {
   appointments: ['appointments', 'agendamentos'],
   orders: ['orders', 'pedidos'],
   pdv: ['pdv', 'orders', 'pedidos'],
+  billing: ['billing', 'cobrancas', 'cobranca'],
   cash: ['cash', 'caixa'],
   finance: ['finance', 'financeiro'],
   reports: ['reports', 'relatorios'],
-  users: ['users', 'equipe'],
+  users: ['users', 'equipe', 'funcionarios', 'team'],
   support: ['support', 'suporte'],
   training: ['training', 'treinamentos'],
   dashboard: ['dashboard'],
   settings: ['settings', 'configuracoes'],
   design: ['design', 'personalizacao'],
+};
+
+const codeMatchesAlias = (rawCode: string, alias: string) => {
+  const code = (rawCode || '').toLowerCase();
+  const normalizedAlias = alias.toLowerCase();
+  return (
+    code === normalizedAlias ||
+    code.startsWith(`${normalizedAlias}_`) ||
+    code.startsWith(`${normalizedAlias}-`)
+  );
 };
 
 export const useCompanyModules = () => {
@@ -97,7 +108,9 @@ export const useCompanyModules = () => {
     (moduleCode: string): boolean => {
       const normalized = moduleCode.toLowerCase();
       const acceptedCodes = MODULE_ALIASES[normalized] || [normalized];
-      return activeCodes.some((code) => acceptedCodes.includes((code || '').toLowerCase()));
+      return activeCodes.some((code) =>
+        acceptedCodes.some((alias) => codeMatchesAlias(code || '', alias))
+      );
     },
     [activeCodes]
   );

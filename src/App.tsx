@@ -57,6 +57,8 @@ import Pdv from "./pages/empresa/Pdv";
 import Caixa from "./pages/empresa/Caixa";
 import Relatorios from "./pages/empresa/Relatorios";
 import Personalizacao from "./pages/empresa/Personalizacao";
+import GatewaysEmpresa from "./pages/empresa/Gateways";
+import Cobrancas from "./pages/empresa/Cobrancas";
 
 const queryClient = new QueryClient();
 
@@ -232,6 +234,14 @@ const App = () => (
                     }
                   />
                   <Route
+                    path="/empresa/cobrancas"
+                    element={
+                      <ModuleGuard moduleCode="billing">
+                        <Cobrancas />
+                      </ModuleGuard>
+                    }
+                  />
+                  <Route
                     path="/empresa/caixa"
                     element={
                       <ModuleGuard moduleCode="cash">
@@ -282,6 +292,14 @@ const App = () => (
                         <Personalizacao />
                       </AuthGuard>
                     } 
+                  />
+                  <Route
+                    path="/empresa/gateways"
+                    element={
+                      <AuthGuard allowedRoles={['DONO_EMPRESA']}>
+                        <GatewaysEmpresa />
+                      </AuthGuard>
+                    }
                   />
                 </Route>
 

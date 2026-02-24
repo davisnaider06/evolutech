@@ -11,22 +11,40 @@ import { appointmentsService } from '@/services/appointments';
 interface AppointmentInput {
   customer_name: string;
   customer_phone: string;
-  service_name: string;
+  service_id: string;
+  professional_id: string;
   scheduled_at: string;
   notes: string;
+}
+
+interface BookingOption {
+  id: string;
+  name: string;
+}
+
+interface SlotItem {
+  time: string;
+  scheduled_at: string;
 }
 
 const AgendamentoCliente: React.FC = () => {
   const { slug = '' } = useParams<{ slug: string }>();
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingOptions, setLoadingOptions] = useState(false);
   const [companyName, setCompanyName] = useState('');
   const [error, setError] = useState('');
+  const [services, setServices] = useState<BookingOption[]>([]);
+  const [professionals, setProfessionals] = useState<BookingOption[]>([]);
+  const [slots, setSlots] = useState<SlotItem[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [selectedDate, setSelectedDate] = useState('');
 
   const [formData, setFormData] = useState<AppointmentInput>({
     customer_name: '',
     customer_phone: '',
-    service_name: '',
+    service_id: '',
+    professional_id: '',
     scheduled_at: '',
     notes: '',
   });
@@ -34,10 +52,15 @@ const AgendamentoCliente: React.FC = () => {
   useEffect(() => {
     const loadCompany = async () => {
       try {
-        const company = await appointmentsService.getPublicBookingCompany(slug);
-        setCompanyName(company.name);
+        setLoadingOptions(true);
+        const options = await appointmentsService.getPublicBookingOptions(slug);
+        setCompanyName(options.company?.name || '');
+        setServices(options.services || []);
+        setProfessionals(options.professionals || []);
       } catch (err: any) {
         setError(err.message || 'Link de agendamento invalido');
+      } finally {
+        setLoadingOptions(false);
       }
     };
 
@@ -48,11 +71,41 @@ const AgendamentoCliente: React.FC = () => {
     }
   }, [slug]);
 
-  const minDateTime = useMemo(() => {
+  const minDate = useMemo(() => {
     const now = new Date();
-    now.setMinutes(now.getMinutes() + 30);
-    return now.toISOString().slice(0, 16);
+    return now.toISOString().slice(0, 10);
   }, []);
+
+  useEffect(() => {
+    const loadSlots = async () => {
+      if (!slug || !selectedDate || !formData.service_id || !formData.professional_id) {
+        setSlots([]);
+        setFormData((prev) => ({ ...prev, scheduled_at: '' }));
+        return;
+      }
+      try {
+        setLoadingSlots(true);
+        const result = await appointmentsService.listPublicAvailableSlots(slug, {
+          date: selectedDate,
+          service_id: formData.service_id,
+          professional_id: formData.professional_id,
+        });
+        const slotList = Array.isArray(result?.slots) ? result.slots : [];
+        setSlots(slotList);
+        setFormData((prev) => ({
+          ...prev,
+          scheduled_at: slotList[0]?.scheduled_at || '',
+        }));
+      } catch (err: any) {
+        setSlots([]);
+        setFormData((prev) => ({ ...prev, scheduled_at: '' }));
+        setError(err.message || 'Erro ao carregar horarios disponiveis');
+      } finally {
+        setLoadingSlots(false);
+      }
+    };
+    loadSlots();
+  }, [slug, selectedDate, formData.service_id, formData.professional_id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,6 +123,9 @@ const AgendamentoCliente: React.FC = () => {
   };
 
   if (submitted) {
+    const selectedService = services.find((item) => item.id === formData.service_id)?.name || 'servico';
+    const selectedProfessional = professionals.find((item) => item.id === formData.professional_id)?.name || 'profissional';
+
     return (
       <div className="flex items-center justify-center min-h-screen p-4">
         <Card className="w-full max-w-md text-center">
@@ -79,7 +135,7 @@ const AgendamentoCliente: React.FC = () => {
             </div>
             <CardTitle>Agendamento solicitado!</CardTitle>
             <CardDescription>
-              Obrigado, {formData.customer_name}. Sua solicitacao para <strong>{formData.service_name}</strong> foi enviada para {companyName || 'a empresa'}.
+              Obrigado, {formData.customer_name}. Sua solicitacao para <strong>{selectedService}</strong> com <strong>{selectedProfessional}</strong> foi enviada para {companyName || 'a empresa'}.
             </CardDescription>
           </CardHeader>
           <CardFooter>
@@ -93,8 +149,8 @@ const AgendamentoCliente: React.FC = () => {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-slate-50 p-4">
-      <Card className="w-full max-w-lg shadow-lg">
+    <div className="flex items-center justify-center min-h-screen bg-[#020b1f] p-3">
+      <Card className="w-full max-w-md shadow-lg border-border">
         <CardHeader className="space-y-1 bg-primary text-primary-foreground rounded-t-lg">
           <div className="flex items-center gap-2">
             <CalendarCheck className="h-6 w-6" />
@@ -106,7 +162,7 @@ const AgendamentoCliente: React.FC = () => {
         </CardHeader>
 
         <form onSubmit={handleSubmit}>
-          <CardContent className="pt-6 space-y-4">
+          <CardContent className="pt-5 space-y-3">
             {error && (
               <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 {error}
@@ -140,25 +196,73 @@ const AgendamentoCliente: React.FC = () => {
 
             <div className="grid gap-2">
               <Label htmlFor="service">Servico desejado</Label>
-              <Input
+              <select
                 id="service"
-                placeholder="Ex: Corte + Barba"
                 required
-                value={formData.service_name}
-                onChange={(e) => setFormData({ ...formData, service_name: e.target.value })}
+                value={formData.service_id}
+                onChange={(e) => setFormData({ ...formData, service_id: e.target.value })}
+                disabled={loadingOptions || services.length === 0}
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">{loadingOptions ? 'Carregando servicos...' : 'Selecione um servico'}</option>
+                {services.map((service) => (
+                  <option key={service.id} value={service.id}>
+                    {service.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="professional">Profissional desejado</Label>
+              <select
+                id="professional"
+                required
+                value={formData.professional_id}
+                onChange={(e) => setFormData({ ...formData, professional_id: e.target.value })}
+                disabled={loadingOptions || professionals.length === 0}
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">{loadingOptions ? 'Carregando profissionais...' : 'Selecione um profissional'}</option>
+                {professionals.map((professional) => (
+                  <option key={professional.id} value={professional.id}>
+                    {professional.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="date">Data</Label>
+              <Input
+                id="date"
+                type="date"
+                required
+                min={minDate}
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
               />
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="date">Data e hora</Label>
-              <Input
-                id="date"
-                type="datetime-local"
+              <Label htmlFor="slot">Horario disponivel</Label>
+              <select
+                id="slot"
                 required
-                min={minDateTime}
                 value={formData.scheduled_at}
                 onChange={(e) => setFormData({ ...formData, scheduled_at: e.target.value })}
-              />
+                disabled={loadingSlots || slots.length === 0}
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">
+                  {loadingSlots ? 'Carregando horarios...' : slots.length ? 'Selecione um horario' : 'Sem horarios disponiveis'}
+                </option>
+                {slots.map((slot) => (
+                  <option key={slot.scheduled_at} value={slot.scheduled_at}>
+                    {slot.time}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="grid gap-2">
@@ -173,7 +277,19 @@ const AgendamentoCliente: React.FC = () => {
           </CardContent>
 
           <CardFooter>
-            <Button type="submit" className="w-full" disabled={loading || !!error}>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={
+                loading ||
+                !!error ||
+                loadingOptions ||
+                loadingSlots ||
+                services.length === 0 ||
+                professionals.length === 0 ||
+                !formData.scheduled_at
+              }
+            >
               {loading ? 'Enviando...' : 'Confirmar agendamento'}
             </Button>
           </CardFooter>

@@ -28,6 +28,7 @@ interface Modulo {
   descricao: string | null;
   codigo: string;
   icone: string | null;
+  nicho: string | null;
   precoMensal: number;
   isCore: boolean;
   status: 'active' | 'inactive' | 'pending';
@@ -44,6 +45,7 @@ export default function Modulos() {
     descricao: '',
     codigo: '',
     icone: '',
+    nicho: 'geral',
     preco_mensal: 0,
     is_core: false,
     status: 'active' as 'active' | 'inactive' | 'pending',
@@ -71,6 +73,7 @@ export default function Modulos() {
       descricao: '',
       codigo: '',
       icone: '',
+      nicho: 'geral',
       preco_mensal: 0,
       is_core: false,
       status: 'active',
@@ -84,6 +87,7 @@ export default function Modulos() {
       descricao: modulo.descricao || '',
       codigo: modulo.codigo,
       icone: modulo.icone || '',
+      nicho: modulo.nicho || 'geral',
       preco_mensal: Number(modulo.precoMensal || 0),
       is_core: modulo.isCore,
       status: modulo.status,
@@ -151,6 +155,7 @@ export default function Modulos() {
               <Input placeholder="Nome" value={formData.nome} onChange={(e) => setFormData({ ...formData, nome: e.target.value })} required />
               <Input placeholder="Codigo unico" value={formData.codigo} onChange={(e) => setFormData({ ...formData, codigo: e.target.value })} required disabled={!!selectedModulo} />
               <Input placeholder="Descricao" value={formData.descricao} onChange={(e) => setFormData({ ...formData, descricao: e.target.value })} />
+              <Input placeholder="Nicho (ex: barbearia, clinica)" value={formData.nicho} onChange={(e) => setFormData({ ...formData, nicho: e.target.value })} />
               <Input placeholder="Icone" value={formData.icone} onChange={(e) => setFormData({ ...formData, icone: e.target.value })} />
               <Input type="number" placeholder="Preco mensal" value={formData.preco_mensal} onChange={(e) => setFormData({ ...formData, preco_mensal: Number(e.target.value) })} />
               <div className="flex items-center justify-between">
@@ -189,7 +194,7 @@ export default function Modulos() {
                 <CardTitle className="flex items-center justify-between">
                   <span className="flex items-center gap-2">
                     <Package className="h-5 w-5" />
-                    {modulo.nome}
+                    {modulo.nome} {modulo.nicho ? `(${modulo.nicho})` : ''}
                   </span>
                   <Badge variant={modulo.status === 'active' ? 'default' : 'secondary'}>
                     {modulo.status === 'active' ? 'Ativo' : 'Inativo'}
