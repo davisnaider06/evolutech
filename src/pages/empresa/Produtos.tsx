@@ -7,6 +7,7 @@ import { StatusBadge } from '@/components/crud/StatusBadge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { companyService } from '@/services/company';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
@@ -25,6 +26,7 @@ interface Product {
 }
 
 interface ProductFormData {
+  type: 'product' | 'service';
   name: string;
   sku: string;
   price: number;
@@ -33,6 +35,7 @@ interface ProductFormData {
 }
 
 const defaultFormData: ProductFormData = {
+  type: 'product',
   name: '',
   sku: '',
   price: 0,
@@ -111,6 +114,7 @@ const Produtos: React.FC = () => {
   const handleEdit = (product: Product) => {
     setEditingProduct(product);
     setFormData({
+      type: 'product',
       name: product.name,
       sku: product.sku || '',
       price: Number(product.price || 0),
@@ -128,23 +132,42 @@ const Produtos: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      const payload = {
-        name: formData.name.trim(),
-        sku: formData.sku.trim() || null,
-        price: Number(formData.price || 0),
-        stockQuantity: Number(formData.stockQuantity || 0),
-        isActive: formData.isActive,
-      };
-
       if (editingProduct) {
+        const payload = {
+          name: formData.name.trim(),
+          sku: formData.sku.trim() || null,
+          price: Number(formData.price || 0),
+          stockQuantity: Number(formData.stockQuantity || 0),
+          isActive: formData.isActive,
+        };
         await companyService.update('products', editingProduct.id, payload);
         toast.success('Produto atualizado com sucesso');
       } else {
-        await companyService.create('products', payload);
-        toast.success('Produto criado com sucesso');
+        if (formData.type === 'service') {
+          const payload = {
+            name: formData.name.trim(),
+            description: formData.sku.trim() || null,
+            durationMinutes: Math.max(1, Number(formData.stockQuantity || 30)),
+            price: Number(formData.price || 0),
+            isActive: formData.isActive,
+          };
+          await companyService.create('appointment_services', payload);
+          toast.success('Serviço criado com sucesso');
+        } else {
+          const payload = {
+            name: formData.name.trim(),
+            sku: formData.sku.trim() || null,
+            price: Number(formData.price || 0),
+            stockQuantity: Number(formData.stockQuantity || 0),
+            isActive: formData.isActive,
+          };
+          await companyService.create('products', payload);
+          toast.success('Produto criado com sucesso');
+        }
       }
 
       setIsFormOpen(false);
+      setFormData(defaultFormData);
       fetchProducts();
     } catch (error: any) {
       toast.error(error.message || 'Erro ao salvar produto');
@@ -347,6 +370,26 @@ const Produtos: React.FC = () => {
         isSubmitting={isSubmitting}
       >
         <div className="grid gap-4 sm:grid-cols-2">
+          {!editingProduct && (
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="type">Tipo *</Label>
+              <Select
+                value={formData.type}
+                onValueChange={(value: 'product' | 'service') =>
+                  setFormData((prev) => ({ ...prev, type: value }))
+                }
+              >
+                <SelectTrigger id="type">
+                  <SelectValue placeholder="Selecione o tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="product">Produto</SelectItem>
+                  <SelectItem value="service">Serviço</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="name">Nome *</Label>
             <Input
@@ -359,12 +402,12 @@ const Produtos: React.FC = () => {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="sku">SKU</Label>
+            <Label htmlFor="sku">{!editingProduct && formData.type === 'service' ? 'Descrição' : 'SKU'}</Label>
             <Input
               id="sku"
               value={formData.sku}
               onChange={(e) => setFormData((prev) => ({ ...prev, sku: e.target.value }))}
-              placeholder="CÃ³digo interno"
+              placeholder={!editingProduct && formData.type === 'service' ? 'Descrição curta do serviço' : 'CÃ³digo interno'}
             />
           </div>
 
@@ -382,11 +425,13 @@ const Produtos: React.FC = () => {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="stockQuantity">Estoque Atual</Label>
+            <Label htmlFor="stockQuantity">
+              {!editingProduct && formData.type === 'service' ? 'Duração (minutos)' : 'Estoque Atual'}
+            </Label>
             <Input
               id="stockQuantity"
               type="number"
-              min="0"
+              min={!editingProduct && formData.type === 'service' ? '1' : '0'}
               value={formData.stockQuantity}
               onChange={(e) => setFormData((prev) => ({ ...prev, stockQuantity: Number(e.target.value) || 0 }))}
             />
