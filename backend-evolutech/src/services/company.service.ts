@@ -304,6 +304,7 @@ export class CompanyService {
     delete payload.id;
     delete payload.companyId;
     delete payload.company_id;
+    const targetType = String(payload.type || '').trim().toLowerCase();
     if (table === 'appointments' && payload.status !== undefined) {
       payload.status = this.normalizeAppointmentStatus(payload.status);
     }
@@ -311,6 +312,49 @@ export class CompanyService {
       payload.professionalId = user.id;
       payload.professionalName = user.fullName;
     }
+    if (table === 'products' && targetType === 'service') {
+      return prisma.$transaction(async (tx) => {
+        const current = await tx.product.findUnique({ where: { id } });
+        if (!current) throw new CompanyServiceError('Registro não encontrado', 404);
+
+        const createdService = await (tx as any).appointmentService.create({
+          data: {
+            companyId: current.companyId,
+            name: String(payload.name || current.name).trim(),
+            description: payload.sku ? String(payload.sku).trim() : current.sku,
+            durationMinutes: Math.max(1, Number(payload.stockQuantity || 30)),
+            price: Number(payload.price ?? current.price ?? 0),
+            isActive: payload.isActive !== undefined ? Boolean(payload.isActive) : current.isActive,
+          },
+        });
+
+        await tx.product.delete({ where: { id } });
+        return createdService;
+      });
+    }
+
+    if (table === 'appointment_services' && targetType === 'product') {
+      return prisma.$transaction(async (tx) => {
+        const current = await (tx as any).appointmentService.findUnique({ where: { id } });
+        if (!current) throw new CompanyServiceError('Registro não encontrado', 404);
+
+        const createdProduct = await tx.product.create({
+          data: {
+            companyId: current.companyId,
+            name: String(payload.name || current.name).trim(),
+            sku: payload.sku ? String(payload.sku).trim() : null,
+            price: Number(payload.price ?? current.price ?? 0),
+            stockQuantity: Math.max(0, Number(payload.stockQuantity || 0)),
+            isActive: payload.isActive !== undefined ? Boolean(payload.isActive) : current.isActive,
+          },
+        });
+
+        await (tx as any).appointmentService.delete({ where: { id } });
+        return createdProduct;
+      });
+    }
+
+    delete payload.type;
 
     return model.update({
       where: { id },

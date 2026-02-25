@@ -16,6 +16,8 @@ import { Upload } from 'lucide-react';
 interface Product {
   id: string;
   companyId: string;
+  type?: 'product' | 'service';
+  sourceTable?: 'products' | 'appointment_services';
   name: string;
   sku: string | null;
   price: number;
@@ -60,14 +62,56 @@ const Produtos: React.FC = () => {
   const fetchProducts = async () => {
     try {
       setLoading(true);
-      const result = await companyService.list('products', {
-        page: pagination.page,
-        pageSize: pagination.pageSize,
-        search: filters.search,
-        is_active: filters.is_active,
+      const [productsResult, servicesResult] = await Promise.all([
+        companyService.list('products', {
+          page: 1,
+          pageSize: 500,
+          search: filters.search,
+          is_active: filters.is_active,
+        }),
+        companyService.list('appointment_services', {
+          page: 1,
+          pageSize: 500,
+          search: filters.search,
+          is_active: filters.is_active,
+        }),
+      ]);
+
+      const mappedProducts = (productsResult.data || []).map((item: Product) => ({
+        ...item,
+        type: 'product' as const,
+        sourceTable: 'products' as const,
+      }));
+
+      const mappedServices = (servicesResult.data || []).map((item: any) => ({
+        id: item.id,
+        companyId: item.companyId,
+        type: 'service' as const,
+        sourceTable: 'appointment_services' as const,
+        name: item.name,
+        sku: item.description || null,
+        price: Number(item.price || 0),
+        stockQuantity: Number(item.durationMinutes || 0),
+        isActive: Boolean(item.isActive),
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+      }));
+
+      const allItems = [...mappedProducts, ...mappedServices].sort((a, b) => {
+        const aDate = new Date(a.createdAt || 0).getTime();
+        const bDate = new Date(b.createdAt || 0).getTime();
+        return bDate - aDate;
       });
-      setData(result.data || []);
-      setTotalCount(result.total || 0);
+
+      const startIndex = (pagination.page - 1) * pagination.pageSize;
+      const endIndex = startIndex + pagination.pageSize;
+      setData(
+        allItems.slice(startIndex, endIndex).map((item) => ({
+          ...item,
+          type: item.type || 'product',
+        }))
+      );
+      setTotalCount(allItems.length || 0);
     } catch (error: any) {
       toast.error(error.message || 'Erro ao carregar produtos');
     } finally {
@@ -87,10 +131,17 @@ const Produtos: React.FC = () => {
 
   const columns: Column<Product>[] = [
     { key: 'name', label: 'Nome' },
+    {
+      key: 'type',
+      label: 'Tipo',
+      render: (item) => (
+        <span>{item.type === 'service' ? 'Serviço' : 'Produto'}</span>
+      ),
+    },
     { key: 'sku', label: 'SKU' },
     {
       key: 'price',
-      label: 'PreÃ§o',
+      label: 'Preço',
       render: (item) => formatCurrency(Number(item.price)),
     },
     {
@@ -114,7 +165,7 @@ const Produtos: React.FC = () => {
   const handleEdit = (product: Product) => {
     setEditingProduct(product);
     setFormData({
-      type: 'product',
+      type: product.type === 'service' ? 'service' : 'product',
       name: product.name,
       sku: product.sku || '',
       price: Number(product.price || 0),
@@ -126,22 +177,58 @@ const Produtos: React.FC = () => {
 
   const handleSubmit = async () => {
     if (!formData.name.trim()) {
-      toast.error('Nome do produto Ã© obrigatÃ³rio');
+      toast.error('Nome do produto é obrigatório');
       return;
     }
 
     setIsSubmitting(true);
     try {
       if (editingProduct) {
-        const payload = {
-          name: formData.name.trim(),
-          sku: formData.sku.trim() || null,
-          price: Number(formData.price || 0),
-          stockQuantity: Number(formData.stockQuantity || 0),
-          isActive: formData.isActive,
-        };
-        await companyService.update('products', editingProduct.id, payload);
-        toast.success('Produto atualizado com sucesso');
+        if (editingProduct.sourceTable === 'appointment_services') {
+          const payload =
+            formData.type === 'product'
+              ? {
+                  type: 'product',
+                  name: formData.name.trim(),
+                  sku: formData.sku.trim() || null,
+                  price: Number(formData.price || 0),
+                  stockQuantity: Math.max(0, Number(formData.stockQuantity || 0)),
+                  isActive: formData.isActive,
+                }
+              : {
+                  type: 'service',
+                  name: formData.name.trim(),
+                  description: formData.sku.trim() || null,
+                  durationMinutes: Math.max(1, Number(formData.stockQuantity || 30)),
+                  price: Number(formData.price || 0),
+                  isActive: formData.isActive,
+                };
+          await companyService.update('appointment_services', editingProduct.id, payload);
+          toast.success('Serviço atualizado com sucesso');
+        } else {
+          const payload =
+            formData.type === 'service'
+              ? {
+                  type: 'service',
+                  name: formData.name.trim(),
+                  sku: formData.sku.trim() || null,
+                  stockQuantity: Math.max(1, Number(formData.stockQuantity || 30)),
+                  price: Number(formData.price || 0),
+                  isActive: formData.isActive,
+                }
+              : {
+                  type: 'product',
+                  name: formData.name.trim(),
+                  sku: formData.sku.trim() || null,
+                  price: Number(formData.price || 0),
+                  stockQuantity: Math.max(0, Number(formData.stockQuantity || 0)),
+                  isActive: formData.isActive,
+                };
+          await companyService.update('products', editingProduct.id, payload);
+          toast.success(
+            formData.type === 'service' ? 'Produto convertido em serviço com sucesso' : 'Produto atualizado com sucesso'
+          );
+        }
       } else {
         if (formData.type === 'service') {
           const payload = {
@@ -178,8 +265,13 @@ const Produtos: React.FC = () => {
 
   const handleDelete = async (product: Product) => {
     try {
-      await companyService.remove('products', product.id);
-      toast.success('Produto excluÃ­do com sucesso');
+      if (product.sourceTable === 'appointment_services') {
+        await companyService.remove('appointment_services', product.id);
+        toast.success('Serviço excluído com sucesso');
+      } else {
+        await companyService.remove('products', product.id);
+        toast.success('Produto excluído com sucesso');
+      }
       if (data.length === 1 && pagination.page > 1) {
         setPagination((prev) => ({ ...prev, page: prev.page - 1 }));
       } else {
@@ -263,7 +355,7 @@ const Produtos: React.FC = () => {
       const workbook = XLSX.read(buffer, { type: 'array' });
       const firstSheet = workbook.SheetNames[0];
       if (!firstSheet) {
-        toast.error('Arquivo sem planilha vÃ¡lida');
+        toast.error('Arquivo sem planilha válida');
         return;
       }
 
@@ -277,13 +369,13 @@ const Produtos: React.FC = () => {
         .filter((item) => item.name && item.price >= 0 && item.stockQuantity >= 0);
 
       if (products.length === 0) {
-        toast.error('Nenhum produto vÃ¡lido encontrado no arquivo');
+        toast.error('Nenhum produto válido encontrado no arquivo');
         return;
       }
 
       const result = await companyService.importProducts(products);
       toast.success(
-        `ImportaÃ§Ã£o concluÃ­da: ${result.created} criados, ${result.updated} atualizados, ${result.skipped} ignorados`
+        `Importação concluída: ${result.created} criados, ${result.updated} atualizados, ${result.skipped} ignorados`
       );
       fetchProducts();
     } catch (error: any) {
@@ -370,25 +462,23 @@ const Produtos: React.FC = () => {
         isSubmitting={isSubmitting}
       >
         <div className="grid gap-4 sm:grid-cols-2">
-          {!editingProduct && (
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="type">Tipo *</Label>
-              <Select
-                value={formData.type}
-                onValueChange={(value: 'product' | 'service') =>
-                  setFormData((prev) => ({ ...prev, type: value }))
-                }
-              >
-                <SelectTrigger id="type">
-                  <SelectValue placeholder="Selecione o tipo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="product">Produto</SelectItem>
-                  <SelectItem value="service">Serviço</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="type">Tipo *</Label>
+            <Select
+              value={formData.type}
+              onValueChange={(value: 'product' | 'service') =>
+                setFormData((prev) => ({ ...prev, type: value }))
+              }
+            >
+              <SelectTrigger id="type">
+                <SelectValue placeholder="Selecione o tipo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="product">Produto</SelectItem>
+                <SelectItem value="service">Serviço</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="name">Nome *</Label>
@@ -407,12 +497,12 @@ const Produtos: React.FC = () => {
               id="sku"
               value={formData.sku}
               onChange={(e) => setFormData((prev) => ({ ...prev, sku: e.target.value }))}
-              placeholder={!editingProduct && formData.type === 'service' ? 'Descrição curta do serviço' : 'CÃ³digo interno'}
+              placeholder={formData.type === 'service' ? 'Descrição curta do serviço' : 'Código interno'}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="price">PreÃ§o de Venda *</Label>
+            <Label htmlFor="price">Preço de Venda *</Label>
             <Input
               id="price"
               type="number"
@@ -426,12 +516,12 @@ const Produtos: React.FC = () => {
 
           <div className="space-y-2">
             <Label htmlFor="stockQuantity">
-              {!editingProduct && formData.type === 'service' ? 'Duração (minutos)' : 'Estoque Atual'}
+              {formData.type === 'service' ? 'Duração (minutos)' : 'Estoque Atual'}
             </Label>
             <Input
               id="stockQuantity"
               type="number"
-              min={!editingProduct && formData.type === 'service' ? '1' : '0'}
+              min={formData.type === 'service' ? '1' : '0'}
               value={formData.stockQuantity}
               onChange={(e) => setFormData((prev) => ({ ...prev, stockQuantity: Number(e.target.value) || 0 }))}
             />
