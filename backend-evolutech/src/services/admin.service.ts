@@ -9,6 +9,28 @@ const mapStatusToIsActive = (status?: SistemaStatusInput): boolean => status ===
 const mapIsActiveToStatus = (isActive: boolean): SistemaStatusInput => (isActive ? 'active' : 'inactive');
 
 export class AdminService {
+  private async ensureCommissionStaffModule() {
+    await prisma.modulo.upsert({
+      where: { codigo: 'commissions_staff' },
+      update: {
+        nome: 'Comissões (Funcionário)',
+        descricao: 'Consulta de comissões para funcionários',
+        nicho: 'geral',
+        status: 'active',
+      },
+      create: {
+        nome: 'Comissões (Funcionário)',
+        descricao: 'Consulta de comissões para funcionários',
+        codigo: 'commissions_staff',
+        icone: 'wallet',
+        nicho: 'geral',
+        precoMensal: 0,
+        isCore: false,
+        status: 'active',
+      } as any,
+    });
+  }
+
   private toNumber(value: unknown): number {
     const numeric = Number(value ?? 0);
     return Number.isFinite(numeric) ? numeric : 0;
@@ -274,6 +296,7 @@ export class AdminService {
   }
 
   async listModulos(onlyActive: boolean) {
+    await this.ensureCommissionStaffModule();
     return prisma.modulo.findMany({
       where: onlyActive ? { status: 'active' } : undefined,
       orderBy: [{ isCore: 'desc' }, { nome: 'asc' }],

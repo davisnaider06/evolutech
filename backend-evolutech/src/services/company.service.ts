@@ -40,6 +40,8 @@ export class CompanyService {
     'team',
     'gateway',
     'gateways',
+    'commissions_owner',
+    'comissoes_dono',
   ]);
 
   private toNumber(value: unknown): number {
@@ -716,23 +718,21 @@ export class CompanyService {
     await this.ensureAnyModuleAccess(user, companyId, ['relatorios', 'reports']);
     const { start, end } = this.parseDateRange(queryParams, 30);
 
-    const [customersTotal, productsTotal, customersInRange, ordersInRange, appointmentsInRange, pdvLogs] =
+    const [customersTotal, productsTotal, customersInRangeCount, ordersInRange, appointmentsGroupedByStatus, pdvLogs] =
       await Promise.all([
         prisma.customer.count({ where: { companyId } }),
         prisma.product.count({ where: { companyId, isActive: true } }),
-        prisma.customer.findMany({
+        prisma.customer.count({
           where: { companyId, createdAt: { gte: start, lte: end } },
-          select: { id: true, createdAt: true },
         }),
         prisma.order.findMany({
           where: { companyId, createdAt: { gte: start, lte: end } },
           select: { id: true, status: true, total: true, createdAt: true },
-          orderBy: { createdAt: 'asc' },
         }),
-        (prisma as any).appointment.findMany({
+        (prisma as any).appointment.groupBy({
+          by: ['status'],
           where: { companyId, createdAt: { gte: start, lte: end } },
-          select: { id: true, status: true, createdAt: true },
-          orderBy: { createdAt: 'asc' },
+          _count: { _all: true },
         }),
         prisma.auditLog.findMany({
           where: {
@@ -753,11 +753,13 @@ export class CompanyService {
       ordersByStatusMap.set(key, (ordersByStatusMap.get(key) || 0) + 1);
     }
 
-    const appointmentsByStatusMap = new Map<string, number>();
-    for (const appointment of appointmentsInRange) {
-      const key = String(appointment.status || 'unknown').toLowerCase();
-      appointmentsByStatusMap.set(key, (appointmentsByStatusMap.get(key) || 0) + 1);
-    }
+    const appointmentsByStatusMap = new Map<string, number>(
+      (appointmentsGroupedByStatus as any[]).map((item: any) => [
+        String(item.status || 'unknown').toLowerCase(),
+        Number(item?._count?._all || 0),
+      ])
+    );
+    const appointmentsTotal = Array.from(appointmentsByStatusMap.values()).reduce((sum, value) => sum + value, 0);
 
     const dayMap = new Map<string, number>();
     const dayCursor = new Date(start);
@@ -807,10 +809,10 @@ export class CompanyService {
       summary: {
         customers_total: customersTotal,
         products_total: productsTotal,
-        new_customers: customersInRange.length,
+        new_customers: customersInRangeCount,
         orders_total: ordersInRange.length,
         paid_orders: paidOrders.length,
-        appointments_total: appointmentsInRange.length,
+        appointments_total: appointmentsTotal,
         revenue_total: totalRevenue,
       },
       charts: {
@@ -827,7 +829,13 @@ export class CompanyService {
 
   async listCommissionProfiles(user: AuthenticatedUser) {
     const companyId = this.resolveCompanyId(user, {});
-    await this.ensureAnyModuleAccess(user, companyId, ['finance', 'financeiro', 'appointments', 'agendamentos']);
+    await this.ensureAnyModuleAccess(user, companyId, [
+      'commissions_owner',
+      'comissoes_dono',
+      'commissions_staff',
+      'commissions',
+      'comissoes',
+    ]);
 
     const professionalFilter =
       user.role === 'FUNCIONARIO_EMPRESA' ? { userId: user.id } : {};
@@ -894,7 +902,7 @@ export class CompanyService {
   ) {
     this.ensureOwnerCompanyRole(user);
     const companyId = this.resolveCompanyId(user, payload);
-    await this.ensureAnyModuleAccess(user, companyId, ['finance', 'financeiro', 'appointments', 'agendamentos']);
+    await this.ensureAnyModuleAccess(user, companyId, ['commissions_owner', 'comissoes_dono']);
 
     const professional = await prisma.userRole.findFirst({
       where: {
@@ -973,7 +981,7 @@ export class CompanyService {
   ) {
     this.ensureOwnerCompanyRole(user);
     const companyId = this.resolveCompanyId(user, payload);
-    await this.ensureAnyModuleAccess(user, companyId, ['finance', 'financeiro']);
+    await this.ensureAnyModuleAccess(user, companyId, ['commissions_owner', 'comissoes_dono']);
 
     const professionalId = String(payload.professional_id || '').trim();
     const amount = Number(payload.amount || 0);
@@ -1022,7 +1030,13 @@ export class CompanyService {
     queryParams: { month?: string; professional_id?: string; company_id?: string; companyId?: string } = {}
   ) {
     const companyId = this.resolveCompanyId(user, queryParams);
-    await this.ensureAnyModuleAccess(user, companyId, ['finance', 'financeiro', 'appointments', 'agendamentos']);
+    await this.ensureAnyModuleAccess(user, companyId, [
+      'commissions_owner',
+      'comissoes_dono',
+      'commissions_staff',
+      'commissions',
+      'comissoes',
+    ]);
 
     const requestedProfessionalId = String(queryParams.professional_id || '').trim();
     const cleanProfessionalId =
@@ -1073,7 +1087,6 @@ export class CompanyService {
           professionalId: true,
           serviceId: true,
           serviceName: true,
-          status: true,
         },
       }),
       prisma.auditLog.findMany({
@@ -1093,10 +1106,7 @@ export class CompanyService {
         },
         select: { professionalId: true, amount: true },
       }),
-      (prisma as any).appointmentService.findMany({
-        where: { companyId },
-        select: { id: true, name: true, price: true },
-      }),
+      Promise.resolve([]),
       (prisma as any).commissionPayout.findMany({
         where: {
           companyId,
@@ -1118,11 +1128,37 @@ export class CompanyService {
     const profileByProfessional = new Map<string, any>(
       profiles.map((item: any) => [item.professionalId, item])
     );
+    const appointmentServiceIds = Array.from(
+      new Set(
+        (appointments as any[])
+          .map((item: any) => String(item.serviceId || '').trim())
+          .filter(Boolean)
+      )
+    );
+    const appointmentServiceNames = Array.from(
+      new Set(
+        (appointments as any[])
+          .map((item: any) => String(item.serviceName || '').trim())
+          .filter(Boolean)
+      )
+    );
+    const servicesData = appointmentServiceIds.length || appointmentServiceNames.length
+      ? await (prisma as any).appointmentService.findMany({
+          where: {
+            companyId,
+            OR: [
+              ...(appointmentServiceIds.length ? [{ id: { in: appointmentServiceIds } }] : []),
+              ...(appointmentServiceNames.length ? [{ name: { in: appointmentServiceNames } }] : []),
+            ],
+          },
+          select: { id: true, name: true, price: true },
+        })
+      : services;
     const servicePriceById = new Map<string, number>(
-      services.map((item: any) => [item.id, Number(item.price || 0)])
+      (servicesData as any[]).map((item: any) => [item.id, Number(item.price || 0)])
     );
     const servicePriceByName = new Map<string, number>(
-      services.map((item: any) => [String(item.name || '').trim().toLowerCase(), Number(item.price || 0)])
+      (servicesData as any[]).map((item: any) => [String(item.name || '').trim().toLowerCase(), Number(item.price || 0)])
     );
 
     const appointmentRevenueByProfessional = new Map<string, number>();
@@ -1306,7 +1342,7 @@ export class CompanyService {
   ) {
     this.ensureOwnerCompanyRole(user);
     const companyId = this.resolveCompanyId(user, payload);
-    await this.ensureAnyModuleAccess(user, companyId, ['finance', 'financeiro']);
+    await this.ensureAnyModuleAccess(user, companyId, ['commissions_owner', 'comissoes_dono']);
 
     const professionalId = String(payload.professional_id || '').trim();
     if (!professionalId) throw new CompanyServiceError('professional_id obrigatorio', 400);
@@ -1388,7 +1424,13 @@ export class CompanyService {
     queryParams: { month?: string; professional_id?: string; company_id?: string; companyId?: string } = {}
   ) {
     const companyId = this.resolveCompanyId(user, queryParams);
-    await this.ensureAnyModuleAccess(user, companyId, ['finance', 'financeiro']);
+    await this.ensureAnyModuleAccess(user, companyId, [
+      'commissions_owner',
+      'comissoes_dono',
+      'commissions_staff',
+      'commissions',
+      'comissoes',
+    ]);
 
     const monthRef = this.parseMonthRef(queryParams.month);
     const requestedProfessionalId = String(queryParams.professional_id || '').trim();

@@ -11,6 +11,7 @@ const OWNER_DEFAULT_MODULES = [
   { codigo: 'finance', nome: 'Financeiro' },
   { codigo: 'users', nome: 'Equipe' },
   { codigo: 'gateways', nome: 'Gateways' },
+  { codigo: 'commissions_owner', nome: 'Comissões' },
 ];
 
 type JwtAuthPayload = {

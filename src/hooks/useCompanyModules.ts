@@ -9,7 +9,7 @@ export interface CompanyModule {
   icone: string | null;
 }
 
-const OWNER_DEFAULT_CODES = ['dashboard', 'reports', 'users', 'finance', 'gateways'];
+const OWNER_DEFAULT_CODES = ['dashboard', 'reports', 'users', 'finance', 'gateways', 'commissions_owner'];
 
 const MODULE_ALIASES: Record<string, string[]> = {
   customers: ['customers', 'clientes'],
@@ -23,6 +23,7 @@ const MODULE_ALIASES: Record<string, string[]> = {
   finance: ['finance', 'financeiro'],
   gateways: ['gateways', 'gateway'],
   reports: ['reports', 'relatorios'],
+  commissions: ['commissions', 'comissoes', 'commissions_staff', 'commissions_owner', 'comissoes_dono'],
   users: ['users', 'equipe', 'funcionarios', 'team'],
   support: ['support', 'suporte'],
   training: ['training', 'treinamentos'],

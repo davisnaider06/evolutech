@@ -282,7 +282,9 @@ const App = () => (
                     path="/empresa/comissoes"
                     element={
                       <AuthGuard allowedRoles={['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA']}>
-                        <Comissoes />
+                        <ModuleGuard moduleCode="commissions">
+                          <Comissoes />
+                        </ModuleGuard>
                       </AuthGuard>
                     }
                   />

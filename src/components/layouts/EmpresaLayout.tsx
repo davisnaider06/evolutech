@@ -57,7 +57,7 @@ const navItems: NavItem[] = [
   { icon: ShoppingCart, label: 'Pedidos', path: '/empresa/pedidos', moduleCode: 'orders' },
   { icon: Wallet, label: 'Caixa', path: '/empresa/caixa', moduleCode: 'cash', ownerOnly: true },
   { icon: CreditCard, label: 'Financeiro', path: '/empresa/financeiro', moduleCode: 'finance', ownerOnly: true },
-  { icon: Wallet, label: 'Comissoes', path: '/empresa/comissoes', moduleCode: 'appointments' },
+  { icon: Wallet, label: 'Comissoes', path: '/empresa/comissoes', moduleCode: 'commissions' },
   { icon: CreditCard, label: 'Gateways', path: '/empresa/gateways', moduleCode: 'finance', ownerOnly: true, alwaysShow: true },
   { icon: BarChart3, label: 'Relatórios', path: '/empresa/relatorios', moduleCode: 'reports', ownerOnly: true },
   
@@ -85,6 +85,7 @@ const MODULE_ALIASES: Record<string, string[]> = {
   finance: ['finance', 'financeiro'],
   gateways: ['gateways', 'gateway'],
   reports: ['reports', 'relatorios'],
+  commissions: ['commissions', 'comissoes', 'commissions_staff', 'commissions_owner', 'comissoes_dono'],
   users: ['users', 'equipe', 'funcionarios', 'team'],
   support: ['support', 'suporte'],
   training: ['training', 'treinamentos'],
@@ -103,7 +104,16 @@ const codeMatchesAlias = (rawCode: string, alias: string) => {
   );
 };
 
-const OWNER_DEFAULT_MODULES = new Set(['dashboard', 'reports', 'users', 'finance', 'gateways', 'gateway']);
+const OWNER_DEFAULT_MODULES = new Set([
+  'dashboard',
+  'reports',
+  'users',
+  'finance',
+  'gateways',
+  'gateway',
+  'commissions_owner',
+  'comissoes_dono',
+]);
 
 export const EmpresaLayout: React.FC = () => {
   const { user, logout, company } = useAuth();
