@@ -14,12 +14,18 @@ const OWNER_DEFAULT_MODULES = [
 export class AuthService {
   async login(email: string, passwordPlain: string) {
     // Busca usuário e já traz as Roles juntas (JOIN automático)
+    const normalizedEmail = String(email || '').trim().toLowerCase();
     const user = await prisma.user.findUnique({
-      where: { email },
-      include: {
+      where: { email: normalizedEmail },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        passwordHash: true,
         roles: {
           include: { company: true },
           orderBy: { createdAt: 'desc' },
+          take: 1,
         },
       },
     });
@@ -60,10 +66,14 @@ export class AuthService {
   async getMe(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: {
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
         roles: {
           include: { company: true }, // Traz dados da empresa
-          orderBy: { createdAt: 'desc' }
+          orderBy: { createdAt: 'desc' },
+          take: 1,
         }
       }
     });

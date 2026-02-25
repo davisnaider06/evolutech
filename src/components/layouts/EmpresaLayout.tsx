@@ -57,6 +57,7 @@ const navItems: NavItem[] = [
   { icon: ShoppingCart, label: 'Pedidos', path: '/empresa/pedidos', moduleCode: 'orders' },
   { icon: Wallet, label: 'Caixa', path: '/empresa/caixa', moduleCode: 'cash', ownerOnly: true },
   { icon: CreditCard, label: 'Financeiro', path: '/empresa/financeiro', moduleCode: 'finance', ownerOnly: true },
+  { icon: Wallet, label: 'Comissoes', path: '/empresa/comissoes', moduleCode: 'appointments' },
   { icon: CreditCard, label: 'Gateways', path: '/empresa/gateways', moduleCode: 'finance', ownerOnly: true, alwaysShow: true },
   { icon: BarChart3, label: 'Relatórios', path: '/empresa/relatorios', moduleCode: 'reports', ownerOnly: true },
   

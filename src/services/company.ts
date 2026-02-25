@@ -45,6 +45,58 @@ export const companyService = {
     const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
     return request(`/reports/overview${suffix}`);
   },
+  commissionsOverview: async (params?: { month?: string; professionalId?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.month) searchParams.set('month', params.month);
+    if (params?.professionalId) searchParams.set('professional_id', params.professionalId);
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return request(`/commissions/overview${suffix}`);
+  },
+  listCommissionProfiles: async () => request('/commissions/profiles'),
+  upsertCommissionProfile: async (
+    professionalId: string,
+    data: {
+      service_commission_pct: number;
+      product_commission_pct: number;
+      monthly_fixed_amount?: number;
+      is_active?: boolean;
+    }
+  ) => request(`/commissions/profiles/${professionalId}`, { method: 'PUT', body: JSON.stringify(data) }),
+  createCommissionAdjustment: async (data: {
+    professional_id: string;
+    month: string;
+    amount: number;
+    reason?: string;
+  }) => request('/commissions/adjustments', { method: 'POST', body: JSON.stringify(data) }),
+  listCommissionPayouts: async (params?: { month?: string; professionalId?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.month) searchParams.set('month', params.month);
+    if (params?.professionalId) searchParams.set('professional_id', params.professionalId);
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return request(`/commissions/payouts${suffix}`);
+  },
+  upsertCommissionPayout: async (data: {
+    professional_id: string;
+    month: string;
+    status: 'pending' | 'paid';
+    amount_paid?: number;
+    note?: string;
+  }) => request('/commissions/payouts', { method: 'PUT', body: JSON.stringify(data) }),
+  exportCommissionsCsv: async (month?: string) => {
+    const searchParams = new URLSearchParams();
+    if (month) searchParams.set('month', month);
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    const response = await fetch(`${API_COMPANY_URL}/commissions/export${suffix}`, {
+      headers: getHeaders(),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || `Erro ${response.status}`);
+    }
+
+    return response.text();
+  },
   list: async (table: string, params?: Record<string, string | number | undefined>) => {
     const searchParams = new URLSearchParams();
     if (params) {

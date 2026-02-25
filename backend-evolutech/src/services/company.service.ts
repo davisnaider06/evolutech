@@ -18,6 +18,13 @@ class CompanyServiceError extends Error {
 
 export class CompanyService {
   private paymentService = new PaymentService();
+  private appointmentStatuses = new Set([
+    'pendente',
+    'confirmado',
+    'cancelado',
+    'concluido',
+    'no_show',
+  ]);
   private ownerDefaultModuleAliases = new Set([
     'dashboard',
     'reports',
@@ -98,8 +105,51 @@ export class CompanyService {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   }
 
+  private normalizeAppointmentStatus(input?: string, fallback = 'pendente') {
+    const raw = String(input || '')
+      .trim()
+      .toLowerCase();
+
+    const aliasMap: Record<string, string> = {
+      scheduled: 'pendente',
+      agendado: 'pendente',
+      pending: 'pendente',
+      confirmed: 'confirmado',
+      canceled: 'cancelado',
+      cancelled: 'cancelado',
+      completed: 'concluido',
+      done: 'concluido',
+      'no-show': 'no_show',
+      noshow: 'no_show',
+      missed: 'no_show',
+    };
+
+    const normalized = aliasMap[raw] || raw || fallback;
+    if (!this.appointmentStatuses.has(normalized)) {
+      throw new CompanyServiceError(
+        'Status de agendamento invalido. Use: pendente, confirmado, cancelado, concluido ou no_show',
+        400
+      );
+    }
+
+    return normalized;
+  }
+
   private isAdminRole(role: AuthenticatedUser['role']) {
     return role === 'SUPER_ADMIN_EVOLUTECH' || role === 'ADMIN_EVOLUTECH';
+  }
+
+  private ensureOwnerCompanyRole(user: AuthenticatedUser) {
+    if (user.role !== 'DONO_EMPRESA') {
+      throw new CompanyServiceError('Apenas DONO_EMPRESA pode executar esta acao', 403);
+    }
+  }
+
+  private normalizeCommissionPayoutStatus(input?: string) {
+    const value = String(input || '').trim().toLowerCase();
+    if (value === 'paid' || value === 'pago') return 'paid';
+    if (value === 'pending' || value === 'pendente' || !value) return 'pending';
+    throw new CompanyServiceError('status invalido. Use pending ou paid', 400);
   }
 
   private checkAccess(user: AuthenticatedUser, companyId: string) {
@@ -163,6 +213,9 @@ export class CompanyService {
     const orderDirection = queryParams.orderDirection === 'asc' ? 'asc' : 'desc';
 
     const where: any = { companyId };
+    if (table === 'appointments' && user.role === 'FUNCIONARIO_EMPRESA') {
+      where.professionalId = user.id;
+    }
 
     if (search && config.searchFields.length > 0) {
       where.OR = config.searchFields.map((field) => ({
@@ -175,7 +228,10 @@ export class CompanyService {
     }
 
     if (queryParams.status) {
-      where.status = queryParams.status;
+      where.status =
+        table === 'appointments'
+          ? this.normalizeAppointmentStatus(String(queryParams.status))
+          : queryParams.status;
     }
 
     if (queryParams.dateFrom || queryParams.dateTo) {
@@ -209,6 +265,13 @@ export class CompanyService {
     delete payload.company_id;
     delete payload.companyId;
     payload.companyId = companyId;
+    if (table === 'appointments') {
+      payload.status = this.normalizeAppointmentStatus(payload.status, 'pendente');
+      if (user.role === 'FUNCIONARIO_EMPRESA') {
+        payload.professionalId = user.id;
+        payload.professionalName = user.fullName;
+      }
+    }
 
     return model.create({ data: payload });
   }
@@ -217,9 +280,23 @@ export class CompanyService {
     const model = this.getModel(table);
     if (!model) throw new CompanyServiceError('Tabela não suportada', 400);
 
-    const existing = await model.findUnique({ where: { id }, select: { companyId: true } });
+    const existing = await model.findUnique({
+      where: { id },
+      select: {
+        companyId: true,
+        ...(table === 'appointments' ? { professionalId: true } : {}),
+      },
+    });
     if (!existing) throw new CompanyServiceError('Registro não encontrado', 404);
     if (!this.checkAccess(user, existing.companyId)) throw new CompanyServiceError('Acesso negado', 403);
+
+    if (
+      table === 'appointments' &&
+      user.role === 'FUNCIONARIO_EMPRESA' &&
+      String((existing as any).professionalId || '') !== user.id
+    ) {
+      throw new CompanyServiceError('Acesso negado ao agendamento de outro profissional', 403);
+    }
 
     await this.validateModuleAccess(table, user, existing.companyId);
 
@@ -227,6 +304,13 @@ export class CompanyService {
     delete payload.id;
     delete payload.companyId;
     delete payload.company_id;
+    if (table === 'appointments' && payload.status !== undefined) {
+      payload.status = this.normalizeAppointmentStatus(payload.status);
+    }
+    if (table === 'appointments' && user.role === 'FUNCIONARIO_EMPRESA') {
+      payload.professionalId = user.id;
+      payload.professionalName = user.fullName;
+    }
 
     return model.update({
       where: { id },
@@ -238,9 +322,23 @@ export class CompanyService {
     const model = this.getModel(table);
     if (!model) throw new CompanyServiceError('Tabela não suportada', 400);
 
-    const existing = await model.findUnique({ where: { id }, select: { companyId: true } });
+    const existing = await model.findUnique({
+      where: { id },
+      select: {
+        companyId: true,
+        ...(table === 'appointments' ? { professionalId: true } : {}),
+      },
+    });
     if (!existing) throw new CompanyServiceError('Registro não encontrado', 404);
     if (!this.checkAccess(user, existing.companyId)) throw new CompanyServiceError('Acesso negado', 403);
+
+    if (
+      table === 'appointments' &&
+      user.role === 'FUNCIONARIO_EMPRESA' &&
+      String((existing as any).professionalId || '') !== user.id
+    ) {
+      throw new CompanyServiceError('Acesso negado ao agendamento de outro profissional', 403);
+    }
 
     await this.validateModuleAccess(table, user, existing.companyId);
 
@@ -500,6 +598,34 @@ export class CompanyService {
     return { start, end };
   }
 
+  private parseMonthRef(monthRaw?: string) {
+    const input = String(monthRaw || '').trim();
+    const now = new Date();
+
+    if (!input) {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0);
+      return {
+        month: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`,
+        start,
+        end,
+      };
+    }
+
+    const match = input.match(/^(\d{4})-(\d{2})$/);
+    if (!match) throw new CompanyServiceError('month invalido. Use YYYY-MM', 400);
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+      throw new CompanyServiceError('month invalido. Use YYYY-MM', 400);
+    }
+
+    const start = new Date(year, month - 1, 1, 0, 0, 0, 0);
+    const end = new Date(year, month, 1, 0, 0, 0, 0);
+    return { month: `${year}-${String(month).padStart(2, '0')}`, start, end };
+  }
+
   async getReportsOverview(
     user: AuthenticatedUser,
     queryParams: { dateFrom?: string; dateTo?: string; company_id?: string; companyId?: string } = {}
@@ -614,6 +740,613 @@ export class CompanyService {
         })),
         top_items: topItems,
       },
+    };
+  }
+
+  async listCommissionProfiles(user: AuthenticatedUser) {
+    const companyId = this.resolveCompanyId(user, {});
+    await this.ensureAnyModuleAccess(user, companyId, ['finance', 'financeiro', 'appointments', 'agendamentos']);
+
+    const professionalFilter =
+      user.role === 'FUNCIONARIO_EMPRESA' ? { userId: user.id } : {};
+
+    const [professionals, profiles] = await Promise.all([
+      prisma.userRole.findMany({
+        where: {
+          companyId,
+          ...professionalFilter,
+          role: { in: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+          user: { isActive: true },
+        },
+        select: {
+          userId: true,
+          role: true,
+          user: { select: { fullName: true, email: true, isActive: true } },
+        },
+        orderBy: { user: { fullName: 'asc' } },
+      }),
+      (prisma as any).commissionProfile.findMany({
+        where: { companyId },
+        select: {
+          id: true,
+          professionalId: true,
+          serviceCommissionPct: true,
+          productCommissionPct: true,
+          monthlyFixedAmount: true,
+          isActive: true,
+          updatedAt: true,
+        },
+      }),
+    ]);
+
+    const profileMap = new Map<string, any>(profiles.map((item: any) => [item.professionalId, item]));
+
+    return professionals.map((item) => {
+      const profile = profileMap.get(item.userId);
+      return {
+        professional_id: item.userId,
+        professional_name: item.user.fullName,
+        professional_email: item.user.email,
+        role: item.role,
+        is_active: item.user.isActive,
+        profile_id: profile?.id || null,
+        service_commission_pct: Number(profile?.serviceCommissionPct ?? 40),
+        product_commission_pct: Number(profile?.productCommissionPct ?? 10),
+        monthly_fixed_amount: Number(profile?.monthlyFixedAmount ?? 0),
+        commission_profile_active: profile?.isActive !== false,
+        updated_at: profile?.updatedAt || null,
+      };
+    });
+  }
+
+  async upsertCommissionProfile(
+    user: AuthenticatedUser,
+    professionalId: string,
+    payload: {
+      service_commission_pct?: number;
+      product_commission_pct?: number;
+      monthly_fixed_amount?: number;
+      is_active?: boolean;
+      company_id?: string;
+    }
+  ) {
+    this.ensureOwnerCompanyRole(user);
+    const companyId = this.resolveCompanyId(user, payload);
+    await this.ensureAnyModuleAccess(user, companyId, ['finance', 'financeiro', 'appointments', 'agendamentos']);
+
+    const professional = await prisma.userRole.findFirst({
+      where: {
+        companyId,
+        userId: professionalId,
+        role: { in: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+        user: { isActive: true },
+      },
+      select: { userId: true },
+    });
+    if (!professional) throw new CompanyServiceError('Profissional nao encontrado na empresa', 404);
+
+    const serviceCommissionPct = Number(payload.service_commission_pct ?? 40);
+    const productCommissionPct = Number(payload.product_commission_pct ?? 10);
+    const monthlyFixedAmount = Number(payload.monthly_fixed_amount ?? 0);
+    const isActive = payload.is_active !== false;
+
+    if (serviceCommissionPct < 0 || serviceCommissionPct > 100) {
+      throw new CompanyServiceError('service_commission_pct deve estar entre 0 e 100', 400);
+    }
+    if (productCommissionPct < 0 || productCommissionPct > 100) {
+      throw new CompanyServiceError('product_commission_pct deve estar entre 0 e 100', 400);
+    }
+
+    const saved = await prisma.$transaction(async (tx) => {
+      const existing = await (tx as any).commissionProfile.findFirst({
+        where: { companyId, professionalId },
+        select: { id: true },
+      });
+
+      if (existing) {
+        return (tx as any).commissionProfile.update({
+          where: { id: existing.id },
+          data: {
+            serviceCommissionPct,
+            productCommissionPct,
+            monthlyFixedAmount,
+            isActive,
+          },
+        });
+      }
+
+      return (tx as any).commissionProfile.create({
+        data: {
+          companyId,
+          professionalId,
+          serviceCommissionPct,
+          productCommissionPct,
+          monthlyFixedAmount,
+          isActive,
+        },
+      });
+    });
+
+    return {
+      id: saved.id,
+      company_id: saved.companyId,
+      professional_id: saved.professionalId,
+      service_commission_pct: Number(saved.serviceCommissionPct || 0),
+      product_commission_pct: Number(saved.productCommissionPct || 0),
+      monthly_fixed_amount: Number(saved.monthlyFixedAmount || 0),
+      is_active: saved.isActive,
+      updated_at: saved.updatedAt,
+    };
+  }
+
+  async createCommissionAdjustment(
+    user: AuthenticatedUser,
+    payload: {
+      professional_id?: string;
+      month?: string;
+      amount?: number;
+      reason?: string;
+      company_id?: string;
+    }
+  ) {
+    this.ensureOwnerCompanyRole(user);
+    const companyId = this.resolveCompanyId(user, payload);
+    await this.ensureAnyModuleAccess(user, companyId, ['finance', 'financeiro']);
+
+    const professionalId = String(payload.professional_id || '').trim();
+    const amount = Number(payload.amount || 0);
+    const reason = String(payload.reason || '').trim() || null;
+    if (!professionalId) throw new CompanyServiceError('professional_id obrigatorio', 400);
+    if (!Number.isFinite(amount) || amount === 0) {
+      throw new CompanyServiceError('amount obrigatorio e diferente de zero', 400);
+    }
+
+    const professional = await prisma.userRole.findFirst({
+      where: {
+        companyId,
+        userId: professionalId,
+        role: { in: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+      },
+      select: { userId: true },
+    });
+    if (!professional) throw new CompanyServiceError('Profissional nao encontrado na empresa', 404);
+
+    const { start } = this.parseMonthRef(payload.month);
+    const created = await (prisma as any).commissionAdjustment.create({
+      data: {
+        companyId,
+        professionalId,
+        monthRef: start,
+        amount,
+        reason,
+        createdByUserId: user.id,
+      },
+    });
+
+    return {
+      id: created.id,
+      company_id: created.companyId,
+      professional_id: created.professionalId,
+      month: created.monthRef.toISOString().slice(0, 7),
+      amount: Number(created.amount || 0),
+      reason: created.reason || null,
+      created_by_user_id: created.createdByUserId || null,
+      created_at: created.createdAt,
+    };
+  }
+
+  async getCommissionsOverview(
+    user: AuthenticatedUser,
+    queryParams: { month?: string; professional_id?: string; company_id?: string; companyId?: string } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, ['finance', 'financeiro', 'appointments', 'agendamentos']);
+
+    const requestedProfessionalId = String(queryParams.professional_id || '').trim();
+    const cleanProfessionalId =
+      user.role === 'FUNCIONARIO_EMPRESA' ? user.id : requestedProfessionalId;
+    const monthRef = this.parseMonthRef(queryParams.month);
+
+    const professionals = await prisma.userRole.findMany({
+      where: {
+        companyId,
+        role: { in: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+        ...(cleanProfessionalId ? { userId: cleanProfessionalId } : {}),
+        user: { isActive: true },
+      },
+      select: {
+        userId: true,
+        role: true,
+        user: { select: { fullName: true, email: true } },
+      },
+    });
+
+    const professionalIds = professionals.map((item) => item.userId);
+    if (professionalIds.length === 0) {
+      return {
+        period: { month: monthRef.month, start: monthRef.start.toISOString(), end: monthRef.end.toISOString() },
+        summary: { professionals: 0, service_revenue: 0, product_revenue: 0, commission_total: 0 },
+        data: [],
+      };
+    }
+
+    const [profiles, appointments, pdvLogs, adjustments, services, payouts] = await Promise.all([
+      (prisma as any).commissionProfile.findMany({
+        where: { companyId, professionalId: { in: professionalIds }, isActive: true },
+        select: {
+          professionalId: true,
+          serviceCommissionPct: true,
+          productCommissionPct: true,
+          monthlyFixedAmount: true,
+        },
+      }),
+      (prisma as any).appointment.findMany({
+        where: {
+          companyId,
+          professionalId: { in: professionalIds },
+          status: 'concluido',
+          scheduledAt: { gte: monthRef.start, lt: monthRef.end },
+        },
+        select: {
+          professionalId: true,
+          serviceId: true,
+          serviceName: true,
+          status: true,
+        },
+      }),
+      prisma.auditLog.findMany({
+        where: {
+          companyId,
+          userId: { in: professionalIds },
+          action: 'PDV_CHECKOUT',
+          createdAt: { gte: monthRef.start, lt: monthRef.end },
+        },
+        select: { userId: true, details: true },
+      }),
+      (prisma as any).commissionAdjustment.findMany({
+        where: {
+          companyId,
+          professionalId: { in: professionalIds },
+          monthRef: monthRef.start,
+        },
+        select: { professionalId: true, amount: true },
+      }),
+      (prisma as any).appointmentService.findMany({
+        where: { companyId },
+        select: { id: true, name: true, price: true },
+      }),
+      (prisma as any).commissionPayout.findMany({
+        where: {
+          companyId,
+          professionalId: { in: professionalIds },
+          monthRef: monthRef.start,
+        },
+        select: {
+          professionalId: true,
+          computedCommission: true,
+          amountPaid: true,
+          status: true,
+          paidAt: true,
+          note: true,
+          updatedAt: true,
+        },
+      }),
+    ]);
+
+    const profileByProfessional = new Map<string, any>(
+      profiles.map((item: any) => [item.professionalId, item])
+    );
+    const servicePriceById = new Map<string, number>(
+      services.map((item: any) => [item.id, Number(item.price || 0)])
+    );
+    const servicePriceByName = new Map<string, number>(
+      services.map((item: any) => [String(item.name || '').trim().toLowerCase(), Number(item.price || 0)])
+    );
+
+    const appointmentRevenueByProfessional = new Map<string, number>();
+    for (const appointment of appointments as any[]) {
+      const professionalId = String(appointment.professionalId || '');
+      if (!professionalId) continue;
+      const byId = appointment.serviceId ? servicePriceById.get(String(appointment.serviceId)) : undefined;
+      const byName = servicePriceByName.get(String(appointment.serviceName || '').trim().toLowerCase());
+      const servicePrice = Number(byId ?? byName ?? 0);
+      appointmentRevenueByProfessional.set(
+        professionalId,
+        (appointmentRevenueByProfessional.get(professionalId) || 0) + servicePrice
+      );
+    }
+
+    const productRevenueByProfessional = new Map<string, number>();
+    for (const log of pdvLogs) {
+      const professionalId = String(log.userId || '').trim();
+      if (!professionalId) continue;
+      const details: any = log.details || {};
+      const items = Array.isArray(details.items) ? details.items : [];
+      const totalProducts = items
+        .filter((item: any) => String(item.itemType || '').toLowerCase() === 'product')
+        .reduce((sum: number, item: any) => sum + this.toNumber(item.lineTotal), 0);
+      productRevenueByProfessional.set(
+        professionalId,
+        (productRevenueByProfessional.get(professionalId) || 0) + totalProducts
+      );
+    }
+
+    const adjustmentsByProfessional = new Map<string, number>();
+    for (const item of adjustments as any[]) {
+      const professionalId = String(item.professionalId || '').trim();
+      if (!professionalId) continue;
+      adjustmentsByProfessional.set(
+        professionalId,
+        (adjustmentsByProfessional.get(professionalId) || 0) + this.toNumber(item.amount)
+      );
+    }
+    const payoutByProfessional = new Map<string, any>(
+      (payouts as any[]).map((item: any) => [String(item.professionalId || ''), item])
+    );
+
+    const rows = professionals.map((item) => {
+      const professionalId = item.userId;
+      const profile = profileByProfessional.get(professionalId);
+      const servicePct = Number(profile?.serviceCommissionPct ?? 40);
+      const productPct = Number(profile?.productCommissionPct ?? 10);
+      const monthlyFixed = Number(profile?.monthlyFixedAmount ?? 0);
+      const serviceRevenue = this.toNumber(appointmentRevenueByProfessional.get(professionalId));
+      const productRevenue = this.toNumber(productRevenueByProfessional.get(professionalId));
+      const monthAdjustments = this.toNumber(adjustmentsByProfessional.get(professionalId));
+
+      const serviceCommission = (serviceRevenue * servicePct) / 100;
+      const productCommission = (productRevenue * productPct) / 100;
+      const totalCommission = serviceCommission + productCommission + monthlyFixed + monthAdjustments;
+      const payout = payoutByProfessional.get(professionalId);
+      const payoutStatus = String(payout?.status || 'pending').toLowerCase();
+      const amountPaid = this.toNumber(payout?.amountPaid);
+      const amountPending = Math.max(0, totalCommission - amountPaid);
+
+      return {
+        professional_id: professionalId,
+        professional_name: item.user.fullName,
+        professional_email: item.user.email,
+        role: item.role,
+        service_revenue: serviceRevenue,
+        product_revenue: productRevenue,
+        service_commission_pct: servicePct,
+        product_commission_pct: productPct,
+        monthly_fixed_amount: monthlyFixed,
+        monthly_adjustments: monthAdjustments,
+        service_commission_amount: serviceCommission,
+        product_commission_amount: productCommission,
+        total_commission: totalCommission,
+        payout_status: payoutStatus,
+        amount_paid: amountPaid,
+        amount_pending: amountPending,
+        paid_at: payout?.paidAt || null,
+        payout_note: payout?.note || null,
+        payout_updated_at: payout?.updatedAt || null,
+      };
+    });
+
+    const summary = rows.reduce(
+      (acc, row) => {
+        acc.professionals += 1;
+        acc.service_revenue += row.service_revenue;
+        acc.product_revenue += row.product_revenue;
+        acc.commission_total += row.total_commission;
+        return acc;
+      },
+      { professionals: 0, service_revenue: 0, product_revenue: 0, commission_total: 0 }
+    );
+
+    return {
+      period: {
+        month: monthRef.month,
+        start: monthRef.start.toISOString(),
+        end: monthRef.end.toISOString(),
+      },
+      summary,
+      data: rows.sort((a, b) => b.total_commission - a.total_commission),
+    };
+  }
+
+  async exportCommissionsCsv(
+    user: AuthenticatedUser,
+    queryParams: { month?: string; professional_id?: string; company_id?: string; companyId?: string } = {}
+  ) {
+    this.ensureOwnerCompanyRole(user);
+    const result = await this.getCommissionsOverview(user, queryParams);
+    const header = [
+      'Mes',
+      'Profissional',
+      'Email',
+      'Cargo',
+      'Receita Servicos',
+      'Receita Produtos',
+      '% Servicos',
+      '% Produtos',
+      'Fixo Mensal',
+      'Ajustes',
+      'Comissao Servicos',
+      'Comissao Produtos',
+      'Comissao Total',
+      'Status Pagamento',
+      'Valor Pago',
+      'Valor Pendente',
+      'Pago Em',
+    ];
+
+    const escapeCsv = (value: unknown) => {
+      const raw = String(value ?? '');
+      if (raw.includes(',') || raw.includes('"') || raw.includes('\n')) {
+        return `"${raw.replace(/"/g, '""')}"`;
+      }
+      return raw;
+    };
+
+    const lines = [
+      header.join(','),
+      ...result.data.map((row: any) =>
+        [
+          result.period.month,
+          row.professional_name,
+          row.professional_email || '',
+          row.role,
+          row.service_revenue.toFixed(2),
+          row.product_revenue.toFixed(2),
+          row.service_commission_pct.toFixed(2),
+          row.product_commission_pct.toFixed(2),
+          row.monthly_fixed_amount.toFixed(2),
+          row.monthly_adjustments.toFixed(2),
+          row.service_commission_amount.toFixed(2),
+          row.product_commission_amount.toFixed(2),
+          row.total_commission.toFixed(2),
+          row.payout_status,
+          row.amount_paid.toFixed(2),
+          row.amount_pending.toFixed(2),
+          row.paid_at ? new Date(row.paid_at).toISOString() : '',
+        ]
+          .map(escapeCsv)
+          .join(',')
+      ),
+    ];
+
+    return lines.join('\n');
+  }
+
+  async upsertCommissionPayout(
+    user: AuthenticatedUser,
+    payload: {
+      professional_id?: string;
+      month?: string;
+      status?: string;
+      amount_paid?: number;
+      note?: string;
+      company_id?: string;
+    }
+  ) {
+    this.ensureOwnerCompanyRole(user);
+    const companyId = this.resolveCompanyId(user, payload);
+    await this.ensureAnyModuleAccess(user, companyId, ['finance', 'financeiro']);
+
+    const professionalId = String(payload.professional_id || '').trim();
+    if (!professionalId) throw new CompanyServiceError('professional_id obrigatorio', 400);
+
+    const professional = await prisma.userRole.findFirst({
+      where: {
+        companyId,
+        userId: professionalId,
+        role: { in: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+      },
+      select: { userId: true },
+    });
+    if (!professional) throw new CompanyServiceError('Profissional nao encontrado na empresa', 404);
+
+    const monthRef = this.parseMonthRef(payload.month);
+    const status = this.normalizeCommissionPayoutStatus(payload.status);
+    const note = String(payload.note || '').trim() || null;
+
+    const overview = await this.getCommissionsOverview(user, {
+      month: monthRef.month,
+      professional_id: professionalId,
+      company_id: companyId,
+    });
+    const row = Array.isArray(overview.data) ? overview.data[0] : null;
+    if (!row) throw new CompanyServiceError('Nao foi possivel calcular comissao para o profissional', 404);
+    const computedCommission = this.toNumber(row.total_commission);
+    const amountPaidInput =
+      payload.amount_paid !== undefined ? this.toNumber(payload.amount_paid) : computedCommission;
+    if (amountPaidInput < 0) throw new CompanyServiceError('amount_paid nao pode ser negativo', 400);
+
+    const saved = await prisma.$transaction(async (tx) => {
+      const existing = await (tx as any).commissionPayout.findFirst({
+        where: { companyId, professionalId, monthRef: monthRef.start },
+        select: { id: true },
+      });
+
+      const data = {
+        computedCommission,
+        amountPaid: amountPaidInput,
+        status,
+        paidAt: status === 'paid' ? new Date() : null,
+        note,
+        createdByUserId: user.id,
+      };
+
+      if (existing) {
+        return (tx as any).commissionPayout.update({
+          where: { id: existing.id },
+          data,
+        });
+      }
+
+      return (tx as any).commissionPayout.create({
+        data: {
+          companyId,
+          professionalId,
+          monthRef: monthRef.start,
+          ...data,
+        },
+      });
+    });
+
+    return {
+      id: saved.id,
+      company_id: saved.companyId,
+      professional_id: saved.professionalId,
+      month: saved.monthRef.toISOString().slice(0, 7),
+      computed_commission: Number(saved.computedCommission || 0),
+      amount_paid: Number(saved.amountPaid || 0),
+      status: saved.status,
+      paid_at: saved.paidAt,
+      note: saved.note || null,
+      updated_at: saved.updatedAt,
+    };
+  }
+
+  async listCommissionPayouts(
+    user: AuthenticatedUser,
+    queryParams: { month?: string; professional_id?: string; company_id?: string; companyId?: string } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, ['finance', 'financeiro']);
+
+    const monthRef = this.parseMonthRef(queryParams.month);
+    const requestedProfessionalId = String(queryParams.professional_id || '').trim();
+    const professionalId = user.role === 'FUNCIONARIO_EMPRESA' ? user.id : requestedProfessionalId || undefined;
+
+    const payouts = await (prisma as any).commissionPayout.findMany({
+      where: {
+        companyId,
+        monthRef: monthRef.start,
+        ...(professionalId ? { professionalId } : {}),
+      },
+      include: {
+        professional: { select: { id: true, fullName: true, email: true } },
+        createdByUser: { select: { id: true, fullName: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    return {
+      period: {
+        month: monthRef.month,
+        start: monthRef.start.toISOString(),
+        end: monthRef.end.toISOString(),
+      },
+      data: payouts.map((item: any) => ({
+        id: item.id,
+        company_id: item.companyId,
+        professional_id: item.professionalId,
+        professional_name: item.professional?.fullName || null,
+        professional_email: item.professional?.email || null,
+        computed_commission: Number(item.computedCommission || 0),
+        amount_paid: Number(item.amountPaid || 0),
+        status: item.status,
+        paid_at: item.paidAt,
+        note: item.note || null,
+        created_by_user_id: item.createdByUserId || null,
+        created_by_user_name: item.createdByUser?.fullName || null,
+        created_at: item.createdAt,
+        updated_at: item.updatedAt,
+      })),
     };
   }
 
@@ -2246,7 +2979,7 @@ export class CompanyService {
         companyId: company.id,
         professionalId,
         scheduledAt: { gte: startDate, lte: endDate },
-        status: { notIn: ['cancelado', 'cancelled'] },
+        status: { notIn: ['cancelado', 'cancelled', 'no_show', 'no-show'] },
       },
       select: { scheduledAt: true, serviceId: true },
       orderBy: { scheduledAt: 'asc' },
@@ -2332,7 +3065,7 @@ export class CompanyService {
           lte: endDate,
         },
         status: {
-          notIn: ['cancelado', 'cancelled'],
+          notIn: ['cancelado', 'cancelled', 'no_show', 'no-show'],
         },
       },
       orderBy: { scheduledAt: 'asc' },
@@ -2440,7 +3173,7 @@ export class CompanyService {
         companyId: company.id,
         professionalId: professional.userId,
         scheduledAt: { gte: dayStart, lte: dayEnd },
-        status: { notIn: ['cancelado', 'cancelled'] },
+        status: { notIn: ['cancelado', 'cancelled', 'no_show', 'no-show'] },
       },
       select: { id: true, scheduledAt: true, serviceId: true },
     });
@@ -2504,7 +3237,7 @@ export class CompanyService {
           serviceName: service.name,
           professionalName: professional.user.fullName,
           scheduledAt,
-          status: 'confirmado',
+          status: 'pendente',
         } as any,
       });
 

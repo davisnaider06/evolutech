@@ -65,6 +65,7 @@ const statusOptions = [
   { value: 'confirmado', label: 'Confirmado' },
   { value: 'cancelado', label: 'Cancelado' },
   { value: 'concluido', label: 'Concluido' },
+  { value: 'no_show', label: 'No-show' },
 ];
 
 const Agendamentos: React.FC = () => {
@@ -608,12 +609,18 @@ const Agendamentos: React.FC = () => {
           </div>
           <div className="space-y-2">
             <Label htmlFor="status">Status</Label>
-            <Input
+            <select
               id="status"
               value={formData.status}
               onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-              placeholder="pendente / confirmado / concluido / cancelado"
-            />
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              {statusOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       </FormDialog>

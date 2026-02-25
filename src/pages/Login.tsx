@@ -38,16 +38,13 @@ const Login: React.FC = () => {
       login(data.token, data.user);
       toast.success(`Bem-vindo, ${data.user.name}!`);
 
-      // Pequeno delay para UX
-      setTimeout(() => {
-        if (data.user.role === 'SUPER_ADMIN_EVOLUTECH') {
-            navigate('/admin-evolutech', { replace: true });
-        } else if (data.user.role === 'DONO_EMPRESA') {
-            navigate('/empresa/dashboard', { replace: true });
-        } else {
-            navigate('/redirect', { replace: true });
-        }
-      }, 500);
+      if (data.user.role === 'SUPER_ADMIN_EVOLUTECH') {
+          navigate('/admin-evolutech', { replace: true });
+      } else if (data.user.role === 'DONO_EMPRESA') {
+          navigate('/empresa/dashboard', { replace: true });
+      } else {
+          navigate('/redirect', { replace: true });
+      }
 
     } catch (error: any) {
       toast.error(error.message || "Erro ao conectar com o servidor");

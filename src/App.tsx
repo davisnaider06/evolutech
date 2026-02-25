@@ -59,6 +59,7 @@ import Relatorios from "./pages/empresa/Relatorios";
 import Personalizacao from "./pages/empresa/Personalizacao";
 import GatewaysEmpresa from "./pages/empresa/Gateways";
 import Cobrancas from "./pages/empresa/Cobrancas";
+import Comissoes from "./pages/empresa/Comissoes";
 
 const queryClient = new QueryClient();
 
@@ -267,7 +268,7 @@ const App = () => (
                       </AuthGuard>
                     } 
                   />
-                  <Route
+                  <Route 
                     path="/empresa/financeiro" 
                     element={
                       <AuthGuard allowedRoles={['DONO_EMPRESA']}>
@@ -276,6 +277,14 @@ const App = () => (
                         </ModuleGuard>
                       </AuthGuard>
                     } 
+                  />
+                  <Route
+                    path="/empresa/comissoes"
+                    element={
+                      <AuthGuard allowedRoles={['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA']}>
+                        <Comissoes />
+                      </AuthGuard>
+                    }
                   />
                   <Route 
                     path="/empresa/configuracoes" 

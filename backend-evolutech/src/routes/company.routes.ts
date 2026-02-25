@@ -11,6 +11,13 @@ router.use(authenticateToken);
 
 router.get('/financeiro/overview', companyController.getFinancialOverview.bind(companyController));
 router.get('/reports/overview', companyController.getReportsOverview.bind(companyController));
+router.get('/commissions/profiles', companyController.listCommissionProfiles.bind(companyController));
+router.put('/commissions/profiles/:professionalId', companyController.upsertCommissionProfile.bind(companyController));
+router.post('/commissions/adjustments', companyController.createCommissionAdjustment.bind(companyController));
+router.get('/commissions/overview', companyController.getCommissionsOverview.bind(companyController));
+router.get('/commissions/export', companyController.exportCommissionsCsv.bind(companyController));
+router.get('/commissions/payouts', companyController.listCommissionPayouts.bind(companyController));
+router.put('/commissions/payouts', companyController.upsertCommissionPayout.bind(companyController));
 router.get('/dashboard/metrics', dashboardController.getMetrics.bind(dashboardController));
 router.get('/appointments/availability', companyController.listAppointmentAvailability.bind(companyController));
 router.put('/appointments/availability/:professionalId', companyController.saveAppointmentAvailability.bind(companyController));

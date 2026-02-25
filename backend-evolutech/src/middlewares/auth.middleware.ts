@@ -20,8 +20,16 @@ export const authenticateToken = async (req: AuthedRequest, res: Response, next:
     // Busca usuário com as roles e empresa
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      include: {
-        roles: { include: { company: true } }
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        createdAt: true,
+        roles: {
+          include: { company: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        }
       }
     });
 

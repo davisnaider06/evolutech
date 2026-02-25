@@ -276,6 +276,76 @@ export class CompanyController {
     }
   }
 
+  async listCommissionProfiles(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.listCommissionProfiles(req.user!);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async upsertCommissionProfile(req: AuthedRequest, res: Response) {
+    try {
+      const { professionalId } = req.params;
+      const result = await service.upsertCommissionProfile(req.user!, professionalId, req.body || {});
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async createCommissionAdjustment(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.createCommissionAdjustment(req.user!, req.body || {});
+      return res.status(201).json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async getCommissionsOverview(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.getCommissionsOverview(req.user!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async exportCommissionsCsv(req: AuthedRequest, res: Response) {
+    try {
+      const csv = await service.exportCommissionsCsv(req.user!, req.query as any);
+      const month = String(req.query.month || '').trim() || new Date().toISOString().slice(0, 7);
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="comissoes-${month}.csv"`
+      );
+      return res.status(200).send(csv);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async upsertCommissionPayout(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.upsertCommissionPayout(req.user!, req.body || {});
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async listCommissionPayouts(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.listCommissionPayouts(req.user!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   async listBillingCharges(req: AuthedRequest, res: Response) {
     try {
       const result = await service.listBillingCharges(req.user!, req.query as any);
