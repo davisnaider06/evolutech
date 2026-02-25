@@ -53,6 +53,29 @@ interface LoyaltyPreview {
   estimated_total: number;
 }
 
+interface PdvCheckoutPreview {
+  customer_found: boolean;
+  subscription: {
+    enabled: boolean;
+    subscription_id: string | null;
+    plan_name: string | null;
+    is_unlimited: boolean;
+    covered_services: number;
+    discount: number;
+    remaining_services: number | null;
+  };
+  loyalty: LoyaltyPreview & {
+    enabled?: boolean;
+  };
+  discounts: {
+    manual_discount: number;
+    subscription_discount: number;
+    loyalty_discount: number;
+    total_discount: number;
+  };
+  estimated_total: number;
+}
+
 const Pdv: React.FC = () => {
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [search, setSearch] = useState('');
@@ -68,7 +91,7 @@ const Pdv: React.FC = () => {
   const [pendingPixOrders, setPendingPixOrders] = useState<PdvOrder[]>([]);
   const [pendingPixLoading, setPendingPixLoading] = useState(false);
   const [applyLoyalty, setApplyLoyalty] = useState(true);
-  const [loyaltyPreview, setLoyaltyPreview] = useState<LoyaltyPreview | null>(null);
+  const [checkoutPreview, setCheckoutPreview] = useState<PdvCheckoutPreview | null>(null);
   const [loyaltyPreviewLoading, setLoyaltyPreviewLoading] = useState(false);
 
   const fetchCatalog = async () => {
@@ -120,9 +143,9 @@ const Pdv: React.FC = () => {
   );
 
   useEffect(() => {
-    const canPreview = applyLoyalty && customerName.trim().length > 0 && cart.length > 0;
+    const canPreview = customerName.trim().length > 0 && cart.length > 0;
     if (!canPreview) {
-      setLoyaltyPreview(null);
+      setCheckoutPreview(null);
       setLoyaltyPreviewLoading(false);
       return;
     }
@@ -130,15 +153,16 @@ const Pdv: React.FC = () => {
     const timeout = setTimeout(async () => {
       try {
         setLoyaltyPreviewLoading(true);
-        const result = await companyService.previewPdvLoyalty({
+        const result = await companyService.previewPdvCheckout({
           customer_name: customerName.trim(),
           subtotal,
           service_quantity: serviceQuantity,
           manual_discount: discount,
+          apply_loyalty: applyLoyalty,
         });
-        setLoyaltyPreview(result || null);
+        setCheckoutPreview(result || null);
       } catch (_error) {
-        setLoyaltyPreview(null);
+        setCheckoutPreview(null);
       } finally {
         setLoyaltyPreviewLoading(false);
       }
@@ -147,10 +171,12 @@ const Pdv: React.FC = () => {
     return () => clearTimeout(timeout);
   }, [applyLoyalty, customerName, cart.length, subtotal, serviceQuantity, discount]);
 
-  const loyaltyAutomaticDiscount = Number(loyaltyPreview?.automatic_discount || 0);
+  const loyaltyAutomaticDiscount = Number(checkoutPreview?.discounts?.loyalty_discount || 0);
+  const subscriptionDiscount = Number(checkoutPreview?.discounts?.subscription_discount || 0);
   const total = useMemo(
-    () => Math.max(0, subtotal - discount - loyaltyAutomaticDiscount),
-    [subtotal, discount, loyaltyAutomaticDiscount]
+    () =>
+      Number(checkoutPreview?.estimated_total ?? Math.max(0, subtotal - discount - loyaltyAutomaticDiscount)),
+    [checkoutPreview?.estimated_total, subtotal, discount, loyaltyAutomaticDiscount]
   );
   const isPixFlow = paymentMethod === 'pix';
   const isCardMachineFlow = paymentMethod === 'credito' || paymentMethod === 'debito';
@@ -247,7 +273,7 @@ const Pdv: React.FC = () => {
       setCart([]);
       setCustomerName('');
       setDiscount(0);
-      setLoyaltyPreview(null);
+      setCheckoutPreview(null);
       await Promise.all([fetchCatalog(), fetchPendingPixOrders()]);
     } catch (error: any) {
       toast.error(error.message || 'Erro ao finalizar venda');
@@ -351,20 +377,43 @@ const Pdv: React.FC = () => {
               <div className="rounded-lg border p-3 space-y-1">
                 {loyaltyPreviewLoading ? (
                   <p className="text-xs text-muted-foreground">Calculando fidelidade...</p>
-                ) : !loyaltyPreview ? (
-                  <p className="text-xs text-muted-foreground">Informe cliente e itens para calcular fidelidade.</p>
-                ) : !loyaltyPreview.customer_found ? (
+                ) : !checkoutPreview ? (
+                  <p className="text-xs text-muted-foreground">Informe cliente e itens para calcular beneficios.</p>
+                ) : !checkoutPreview.customer_found ? (
                   <p className="text-xs text-muted-foreground">Cliente nao encontrado para fidelidade.</p>
-                ) : !loyaltyPreview.loyalty_active ? (
+                ) : !checkoutPreview.loyalty.loyalty_active ? (
                   <p className="text-xs text-muted-foreground">Fidelidade desativada nesta empresa.</p>
                 ) : (
                   <>
-                    <p className="text-xs">Cliente: <span className="font-medium">{loyaltyPreview.customer?.name}</span></p>
-                    <p className="text-xs">Saldo cashback: R$ {Number(loyaltyPreview.profile?.cashback_balance || 0).toFixed(2)}</p>
-                    <p className="text-xs">Saldo pontos: {Number(loyaltyPreview.profile?.points_balance || 0).toFixed(0)}</p>
-                    <p className="text-xs">Desconto automatico: R$ {Number(loyaltyPreview.automatic_discount || 0).toFixed(2)}</p>
-                    <p className="text-xs">Cashback a ganhar: R$ {Number(loyaltyPreview.cashback_to_earn || 0).toFixed(2)}</p>
-                    <p className="text-xs">Pontos a ganhar: {Number(loyaltyPreview.points_to_earn || 0).toFixed(0)}</p>
+                    <p className="text-xs">Cliente: <span className="font-medium">{checkoutPreview.loyalty.customer?.name}</span></p>
+                    <p className="text-xs">Saldo cashback: R$ {Number(checkoutPreview.loyalty.profile?.cashback_balance || 0).toFixed(2)}</p>
+                    <p className="text-xs">Saldo pontos: {Number(checkoutPreview.loyalty.profile?.points_balance || 0).toFixed(0)}</p>
+                    <p className="text-xs">Desconto fidelidade: R$ {Number(checkoutPreview.loyalty.automatic_discount || 0).toFixed(2)}</p>
+                    <p className="text-xs">Cashback a ganhar: R$ {Number(checkoutPreview.loyalty.cashback_to_earn || 0).toFixed(2)}</p>
+                    <p className="text-xs">Pontos a ganhar: {Number(checkoutPreview.loyalty.points_to_earn || 0).toFixed(0)}</p>
+                  </>
+                )}
+              </div>
+            ) : null}
+
+            {checkoutPreview?.subscription ? (
+              <div className="rounded-lg border p-3 space-y-1">
+                {!checkoutPreview.subscription.enabled ? (
+                  <p className="text-xs text-muted-foreground">Sem cobertura de assinatura aplicavel nesta venda.</p>
+                ) : (
+                  <>
+                    <p className="text-xs">
+                      Assinatura ativa: <span className="font-medium">{checkoutPreview.subscription.plan_name || '-'}</span>
+                    </p>
+                    <p className="text-xs">
+                      Servicos cobertos: {Number(checkoutPreview.subscription.covered_services || 0)}
+                    </p>
+                    <p className="text-xs">
+                      Desconto assinatura: R$ {Number(checkoutPreview.subscription.discount || 0).toFixed(2)}
+                    </p>
+                    <p className="text-xs">
+                      Saldo de servicos: {checkoutPreview.subscription.remaining_services === null ? 'Ilimitado' : checkoutPreview.subscription.remaining_services}
+                    </p>
                   </>
                 )}
               </div>
@@ -424,6 +473,7 @@ const Pdv: React.FC = () => {
             <div className="rounded-lg border p-3">
               <p className="text-sm">Subtotal: R$ {subtotal.toFixed(2)}</p>
               <p className="text-sm">Desconto manual: R$ {discount.toFixed(2)}</p>
+              <p className="text-sm">Desconto assinatura: R$ {subscriptionDiscount.toFixed(2)}</p>
               <p className="text-sm">Desconto fidelidade: R$ {loyaltyAutomaticDiscount.toFixed(2)}</p>
               <p className="font-semibold">Total: R$ {total.toFixed(2)}</p>
             </div>

@@ -60,6 +60,8 @@ import Personalizacao from "./pages/empresa/Personalizacao";
 import GatewaysEmpresa from "./pages/empresa/Gateways";
 import Cobrancas from "./pages/empresa/Cobrancas";
 import Comissoes from "./pages/empresa/Comissoes";
+import Fidelidade from "./pages/empresa/Fidelidade";
+import Assinaturas from "./pages/empresa/Assinaturas";
 
 const queryClient = new QueryClient();
 
@@ -284,6 +286,24 @@ const App = () => (
                       <AuthGuard allowedRoles={['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA']}>
                         <ModuleGuard moduleCode="commissions">
                           <Comissoes />
+                        </ModuleGuard>
+                      </AuthGuard>
+                    }
+                  />
+                  <Route
+                    path="/empresa/fidelidade"
+                    element={
+                      <AuthGuard allowedRoles={['DONO_EMPRESA']}>
+                        <Fidelidade />
+                      </AuthGuard>
+                    }
+                  />
+                  <Route
+                    path="/empresa/assinaturas"
+                    element={
+                      <AuthGuard allowedRoles={['DONO_EMPRESA']}>
+                        <ModuleGuard moduleCode="subscriptions">
+                          <Assinaturas />
                         </ModuleGuard>
                       </AuthGuard>
                     }

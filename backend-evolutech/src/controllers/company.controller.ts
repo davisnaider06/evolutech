@@ -198,6 +198,15 @@ export class CompanyController {
     }
   }
 
+  async previewPdvCheckout(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.previewPdvCheckout(req.user!, req.body || {});
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   async listSubscriptionPlans(req: AuthedRequest, res: Response) {
     try {
       const result = await service.listSubscriptionPlans(req.user!, req.query as any);
@@ -228,6 +237,15 @@ export class CompanyController {
   async upsertCustomerSubscription(req: AuthedRequest, res: Response) {
     try {
       const result = await service.upsertCustomerSubscription(req.user!, req.body || {});
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async listSubscriptionUsage(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.listSubscriptionUsage(req.user!, req.query as any);
       return res.json(result);
     } catch (error: unknown) {
       return this.handleError(error, res);

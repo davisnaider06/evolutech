@@ -52,7 +52,9 @@ router.put('/subscriptions/plans', companyController.upsertSubscriptionPlan.bind
 router.get('/subscriptions/customers', companyController.listCustomerSubscriptions.bind(companyController));
 router.post('/subscriptions/customers', companyController.upsertCustomerSubscription.bind(companyController));
 router.put('/subscriptions/customers', companyController.upsertCustomerSubscription.bind(companyController));
+router.get('/subscriptions/usage', companyController.listSubscriptionUsage.bind(companyController));
 router.post('/pdv/loyalty/preview', companyController.previewPdvLoyalty.bind(companyController));
+router.post('/pdv/preview', companyController.previewPdvCheckout.bind(companyController));
 router.get('/pdv/products', companyController.listPdvProducts.bind(companyController));
 router.get('/pdv/orders', companyController.listPdvOrders.bind(companyController));
 router.post('/pdv/checkout', companyController.checkoutPdv.bind(companyController));

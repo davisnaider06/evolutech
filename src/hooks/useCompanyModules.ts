@@ -24,6 +24,8 @@ const MODULE_ALIASES: Record<string, string[]> = {
   gateways: ['gateways', 'gateway'],
   reports: ['reports', 'relatorios'],
   commissions: ['commissions', 'comissoes', 'commissions_staff', 'commissions_owner', 'comissoes_dono'],
+  subscriptions: ['subscriptions', 'assinaturas'],
+  loyalty: ['loyalty', 'fidelidade'],
   users: ['users', 'equipe', 'funcionarios', 'team'],
   support: ['support', 'suporte'],
   training: ['training', 'treinamentos'],

@@ -799,6 +799,155 @@ export class CompanyService {
     };
   }
 
+  async previewPdvCheckout(
+    user: AuthenticatedUser,
+    data: {
+      customer_name?: string;
+      subtotal?: number;
+      service_quantity?: number;
+      manual_discount?: number;
+      apply_loyalty?: boolean;
+      company_id?: string;
+    }
+  ) {
+    const companyId = this.resolveCompanyId(user, data);
+    await this.ensureAnyModuleAccess(user, companyId, ['pdv', 'orders', 'pedidos']);
+
+    const subtotal = Math.max(0, Number(data.subtotal || 0));
+    const serviceQuantity = Math.max(0, Number(data.service_quantity || 0));
+    const manualDiscount = Math.max(0, Number(data.manual_discount || 0));
+    const applyLoyalty = data.apply_loyalty !== false;
+    const now = new Date();
+
+    const customer = await this.findCustomerByName(prisma as any, companyId, data.customer_name);
+    const settings = await this.getOrCreateLoyaltySettings(prisma as any, companyId);
+
+    const subscription = {
+      enabled: false,
+      subscription_id: null as string | null,
+      plan_name: null as string | null,
+      is_unlimited: false,
+      covered_services: 0,
+      discount: 0,
+      remaining_services: null as number | null,
+    };
+
+    if (customer && serviceQuantity > 0) {
+      const activeSubscription = await (prisma as any).customerSubscription.findFirst({
+        where: {
+          companyId,
+          customerId: customer.id,
+          status: 'active',
+          startAt: { lte: now },
+          endAt: { gte: now },
+        },
+        include: {
+          plan: {
+            select: { id: true, name: true, isUnlimited: true },
+          },
+        },
+        orderBy: { endAt: 'asc' },
+      });
+
+      if (activeSubscription) {
+        const remainingCover = activeSubscription.plan?.isUnlimited
+          ? serviceQuantity
+          : Math.max(0, Number(activeSubscription.remainingServices ?? 0));
+        const coveredServiceQuantity = Math.max(0, Math.min(serviceQuantity, remainingCover));
+        const avgServiceUnitPrice = serviceQuantity > 0 ? subtotal / serviceQuantity : 0;
+        const subscriptionDiscount = Number((coveredServiceQuantity * avgServiceUnitPrice).toFixed(2));
+
+        subscription.enabled = subscriptionDiscount > 0;
+        subscription.subscription_id = activeSubscription.id;
+        subscription.plan_name = activeSubscription.plan?.name || null;
+        subscription.is_unlimited = Boolean(activeSubscription.plan?.isUnlimited);
+        subscription.covered_services = coveredServiceQuantity;
+        subscription.discount = subscriptionDiscount;
+        subscription.remaining_services = activeSubscription.plan?.isUnlimited
+          ? null
+          : Math.max(0, Number(activeSubscription.remainingServices ?? 0) - coveredServiceQuantity);
+      }
+    }
+
+    const loyalty = {
+      enabled: false,
+      customer_found: Boolean(customer),
+      loyalty_active: Boolean(settings.isActive),
+      customer: customer ? { id: customer.id, name: customer.name } : null,
+      profile: null as null | { points_balance: number; cashback_balance: number; total_services_count: number },
+      automatic_discount: 0,
+      cashback_discount: 0,
+      tenth_service_discount: 0,
+      cashback_to_earn: 0,
+      points_to_earn: 0,
+    };
+
+    if (customer && settings.isActive && applyLoyalty) {
+      const profile = await this.getOrCreateLoyaltyProfile(prisma as any, companyId, customer.id);
+      const cashbackAvailable = this.toNumber(profile.cashbackBalance);
+      const remainingAfterManualAndSubscription = Math.max(
+        0,
+        subtotal - manualDiscount - Number(subscription.discount || 0)
+      );
+      const cashbackToUse = Math.min(cashbackAvailable, remainingAfterManualAndSubscription);
+
+      const billableServiceQuantity = Math.max(0, serviceQuantity - Number(subscription.covered_services || 0));
+      let tenthServiceDiscount = 0;
+      if (settings.tenthServiceFree && billableServiceQuantity > 0) {
+        const prior = Number(profile.totalServicesCount || 0);
+        const freeCount = Math.max(
+          0,
+          Math.floor((prior + billableServiceQuantity) / 10) - Math.floor(prior / 10)
+        );
+        if (freeCount > 0) {
+          const avgUnit =
+            billableServiceQuantity > 0 ? remainingAfterManualAndSubscription / billableServiceQuantity : 0;
+          tenthServiceDiscount = Math.max(0, avgUnit * freeCount);
+        }
+      }
+
+      const automaticDiscount = Math.min(
+        remainingAfterManualAndSubscription,
+        cashbackToUse + tenthServiceDiscount
+      );
+      const estimatedAfterLoyalty = Math.max(0, remainingAfterManualAndSubscription - automaticDiscount);
+
+      loyalty.enabled = automaticDiscount > 0 || billableServiceQuantity > 0;
+      loyalty.profile = {
+        points_balance: this.toNumber(profile.pointsBalance),
+        cashback_balance: cashbackAvailable,
+        total_services_count: Number(profile.totalServicesCount || 0),
+      };
+      loyalty.automatic_discount = Number(automaticDiscount.toFixed(2));
+      loyalty.cashback_discount = Number(cashbackToUse.toFixed(2));
+      loyalty.tenth_service_discount = Number(tenthServiceDiscount.toFixed(2));
+      loyalty.cashback_to_earn = Number(
+        (estimatedAfterLoyalty * (this.toNumber(settings.cashbackPercent) / 100)).toFixed(2)
+      );
+      loyalty.points_to_earn = Number(
+        (billableServiceQuantity * Number(settings.pointsPerService || 0)).toFixed(2)
+      );
+    }
+
+    const totalDiscount = Number(
+      (manualDiscount + Number(subscription.discount || 0) + Number(loyalty.automatic_discount || 0)).toFixed(2)
+    );
+    const estimatedTotal = Number(Math.max(0, subtotal - totalDiscount).toFixed(2));
+
+    return {
+      customer_found: Boolean(customer),
+      subscription,
+      loyalty,
+      discounts: {
+        manual_discount: Number(manualDiscount.toFixed(2)),
+        subscription_discount: Number(Number(subscription.discount || 0).toFixed(2)),
+        loyalty_discount: Number(Number(loyalty.automatic_discount || 0).toFixed(2)),
+        total_discount: totalDiscount,
+      },
+      estimated_total: estimatedTotal,
+    };
+  }
+
   private normalizeSubscriptionInterval(value?: string) {
     const raw = String(value || '').trim().toLowerCase();
     if (raw === 'monthly' || raw === 'mensal') return 'monthly';
@@ -1057,6 +1206,78 @@ export class CompanyService {
       notes: saved.notes || null,
       created_at: saved.createdAt,
       updated_at: saved.updatedAt,
+    };
+  }
+
+  async listSubscriptionUsage(
+    user: AuthenticatedUser,
+    queryParams: {
+      company_id?: string;
+      customer_id?: string;
+      subscription_id?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      page?: number;
+      pageSize?: number;
+    } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, ['subscriptions', 'assinaturas']);
+
+    const customerId = String(queryParams.customer_id || '').trim();
+    const subscriptionId = String(queryParams.subscription_id || '').trim();
+    const page = Math.max(1, Number(queryParams.page || 1));
+    const pageSize = Math.min(100, Math.max(1, Number(queryParams.pageSize || 20)));
+
+    const where: any = { companyId };
+    if (subscriptionId) where.subscriptionId = subscriptionId;
+    if (customerId) where.subscription = { customerId };
+    if (queryParams.dateFrom || queryParams.dateTo) {
+      where.usedAt = {};
+      if (queryParams.dateFrom) where.usedAt.gte = new Date(String(queryParams.dateFrom));
+      if (queryParams.dateTo) where.usedAt.lte = new Date(String(queryParams.dateTo));
+    }
+
+    const [rows, total] = await Promise.all([
+      (prisma as any).subscriptionUsage.findMany({
+        where,
+        include: {
+          subscription: {
+            select: {
+              id: true,
+              customerId: true,
+              customer: { select: { id: true, name: true, email: true, phone: true } },
+              plan: { select: { id: true, name: true } },
+            },
+          },
+        },
+        orderBy: { usedAt: 'desc' },
+        take: pageSize,
+        skip: (page - 1) * pageSize,
+      }),
+      (prisma as any).subscriptionUsage.count({ where }),
+    ]);
+
+    return {
+      data: rows.map((item: any) => ({
+        id: item.id,
+        company_id: item.companyId,
+        subscription_id: item.subscriptionId,
+        customer_id: item.subscription?.customerId || null,
+        customer_name: item.subscription?.customer?.name || null,
+        plan_id: item.subscription?.plan?.id || null,
+        plan_name: item.subscription?.plan?.name || null,
+        order_id: item.orderId || null,
+        service_id: item.serviceId || null,
+        service_name: item.serviceName || null,
+        quantity: Number(item.quantity || 0),
+        amount_discounted: this.toNumber(item.amountDiscounted),
+        used_at: item.usedAt,
+        created_by_user_id: item.createdByUserId || null,
+      })),
+      total,
+      page,
+      pageSize,
     };
   }
 

@@ -30,6 +30,8 @@ import {
   Warehouse,
   Smartphone,
   Palette,
+  Gift,
+  Repeat,
 } from 'lucide-react';
 
 interface NavItem {
@@ -58,6 +60,8 @@ const navItems: NavItem[] = [
   { icon: Wallet, label: 'Caixa', path: '/empresa/caixa', moduleCode: 'cash', ownerOnly: true },
   { icon: CreditCard, label: 'Financeiro', path: '/empresa/financeiro', moduleCode: 'finance', ownerOnly: true },
   { icon: Wallet, label: 'Comissoes', path: '/empresa/comissoes', moduleCode: 'commissions' },
+  { icon: Gift, label: 'Fidelidade', path: '/empresa/fidelidade', moduleCode: 'loyalty', ownerOnly: true },
+  { icon: Repeat, label: 'Assinaturas', path: '/empresa/assinaturas', moduleCode: 'subscriptions', ownerOnly: true },
   { icon: CreditCard, label: 'Gateways', path: '/empresa/gateways', moduleCode: 'finance', ownerOnly: true, alwaysShow: true },
   { icon: BarChart3, label: 'Relatórios', path: '/empresa/relatorios', moduleCode: 'reports', ownerOnly: true },
   
@@ -86,6 +90,8 @@ const MODULE_ALIASES: Record<string, string[]> = {
   gateways: ['gateways', 'gateway'],
   reports: ['reports', 'relatorios'],
   commissions: ['commissions', 'comissoes', 'commissions_staff', 'commissions_owner', 'comissoes_dono'],
+  subscriptions: ['subscriptions', 'assinaturas'],
+  loyalty: ['loyalty', 'fidelidade'],
   users: ['users', 'equipe', 'funcionarios', 'team'],
   support: ['support', 'suporte'],
   training: ['training', 'treinamentos'],

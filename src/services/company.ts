@@ -143,6 +143,78 @@ export const companyService = {
     service_quantity?: number;
     manual_discount?: number;
   }) => request('/pdv/loyalty/preview', { method: 'POST', body: JSON.stringify(data) }),
+  previewPdvCheckout: async (data: {
+    customer_name?: string;
+    subtotal?: number;
+    service_quantity?: number;
+    manual_discount?: number;
+    apply_loyalty?: boolean;
+  }) => request('/pdv/preview', { method: 'POST', body: JSON.stringify(data) }),
+  getLoyaltySettings: async () => request('/loyalty/settings'),
+  updateLoyaltySettings: async (data: {
+    points_per_service: number;
+    cashback_percent: number;
+    tenth_service_free: boolean;
+    point_value: number;
+    is_active: boolean;
+  }) => request('/loyalty/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  getCustomerLoyaltyProfile: async (customerId: string) =>
+    request(`/loyalty/customers/${encodeURIComponent(customerId)}`),
+  listSubscriptionPlans: async (status?: string) =>
+    request(`/subscriptions/plans${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+  upsertSubscriptionPlan: async (data: {
+    id?: string;
+    name: string;
+    description?: string;
+    interval: 'monthly' | 'quarterly' | 'yearly';
+    price: number;
+    included_services?: number | null;
+    is_unlimited?: boolean;
+    is_active?: boolean;
+  }) =>
+    request(`/subscriptions/plans`, {
+      method: data.id ? 'PUT' : 'POST',
+      body: JSON.stringify(data),
+    }),
+  listCustomerSubscriptions: async (params?: { customerId?: string; status?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.customerId) searchParams.set('customer_id', params.customerId);
+    if (params?.status) searchParams.set('status', params.status);
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return request(`/subscriptions/customers${suffix}`);
+  },
+  listSubscriptionUsage: async (params?: {
+    customerId?: string;
+    subscriptionId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    page?: number;
+    pageSize?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.customerId) searchParams.set('customer_id', params.customerId);
+    if (params?.subscriptionId) searchParams.set('subscription_id', params.subscriptionId);
+    if (params?.dateFrom) searchParams.set('dateFrom', params.dateFrom);
+    if (params?.dateTo) searchParams.set('dateTo', params.dateTo);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return request(`/subscriptions/usage${suffix}`);
+  },
+  upsertCustomerSubscription: async (data: {
+    id?: string;
+    customer_id: string;
+    plan_id: string;
+    start_at?: string;
+    auto_renew?: boolean;
+    amount?: number;
+    notes?: string;
+    status?: 'active' | 'pending' | 'expired' | 'canceled' | 'suspended';
+  }) =>
+    request(`/subscriptions/customers`, {
+      method: data.id ? 'PUT' : 'POST',
+      body: JSON.stringify(data),
+    }),
   checkoutPdv: async (data: {
     customerName?: string;
     paymentMethod: 'dinheiro' | 'pix' | 'cartao' | 'credito' | 'debito';
