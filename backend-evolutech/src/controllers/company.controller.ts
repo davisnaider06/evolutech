@@ -151,6 +151,88 @@ export class CompanyController {
     }
   }
 
+  async getCustomerHistory(req: AuthedRequest, res: Response) {
+    try {
+      const { customerId } = req.params;
+      const result = await service.getCustomerHistory(req.user!, customerId, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async getLoyaltySettings(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.getLoyaltySettings(req.user!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async updateLoyaltySettings(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.updateLoyaltySettings(req.user!, req.body || {});
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async getCustomerLoyaltyProfile(req: AuthedRequest, res: Response) {
+    try {
+      const { customerId } = req.params;
+      const result = await service.getCustomerLoyaltyProfile(req.user!, customerId, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async previewPdvLoyalty(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.previewLoyaltyForCheckout(req.user!, req.body || {});
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async listSubscriptionPlans(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.listSubscriptionPlans(req.user!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async upsertSubscriptionPlan(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.upsertSubscriptionPlan(req.user!, req.body || {});
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async listCustomerSubscriptions(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.listCustomerSubscriptions(req.user!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async upsertCustomerSubscription(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.upsertCustomerSubscription(req.user!, req.body || {});
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
   async listMyTasks(req: AuthedRequest, res: Response) {
     try {
       const result = await service.listMyTasks(req.user!, req.query);

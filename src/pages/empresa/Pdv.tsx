@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { companyService } from '@/services/company';
 
 interface CatalogItem {
@@ -35,6 +36,23 @@ interface PdvOrder {
   createdAt: string;
 }
 
+interface LoyaltyPreview {
+  customer_found: boolean;
+  loyalty_active: boolean;
+  customer?: { id: string; name: string };
+  profile?: {
+    points_balance: number;
+    cashback_balance: number;
+    total_services_count: number;
+  };
+  automatic_discount: number;
+  cashback_discount: number;
+  tenth_service_discount: number;
+  cashback_to_earn: number;
+  points_to_earn: number;
+  estimated_total: number;
+}
+
 const Pdv: React.FC = () => {
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [search, setSearch] = useState('');
@@ -49,6 +67,9 @@ const Pdv: React.FC = () => {
   const [gatewayPaymentUrl, setGatewayPaymentUrl] = useState<string>('');
   const [pendingPixOrders, setPendingPixOrders] = useState<PdvOrder[]>([]);
   const [pendingPixLoading, setPendingPixLoading] = useState(false);
+  const [applyLoyalty, setApplyLoyalty] = useState(true);
+  const [loyaltyPreview, setLoyaltyPreview] = useState<LoyaltyPreview | null>(null);
+  const [loyaltyPreviewLoading, setLoyaltyPreviewLoading] = useState(false);
 
   const fetchCatalog = async () => {
     try {
@@ -90,7 +111,47 @@ const Pdv: React.FC = () => {
     [cart]
   );
 
-  const total = useMemo(() => Math.max(0, subtotal - discount), [subtotal, discount]);
+  const serviceQuantity = useMemo(
+    () =>
+      cart
+        .filter((item) => item.itemType === 'service')
+        .reduce((sum, item) => sum + item.quantity, 0),
+    [cart]
+  );
+
+  useEffect(() => {
+    const canPreview = applyLoyalty && customerName.trim().length > 0 && cart.length > 0;
+    if (!canPreview) {
+      setLoyaltyPreview(null);
+      setLoyaltyPreviewLoading(false);
+      return;
+    }
+
+    const timeout = setTimeout(async () => {
+      try {
+        setLoyaltyPreviewLoading(true);
+        const result = await companyService.previewPdvLoyalty({
+          customer_name: customerName.trim(),
+          subtotal,
+          service_quantity: serviceQuantity,
+          manual_discount: discount,
+        });
+        setLoyaltyPreview(result || null);
+      } catch (_error) {
+        setLoyaltyPreview(null);
+      } finally {
+        setLoyaltyPreviewLoading(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [applyLoyalty, customerName, cart.length, subtotal, serviceQuantity, discount]);
+
+  const loyaltyAutomaticDiscount = Number(loyaltyPreview?.automatic_discount || 0);
+  const total = useMemo(
+    () => Math.max(0, subtotal - discount - loyaltyAutomaticDiscount),
+    [subtotal, discount, loyaltyAutomaticDiscount]
+  );
   const isPixFlow = paymentMethod === 'pix';
   const isCardMachineFlow = paymentMethod === 'credito' || paymentMethod === 'debito';
 
@@ -156,6 +217,7 @@ const Pdv: React.FC = () => {
         customerName: customerName.trim() || undefined,
         paymentMethod,
         discount,
+        applyLoyalty,
         items: cart.map((item) => ({
           itemType: item.itemType,
           itemId: item.itemId,
@@ -172,12 +234,20 @@ const Pdv: React.FC = () => {
         toast.success('PIX criado. A confirmacao ocorre automaticamente via gateway.');
       } else {
         resetGatewayView();
-        toast.success('Venda finalizada com sucesso');
+        const loyalty = result?.summary?.loyalty;
+        if (loyalty?.enabled) {
+          toast.success(
+            `Venda finalizada. Desconto fidelidade: R$ ${Number(loyalty.automaticDiscount || 0).toFixed(2)}.`
+          );
+        } else {
+          toast.success('Venda finalizada com sucesso');
+        }
       }
 
       setCart([]);
       setCustomerName('');
       setDiscount(0);
+      setLoyaltyPreview(null);
       await Promise.all([fetchCatalog(), fetchPendingPixOrders()]);
     } catch (error: any) {
       toast.error(error.message || 'Erro ao finalizar venda');
@@ -269,6 +339,37 @@ const Pdv: React.FC = () => {
               <Input value={customerName} onChange={(event) => setCustomerName(event.target.value)} />
             </div>
 
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div>
+                <p className="text-sm font-medium">Aplicar fidelidade</p>
+                <p className="text-xs text-muted-foreground">Cashback e 10o servico gratis</p>
+              </div>
+              <Switch checked={applyLoyalty} onCheckedChange={setApplyLoyalty} />
+            </div>
+
+            {applyLoyalty ? (
+              <div className="rounded-lg border p-3 space-y-1">
+                {loyaltyPreviewLoading ? (
+                  <p className="text-xs text-muted-foreground">Calculando fidelidade...</p>
+                ) : !loyaltyPreview ? (
+                  <p className="text-xs text-muted-foreground">Informe cliente e itens para calcular fidelidade.</p>
+                ) : !loyaltyPreview.customer_found ? (
+                  <p className="text-xs text-muted-foreground">Cliente nao encontrado para fidelidade.</p>
+                ) : !loyaltyPreview.loyalty_active ? (
+                  <p className="text-xs text-muted-foreground">Fidelidade desativada nesta empresa.</p>
+                ) : (
+                  <>
+                    <p className="text-xs">Cliente: <span className="font-medium">{loyaltyPreview.customer?.name}</span></p>
+                    <p className="text-xs">Saldo cashback: R$ {Number(loyaltyPreview.profile?.cashback_balance || 0).toFixed(2)}</p>
+                    <p className="text-xs">Saldo pontos: {Number(loyaltyPreview.profile?.points_balance || 0).toFixed(0)}</p>
+                    <p className="text-xs">Desconto automatico: R$ {Number(loyaltyPreview.automatic_discount || 0).toFixed(2)}</p>
+                    <p className="text-xs">Cashback a ganhar: R$ {Number(loyaltyPreview.cashback_to_earn || 0).toFixed(2)}</p>
+                    <p className="text-xs">Pontos a ganhar: {Number(loyaltyPreview.points_to_earn || 0).toFixed(0)}</p>
+                  </>
+                )}
+              </div>
+            ) : null}
+
             <div className="space-y-2">
               <Label>Desconto</Label>
               <Input
@@ -322,7 +423,8 @@ const Pdv: React.FC = () => {
 
             <div className="rounded-lg border p-3">
               <p className="text-sm">Subtotal: R$ {subtotal.toFixed(2)}</p>
-              <p className="text-sm">Desconto: R$ {discount.toFixed(2)}</p>
+              <p className="text-sm">Desconto manual: R$ {discount.toFixed(2)}</p>
+              <p className="text-sm">Desconto fidelidade: R$ {loyaltyAutomaticDiscount.toFixed(2)}</p>
               <p className="font-semibold">Total: R$ {total.toFixed(2)}</p>
             </div>
 

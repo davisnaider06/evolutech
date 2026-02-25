@@ -1,4 +1,4 @@
-﻿import { prisma } from '../db';
+import { prisma } from '../db';
 import { AuthenticatedUser } from '../types';
 import { TABLE_CONFIG } from '../config/tableConfig';
 import bcrypt from 'bcryptjs';
@@ -47,6 +47,14 @@ export class CompanyService {
   private toNumber(value: unknown): number {
     const numeric = Number(value ?? 0);
     return Number.isFinite(numeric) ? numeric : 0;
+  }
+
+  private normalizeComparableText(value?: string | null) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
   }
 
   private getModuleCacheKey(companyId: string, moduleCodes: string[]) {
@@ -184,6 +192,45 @@ export class CompanyService {
     throw new CompanyServiceError('status invalido. Use pending ou paid', 400);
   }
 
+  private async getOrCreateLoyaltySettings(tx: any, companyId: string) {
+    const existing = await (tx as any).companyLoyaltySettings.findUnique({
+      where: { companyId },
+    });
+    if (existing) return existing;
+    return (tx as any).companyLoyaltySettings.create({
+      data: {
+        companyId,
+        pointsPerService: 1,
+        cashbackPercent: 0,
+        tenthServiceFree: true,
+        pointValue: 1,
+        isActive: true,
+      },
+    });
+  }
+
+  private async findCustomerByName(tx: any, companyId: string, customerName?: string | null) {
+    const name = String(customerName || '').trim();
+    if (!name) return null;
+    return tx.customer.findFirst({
+      where: {
+        companyId,
+        name: { equals: name, mode: 'insensitive' },
+      },
+      select: { id: true, name: true, email: true, phone: true, isActive: true },
+    });
+  }
+
+  private async getOrCreateLoyaltyProfile(tx: any, companyId: string, customerId: string) {
+    const existing = await (tx as any).customerLoyaltyProfile.findFirst({
+      where: { companyId, customerId },
+    });
+    if (existing) return existing;
+    return (tx as any).customerLoyaltyProfile.create({
+      data: { companyId, customerId },
+    });
+  }
+
   private checkAccess(user: AuthenticatedUser, companyId: string) {
     if (this.isAdminRole(user.role)) return true;
     return user.companyId === companyId;
@@ -194,7 +241,7 @@ export class CompanyService {
       ? (queryOrBody.company_id || queryOrBody.companyId || user.companyId)
       : user.companyId;
 
-    if (!companyId) throw new CompanyServiceError('Company ID obrigatório', 400);
+    if (!companyId) throw new CompanyServiceError('Company ID obrigat�rio', 400);
     if (!this.checkAccess(user, companyId)) throw new CompanyServiceError('Acesso negado', 403);
 
     return companyId;
@@ -225,7 +272,7 @@ export class CompanyService {
     if (!hasModule) {
       this.setCachedModuleAccess(companyId, moduleCodes, false);
       throw new CompanyServiceError(
-        `Módulo "${moduleCodes[0]}" não está ativo para esta empresa`,
+        `M�dulo "${moduleCodes[0]}" n�o est� ativo para esta empresa`,
         403
       );
     }
@@ -235,7 +282,7 @@ export class CompanyService {
   async listTableData(table: string, user: AuthenticatedUser, queryParams: any) {
     const model = this.getModel(table);
     const config = TABLE_CONFIG[table];
-    if (!model || !config) throw new CompanyServiceError('Tabela não suportada ou não configurada', 400);
+    if (!model || !config) throw new CompanyServiceError('Tabela n�o suportada ou n�o configurada', 400);
 
     const companyId = this.resolveCompanyId(user, queryParams);
     await this.validateModuleAccess(table, user, companyId);
@@ -291,7 +338,7 @@ export class CompanyService {
 
   async createRecord(table: string, user: AuthenticatedUser, data: any) {
     const model = this.getModel(table);
-    if (!model) throw new CompanyServiceError('Tabela não suportada', 400);
+    if (!model) throw new CompanyServiceError('Tabela n�o suportada', 400);
 
     const companyId = this.resolveCompanyId(user, data);
     await this.validateModuleAccess(table, user, companyId);
@@ -314,7 +361,7 @@ export class CompanyService {
 
   async updateRecord(table: string, id: string, user: AuthenticatedUser, data: any) {
     const model = this.getModel(table);
-    if (!model) throw new CompanyServiceError('Tabela não suportada', 400);
+    if (!model) throw new CompanyServiceError('Tabela n�o suportada', 400);
 
     const existing = await model.findUnique({
       where: { id },
@@ -323,7 +370,7 @@ export class CompanyService {
         ...(table === 'appointments' ? { professionalId: true } : {}),
       },
     });
-    if (!existing) throw new CompanyServiceError('Registro não encontrado', 404);
+    if (!existing) throw new CompanyServiceError('Registro n�o encontrado', 404);
     if (!this.checkAccess(user, existing.companyId)) throw new CompanyServiceError('Acesso negado', 403);
 
     if (
@@ -351,7 +398,7 @@ export class CompanyService {
     if (table === 'products' && targetType === 'service') {
       return prisma.$transaction(async (tx) => {
         const current = await tx.product.findUnique({ where: { id } });
-        if (!current) throw new CompanyServiceError('Registro não encontrado', 404);
+        if (!current) throw new CompanyServiceError('Registro n�o encontrado', 404);
 
         const createdService = await (tx as any).appointmentService.create({
           data: {
@@ -372,7 +419,7 @@ export class CompanyService {
     if (table === 'appointment_services' && targetType === 'product') {
       return prisma.$transaction(async (tx) => {
         const current = await (tx as any).appointmentService.findUnique({ where: { id } });
-        if (!current) throw new CompanyServiceError('Registro não encontrado', 404);
+        if (!current) throw new CompanyServiceError('Registro n�o encontrado', 404);
 
         const createdProduct = await tx.product.create({
           data: {
@@ -400,7 +447,7 @@ export class CompanyService {
 
   async deleteRecord(table: string, id: string, user: AuthenticatedUser) {
     const model = this.getModel(table);
-    if (!model) throw new CompanyServiceError('Tabela não suportada', 400);
+    if (!model) throw new CompanyServiceError('Tabela n�o suportada', 400);
 
     const existing = await model.findUnique({
       where: { id },
@@ -409,7 +456,7 @@ export class CompanyService {
         ...(table === 'appointments' ? { professionalId: true } : {}),
       },
     });
-    if (!existing) throw new CompanyServiceError('Registro não encontrado', 404);
+    if (!existing) throw new CompanyServiceError('Registro n�o encontrado', 404);
     if (!this.checkAccess(user, existing.companyId)) throw new CompanyServiceError('Acesso negado', 403);
 
     if (
@@ -565,6 +612,452 @@ export class CompanyService {
     return moduleCodes.some((code) =>
       this.ownerDefaultModuleAliases.has(String(code || '').trim().toLowerCase())
     );
+  }
+
+  async getLoyaltySettings(user: AuthenticatedUser, queryParams: { company_id?: string; companyId?: string } = {}) {
+    this.ensureOwnerCompanyRole(user);
+    const companyId = this.resolveCompanyId(user, queryParams);
+    const settings = await this.getOrCreateLoyaltySettings(prisma as any, companyId);
+    return {
+      company_id: settings.companyId,
+      points_per_service: Number(settings.pointsPerService || 1),
+      cashback_percent: Number(settings.cashbackPercent || 0),
+      tenth_service_free: Boolean(settings.tenthServiceFree),
+      point_value: Number(settings.pointValue || 1),
+      is_active: Boolean(settings.isActive),
+      updated_at: settings.updatedAt,
+    };
+  }
+
+  async updateLoyaltySettings(
+    user: AuthenticatedUser,
+    data: {
+      company_id?: string;
+      points_per_service?: number;
+      cashback_percent?: number;
+      tenth_service_free?: boolean;
+      point_value?: number;
+      is_active?: boolean;
+    }
+  ) {
+    this.ensureOwnerCompanyRole(user);
+    const companyId = this.resolveCompanyId(user, data);
+    const pointsPerService = Math.max(0, Number(data.points_per_service ?? 1));
+    const cashbackPercent = Math.max(0, Math.min(100, Number(data.cashback_percent ?? 0)));
+    const pointValue = Math.max(0, Number(data.point_value ?? 1));
+    const isActive = data.is_active !== false;
+    const tenthServiceFree = data.tenth_service_free !== false;
+
+    const updated = await (prisma as any).companyLoyaltySettings.upsert({
+      where: { companyId },
+      create: {
+        companyId,
+        pointsPerService,
+        cashbackPercent,
+        pointValue,
+        isActive,
+        tenthServiceFree,
+      },
+      update: {
+        pointsPerService,
+        cashbackPercent,
+        pointValue,
+        isActive,
+        tenthServiceFree,
+      },
+    });
+
+    return {
+      company_id: updated.companyId,
+      points_per_service: Number(updated.pointsPerService || 1),
+      cashback_percent: Number(updated.cashbackPercent || 0),
+      tenth_service_free: Boolean(updated.tenthServiceFree),
+      point_value: Number(updated.pointValue || 1),
+      is_active: Boolean(updated.isActive),
+      updated_at: updated.updatedAt,
+    };
+  }
+
+  async getCustomerLoyaltyProfile(
+    user: AuthenticatedUser,
+    customerId: string,
+    queryParams: { company_id?: string; companyId?: string } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, ['customers', 'clientes']);
+
+    const customer = await prisma.customer.findFirst({
+      where: { id: customerId, companyId },
+      select: { id: true, name: true },
+    });
+    if (!customer) throw new CompanyServiceError('Cliente nao encontrado', 404);
+
+    const [settings, profile, transactions] = await Promise.all([
+      this.getOrCreateLoyaltySettings(prisma as any, companyId),
+      this.getOrCreateLoyaltyProfile(prisma as any, companyId, customer.id),
+      (prisma as any).customerLoyaltyTransaction.findMany({
+        where: { companyId, customerId: customer.id },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      }),
+    ]);
+
+    return {
+      customer: { id: customer.id, name: customer.name },
+      settings: {
+        points_per_service: Number(settings.pointsPerService || 1),
+        cashback_percent: Number(settings.cashbackPercent || 0),
+        tenth_service_free: Boolean(settings.tenthServiceFree),
+        point_value: Number(settings.pointValue || 1),
+      },
+      profile: {
+        points_balance: this.toNumber(profile.pointsBalance),
+        cashback_balance: this.toNumber(profile.cashbackBalance),
+        total_points_earned: this.toNumber(profile.totalPointsEarned),
+        total_points_redeemed: this.toNumber(profile.totalPointsRedeemed),
+        total_cashback_earned: this.toNumber(profile.totalCashbackEarned),
+        total_cashback_used: this.toNumber(profile.totalCashbackUsed),
+        total_services_count: Number(profile.totalServicesCount || 0),
+      },
+      transactions: transactions.map((item: any) => ({
+        id: item.id,
+        transaction_type: item.transactionType,
+        points_delta: this.toNumber(item.pointsDelta),
+        cashback_delta: this.toNumber(item.cashbackDelta),
+        amount_reference: this.toNumber(item.amountReference),
+        notes: item.notes || null,
+        created_at: item.createdAt,
+      })),
+    };
+  }
+
+  async previewLoyaltyForCheckout(
+    user: AuthenticatedUser,
+    data: {
+      customer_name?: string;
+      subtotal?: number;
+      service_quantity?: number;
+      manual_discount?: number;
+      company_id?: string;
+    }
+  ) {
+    const companyId = this.resolveCompanyId(user, data);
+    await this.ensureAnyModuleAccess(user, companyId, ['pdv', 'orders', 'pedidos']);
+
+    const subtotal = Math.max(0, Number(data.subtotal || 0));
+    const serviceQuantity = Math.max(0, Number(data.service_quantity || 0));
+    const manualDiscount = Math.max(0, Number(data.manual_discount || 0));
+
+    const settings = await this.getOrCreateLoyaltySettings(prisma as any, companyId);
+    const customer = await this.findCustomerByName(prisma as any, companyId, data.customer_name);
+    if (!customer || !settings.isActive) {
+      return {
+        customer_found: false,
+        loyalty_active: Boolean(settings.isActive),
+        automatic_discount: 0,
+        cashback_to_earn: 0,
+        points_to_earn: 0,
+        estimated_total: Math.max(0, subtotal - manualDiscount),
+      };
+    }
+
+    const profile = await this.getOrCreateLoyaltyProfile(prisma as any, companyId, customer.id);
+    const cashbackAvailable = this.toNumber(profile.cashbackBalance);
+    const remainingAfterManual = Math.max(0, subtotal - manualDiscount);
+    const cashbackToUse = Math.min(cashbackAvailable, remainingAfterManual);
+
+    let tenthServiceDiscount = 0;
+    if (settings.tenthServiceFree && serviceQuantity > 0) {
+      const prior = Number(profile.totalServicesCount || 0);
+      const freeCount = Math.max(0, Math.floor((prior + serviceQuantity) / 10) - Math.floor(prior / 10));
+      if (freeCount > 0) {
+        const avgUnit = serviceQuantity > 0 ? remainingAfterManual / serviceQuantity : 0;
+        tenthServiceDiscount = Math.max(0, avgUnit * freeCount);
+      }
+    }
+
+    const automaticDiscount = Math.min(remainingAfterManual, cashbackToUse + tenthServiceDiscount);
+    const estimatedTotal = Math.max(0, remainingAfterManual - automaticDiscount);
+    const cashbackToEarn = Number((estimatedTotal * (this.toNumber(settings.cashbackPercent) / 100)).toFixed(2));
+    const pointsToEarn = Number((serviceQuantity * Number(settings.pointsPerService || 0)).toFixed(2));
+
+    return {
+      customer_found: true,
+      loyalty_active: Boolean(settings.isActive),
+      customer: { id: customer.id, name: customer.name },
+      profile: {
+        points_balance: this.toNumber(profile.pointsBalance),
+        cashback_balance: cashbackAvailable,
+        total_services_count: Number(profile.totalServicesCount || 0),
+      },
+      automatic_discount: Number(automaticDiscount.toFixed(2)),
+      cashback_discount: Number(cashbackToUse.toFixed(2)),
+      tenth_service_discount: Number(tenthServiceDiscount.toFixed(2)),
+      cashback_to_earn: cashbackToEarn,
+      points_to_earn: pointsToEarn,
+      estimated_total: Number(estimatedTotal.toFixed(2)),
+    };
+  }
+
+  private normalizeSubscriptionInterval(value?: string) {
+    const raw = String(value || '').trim().toLowerCase();
+    if (raw === 'monthly' || raw === 'mensal') return 'monthly';
+    if (raw === 'quarterly' || raw === 'trimestral') return 'quarterly';
+    if (raw === 'yearly' || raw === 'annual' || raw === 'anual') return 'yearly';
+    throw new CompanyServiceError('intervalo invalido. Use monthly, quarterly ou yearly', 400);
+  }
+
+  private normalizeSubscriptionStatus(value?: string) {
+    const raw = String(value || '').trim().toLowerCase();
+    if (!raw || raw === 'active' || raw === 'ativo') return 'active';
+    if (raw === 'pending' || raw === 'pendente') return 'pending';
+    if (raw === 'expired' || raw === 'expirado') return 'expired';
+    if (raw === 'canceled' || raw === 'cancelado') return 'canceled';
+    if (raw === 'suspended' || raw === 'suspenso') return 'suspended';
+    throw new CompanyServiceError('status invalido. Use active, pending, expired, canceled ou suspended', 400);
+  }
+
+  private calculateSubscriptionEndAt(startAt: Date, interval: 'monthly' | 'quarterly' | 'yearly') {
+    const endAt = new Date(startAt);
+    if (interval === 'quarterly') {
+      endAt.setMonth(endAt.getMonth() + 3);
+    } else if (interval === 'yearly') {
+      endAt.setFullYear(endAt.getFullYear() + 1);
+    } else {
+      endAt.setMonth(endAt.getMonth() + 1);
+    }
+    endAt.setMilliseconds(endAt.getMilliseconds() - 1);
+    return endAt;
+  }
+
+  async listSubscriptionPlans(
+    user: AuthenticatedUser,
+    queryParams: { company_id?: string; status?: string } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, ['subscriptions', 'assinaturas']);
+
+    const onlyActive = String(queryParams.status || '').trim().toLowerCase() === 'active';
+    const plans = await (prisma as any).subscriptionPlan.findMany({
+      where: {
+        companyId,
+        ...(onlyActive ? { isActive: true } : {}),
+      },
+      orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+    });
+
+    return plans.map((item: any) => ({
+      id: item.id,
+      company_id: item.companyId,
+      name: item.name,
+      description: item.description || null,
+      interval: item.interval,
+      price: this.toNumber(item.price),
+      included_services: item.includedServices ?? null,
+      is_unlimited: Boolean(item.isUnlimited),
+      is_active: Boolean(item.isActive),
+      created_at: item.createdAt,
+      updated_at: item.updatedAt,
+    }));
+  }
+
+  async upsertSubscriptionPlan(
+    user: AuthenticatedUser,
+    data: {
+      id?: string;
+      company_id?: string;
+      name?: string;
+      description?: string;
+      interval?: string;
+      price?: number;
+      included_services?: number | null;
+      is_unlimited?: boolean;
+      is_active?: boolean;
+    }
+  ) {
+    this.ensureOwnerCompanyRole(user);
+    const companyId = this.resolveCompanyId(user, data);
+    await this.ensureAnyModuleAccess(user, companyId, ['subscriptions', 'assinaturas']);
+
+    const name = String(data.name || '').trim();
+    if (!name) throw new CompanyServiceError('name obrigatorio', 400);
+
+    const interval = this.normalizeSubscriptionInterval(data.interval);
+    const isUnlimited = Boolean(data.is_unlimited);
+    const includedServicesRaw = data.included_services;
+    const includedServices = isUnlimited
+      ? null
+      : Math.max(0, Number(includedServicesRaw ?? 0));
+
+    const payload = {
+      companyId,
+      name,
+      description: String(data.description || '').trim() || null,
+      interval,
+      price: Math.max(0, Number(data.price || 0)),
+      includedServices,
+      isUnlimited,
+      isActive: data.is_active !== false,
+    };
+
+    const planId = String(data.id || '').trim();
+    const saved = planId
+      ? await (prisma as any).subscriptionPlan.update({
+          where: { id: planId },
+          data: payload,
+        })
+      : await (prisma as any).subscriptionPlan.create({
+          data: payload,
+        });
+
+    return {
+      id: saved.id,
+      company_id: saved.companyId,
+      name: saved.name,
+      description: saved.description || null,
+      interval: saved.interval,
+      price: this.toNumber(saved.price),
+      included_services: saved.includedServices ?? null,
+      is_unlimited: Boolean(saved.isUnlimited),
+      is_active: Boolean(saved.isActive),
+      created_at: saved.createdAt,
+      updated_at: saved.updatedAt,
+    };
+  }
+
+  async listCustomerSubscriptions(
+    user: AuthenticatedUser,
+    queryParams: { company_id?: string; customer_id?: string; status?: string } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, ['subscriptions', 'assinaturas']);
+
+    const customerId = String(queryParams.customer_id || '').trim();
+    const status = String(queryParams.status || '').trim();
+
+    await (prisma as any).customerSubscription.updateMany({
+      where: {
+        companyId,
+        status: { in: ['active', 'pending'] },
+        endAt: { lt: new Date() },
+      },
+      data: { status: 'expired' },
+    });
+
+    const rows = await (prisma as any).customerSubscription.findMany({
+      where: {
+        companyId,
+        ...(customerId ? { customerId } : {}),
+        ...(status ? { status: this.normalizeSubscriptionStatus(status) } : {}),
+      },
+      include: {
+        customer: { select: { id: true, name: true, email: true, phone: true } },
+        plan: { select: { id: true, name: true, interval: true, includedServices: true, isUnlimited: true } },
+      },
+      orderBy: [{ status: 'asc' }, { endAt: 'asc' }],
+    });
+
+    return rows.map((item: any) => ({
+      id: item.id,
+      company_id: item.companyId,
+      customer_id: item.customerId,
+      customer_name: item.customer?.name || null,
+      plan_id: item.planId,
+      plan_name: item.plan?.name || null,
+      interval: item.plan?.interval || null,
+      status: item.status,
+      start_at: item.startAt,
+      end_at: item.endAt,
+      remaining_services: item.remainingServices ?? null,
+      is_unlimited: Boolean(item.plan?.isUnlimited),
+      amount: this.toNumber(item.amount),
+      auto_renew: Boolean(item.autoRenew),
+      notes: item.notes || null,
+      created_at: item.createdAt,
+      updated_at: item.updatedAt,
+    }));
+  }
+
+  async upsertCustomerSubscription(
+    user: AuthenticatedUser,
+    data: {
+      id?: string;
+      company_id?: string;
+      customer_id?: string;
+      plan_id?: string;
+      start_at?: string;
+      auto_renew?: boolean;
+      amount?: number;
+      notes?: string;
+      status?: string;
+    }
+  ) {
+    this.ensureOwnerCompanyRole(user);
+    const companyId = this.resolveCompanyId(user, data);
+    await this.ensureAnyModuleAccess(user, companyId, ['subscriptions', 'assinaturas']);
+
+    const customerId = String(data.customer_id || '').trim();
+    const planId = String(data.plan_id || '').trim();
+    if (!customerId || !planId) {
+      throw new CompanyServiceError('customer_id e plan_id sao obrigatorios', 400);
+    }
+
+    const [customer, plan] = await Promise.all([
+      prisma.customer.findFirst({ where: { id: customerId, companyId }, select: { id: true } }),
+      (prisma as any).subscriptionPlan.findFirst({
+        where: { id: planId, companyId, isActive: true },
+        select: { id: true, interval: true, includedServices: true, isUnlimited: true, price: true },
+      }),
+    ]);
+
+    if (!customer) throw new CompanyServiceError('Cliente nao encontrado', 404);
+    if (!plan) throw new CompanyServiceError('Plano nao encontrado ou inativo', 404);
+
+    const startAt = data.start_at ? new Date(data.start_at) : new Date();
+    if (Number.isNaN(startAt.getTime())) throw new CompanyServiceError('start_at invalido', 400);
+    const endAt = this.calculateSubscriptionEndAt(startAt, plan.interval);
+    const amount = Math.max(0, Number(data.amount ?? plan.price ?? 0));
+    const status = this.normalizeSubscriptionStatus(data.status || 'active');
+    const remainingServices = plan.isUnlimited
+      ? null
+      : Math.max(0, Number(plan.includedServices || 0));
+
+    const payload = {
+      companyId,
+      customerId,
+      planId,
+      startAt,
+      endAt,
+      amount,
+      status,
+      autoRenew: data.auto_renew !== false,
+      notes: String(data.notes || '').trim() || null,
+      remainingServices,
+    };
+
+    const subscriptionId = String(data.id || '').trim();
+    const saved = subscriptionId
+      ? await (prisma as any).customerSubscription.update({
+          where: { id: subscriptionId },
+          data: payload,
+        })
+      : await (prisma as any).customerSubscription.create({ data: payload });
+
+    return {
+      id: saved.id,
+      company_id: saved.companyId,
+      customer_id: saved.customerId,
+      plan_id: saved.planId,
+      status: saved.status,
+      start_at: saved.startAt,
+      end_at: saved.endAt,
+      remaining_services: saved.remainingServices ?? null,
+      amount: this.toNumber(saved.amount),
+      auto_renew: Boolean(saved.autoRenew),
+      notes: saved.notes || null,
+      created_at: saved.createdAt,
+      updated_at: saved.updatedAt,
+    };
   }
 
   async listPdvProducts(user: AuthenticatedUser, queryParams: any) {
@@ -1480,6 +1973,7 @@ export class CompanyService {
       customerName?: string;
       paymentMethod: string;
       discount?: number;
+      applyLoyalty?: boolean;
       items: Array<{
         itemType?: 'product' | 'service';
         itemId?: string;
@@ -1588,9 +2082,256 @@ export class CompanyService {
           },
         });
       }
+      const customerNameNormalized = String(data.customerName || '').trim();
+      const customerForSale = customerNameNormalized
+        ? await this.findCustomerByName(tx as any, companyId, customerNameNormalized)
+        : null;
+      const serviceQuantity = soldItems
+        .filter((item) => item.itemType === 'service')
+        .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
 
-      const discount = Math.max(0, Number(data.discount || 0));
-      const total = Math.max(0, subtotal - discount);
+      let subscriptionDiscount = 0;
+      const subscriptionUsageDrafts: Array<{
+        subscriptionId: string;
+        serviceId: string;
+        serviceName: string;
+        quantity: number;
+        amountDiscounted: number;
+      }> = [];
+      let coveredServiceQuantity = 0;
+      let subscriptionSummary = {
+        enabled: false,
+        subscriptionId: null as string | null,
+        planName: null as string | null,
+        isUnlimited: false,
+        coveredServices: 0,
+        discount: 0,
+        remainingServices: null as number | null,
+      };
+
+      if (customerForSale && serviceQuantity > 0) {
+        const activeSubscription = await (tx as any).customerSubscription.findFirst({
+          where: {
+            companyId,
+            customerId: customerForSale.id,
+            status: 'active',
+            startAt: { lte: new Date() },
+            endAt: { gte: new Date() },
+          },
+          include: {
+            plan: {
+              select: {
+                id: true,
+                name: true,
+                isUnlimited: true,
+              },
+            },
+          },
+          orderBy: { endAt: 'asc' },
+        });
+
+        if (activeSubscription) {
+          let remainingCover = activeSubscription.plan?.isUnlimited
+            ? serviceQuantity
+            : Math.max(0, Number(activeSubscription.remainingServices ?? 0));
+
+          for (const item of soldItems) {
+            if (item.itemType !== 'service' || remainingCover <= 0) continue;
+            const coveredQty = Math.min(item.quantity, remainingCover);
+            if (coveredQty <= 0) continue;
+            const discountValue = Number((coveredQty * item.unitPrice).toFixed(2));
+            subscriptionDiscount += discountValue;
+            coveredServiceQuantity += coveredQty;
+            remainingCover -= coveredQty;
+
+            subscriptionUsageDrafts.push({
+              subscriptionId: activeSubscription.id,
+              serviceId: item.itemId,
+              serviceName: item.itemName,
+              quantity: coveredQty,
+              amountDiscounted: discountValue,
+            });
+          }
+
+          if (!activeSubscription.plan?.isUnlimited && coveredServiceQuantity > 0) {
+            const nextRemaining = Math.max(0, Number(activeSubscription.remainingServices ?? 0) - coveredServiceQuantity);
+            await (tx as any).customerSubscription.update({
+              where: { id: activeSubscription.id },
+              data: { remainingServices: nextRemaining },
+            });
+            subscriptionSummary.remainingServices = nextRemaining;
+          }
+
+          subscriptionSummary = {
+            enabled: subscriptionDiscount > 0,
+            subscriptionId: activeSubscription.id,
+            planName: activeSubscription.plan?.name || null,
+            isUnlimited: Boolean(activeSubscription.plan?.isUnlimited),
+            coveredServices: coveredServiceQuantity,
+            discount: Number(subscriptionDiscount.toFixed(2)),
+            remainingServices: subscriptionSummary.remainingServices,
+          };
+        }
+      }
+      const manualDiscount = Math.max(0, Number(data.discount || 0));
+      const billableServiceQuantity = Math.max(0, serviceQuantity - coveredServiceQuantity);
+      const applyLoyalty = data.applyLoyalty !== false;
+
+      let loyaltySummary = {
+        enabled: false,
+        customerId: null as string | null,
+        customerName: null as string | null,
+        pointsEarned: 0,
+        cashbackEarned: 0,
+        cashbackRedeemed: 0,
+        tenthServiceDiscount: 0,
+        automaticDiscount: 0,
+      };
+
+      if (applyLoyalty && customerForSale) {
+        const settings = await this.getOrCreateLoyaltySettings(tx as any, companyId);
+        const customer = customerForSale;
+
+        if (settings.isActive && customer) {
+          const profile = await this.getOrCreateLoyaltyProfile(tx as any, companyId, customer.id);
+          const cashbackAvailable = this.toNumber(profile.cashbackBalance);
+          const remainingAfterManual = Math.max(0, subtotal - manualDiscount - subscriptionDiscount);
+          const cashbackToUse = Math.min(cashbackAvailable, remainingAfterManual);
+
+          let tenthServiceDiscount = 0;
+          if (settings.tenthServiceFree && billableServiceQuantity > 0) {
+            const prior = Number(profile.totalServicesCount || 0);
+            const freeCount = Math.max(
+              0,
+              Math.floor((prior + billableServiceQuantity) / 10) - Math.floor(prior / 10)
+            );
+            if (freeCount > 0) {
+              const avgUnit =
+                billableServiceQuantity > 0 ? remainingAfterManual / billableServiceQuantity : 0;
+              tenthServiceDiscount = Math.max(0, avgUnit * freeCount);
+            }
+          }
+
+          const automaticDiscount = Math.min(remainingAfterManual, cashbackToUse + tenthServiceDiscount);
+          const baseAfterDiscount = Math.max(0, remainingAfterManual - automaticDiscount);
+          const cashbackEarned = Number((baseAfterDiscount * (this.toNumber(settings.cashbackPercent) / 100)).toFixed(2));
+          const pointsEarned = Number(
+            (billableServiceQuantity * Number(settings.pointsPerService || 0)).toFixed(2)
+          );
+
+          const profileUpdateData: any = {};
+          const netCashback = Number((cashbackEarned - cashbackToUse).toFixed(2));
+          if (netCashback > 0) {
+            profileUpdateData.cashbackBalance = { increment: netCashback };
+          } else if (netCashback < 0) {
+            profileUpdateData.cashbackBalance = { decrement: Math.abs(netCashback) };
+          }
+          if (cashbackToUse > 0) {
+            profileUpdateData.totalCashbackUsed = { increment: cashbackToUse };
+          }
+          if (cashbackEarned > 0) {
+            profileUpdateData.totalCashbackEarned = { increment: cashbackEarned };
+          }
+          if (pointsEarned > 0) {
+            profileUpdateData.pointsBalance = { increment: pointsEarned };
+            profileUpdateData.totalPointsEarned = { increment: pointsEarned };
+          }
+          if (billableServiceQuantity > 0) {
+            profileUpdateData.totalServicesCount = { increment: billableServiceQuantity };
+          }
+
+          if (Object.keys(profileUpdateData).length > 0) {
+            await (tx as any).customerLoyaltyProfile.update({
+              where: { id: profile.id },
+              data: profileUpdateData,
+            });
+          }
+
+          if (cashbackToUse > 0) {
+            await (tx as any).customerLoyaltyTransaction.create({
+              data: {
+                companyId,
+                customerId: customer.id,
+                profileId: profile.id,
+                orderId: null,
+                transactionType: 'redeem_cashback',
+                pointsDelta: 0,
+                cashbackDelta: -cashbackToUse,
+                amountReference: cashbackToUse,
+                notes: 'Cashback usado no checkout PDV',
+                createdByUserId: user.id,
+              },
+            });
+          }
+
+          if (tenthServiceDiscount > 0) {
+            await (tx as any).customerLoyaltyTransaction.create({
+              data: {
+                companyId,
+                customerId: customer.id,
+                profileId: profile.id,
+                orderId: null,
+                transactionType: 'tenth_service_discount',
+                pointsDelta: 0,
+                cashbackDelta: 0,
+                amountReference: tenthServiceDiscount,
+                notes: 'Desconto automatico por 10o servico',
+                createdByUserId: user.id,
+              },
+            });
+          }
+
+          if (cashbackEarned > 0) {
+            await (tx as any).customerLoyaltyTransaction.create({
+              data: {
+                companyId,
+                customerId: customer.id,
+                profileId: profile.id,
+                orderId: null,
+                transactionType: 'earn_cashback',
+                pointsDelta: 0,
+                cashbackDelta: cashbackEarned,
+                amountReference: baseAfterDiscount,
+                notes: 'Cashback ganho em compra no PDV',
+                createdByUserId: user.id,
+              },
+            });
+          }
+
+          if (pointsEarned > 0) {
+            await (tx as any).customerLoyaltyTransaction.create({
+              data: {
+                companyId,
+                customerId: customer.id,
+                profileId: profile.id,
+                orderId: null,
+                transactionType: 'earn_points',
+                pointsDelta: pointsEarned,
+                cashbackDelta: 0,
+                amountReference: baseAfterDiscount,
+                notes: 'Pontos ganhos por servicos no PDV',
+                createdByUserId: user.id,
+              },
+            });
+          }
+
+          loyaltySummary = {
+            enabled: true,
+            customerId: customer.id,
+            customerName: customer.name,
+            pointsEarned,
+            cashbackEarned,
+            cashbackRedeemed: Number(cashbackToUse.toFixed(2)),
+            tenthServiceDiscount: Number(tenthServiceDiscount.toFixed(2)),
+            automaticDiscount: Number(automaticDiscount.toFixed(2)),
+          };
+        }
+      }
+
+      const discount = Number(
+        (manualDiscount + subscriptionDiscount + loyaltySummary.automaticDiscount).toFixed(2)
+      );
+      const total = Math.max(0, Number((subtotal - discount).toFixed(2)));
 
       const paymentMethod = String(data.paymentMethod || '').trim().toLowerCase();
       const allowedPaymentMethods = ['dinheiro', 'pix', 'credito', 'debito', 'cartao'];
@@ -1619,6 +2360,21 @@ export class CompanyService {
           total,
         },
       });
+
+      if (subscriptionUsageDrafts.length > 0) {
+        await (tx as any).subscriptionUsage.createMany({
+          data: subscriptionUsageDrafts.map((usage) => ({
+            companyId,
+            subscriptionId: usage.subscriptionId,
+            orderId: order.id,
+            serviceId: usage.serviceId,
+            serviceName: usage.serviceName,
+            quantity: usage.quantity,
+            amountDiscounted: usage.amountDiscounted,
+            createdByUserId: user.id,
+          })),
+        });
+      }
 
       let gatewayPayment: any = null;
       if (isPix && activeGateway) {
@@ -1668,7 +2424,10 @@ export class CompanyService {
                 }
               : null,
             subtotal,
+            manualDiscount,
             discount,
+            subscription: subscriptionSummary,
+            loyalty: loyaltySummary,
             total,
             items: soldItems,
           },
@@ -1685,6 +2444,9 @@ export class CompanyService {
         },
         summary: {
           subtotal,
+          manualDiscount,
+          subscription: subscriptionSummary,
+          loyalty: loyaltySummary,
           discount,
           total,
           items: soldItems,
@@ -2169,6 +2931,221 @@ export class CompanyService {
       created,
       updated,
       skipped: items.length - valid.length,
+    };
+  }
+
+  async getCustomerHistory(
+    user: AuthenticatedUser,
+    customerId: string,
+    queryParams: { company_id?: string; companyId?: string } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, ['customers', 'clientes']);
+
+    const customer = await prisma.customer.findFirst({
+      where: { id: customerId, companyId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        document: true,
+        isActive: true,
+        createdAt: true,
+      },
+    });
+    if (!customer) throw new CompanyServiceError('Cliente nao encontrado', 404);
+
+    const [appointments, orders] = await Promise.all([
+      (prisma as any).appointment.findMany({
+        where: {
+          companyId,
+          customerName: { equals: customer.name, mode: 'insensitive' },
+        },
+        select: {
+          id: true,
+          customerName: true,
+          serviceId: true,
+          serviceName: true,
+          professionalId: true,
+          professionalName: true,
+          scheduledAt: true,
+          status: true,
+          createdAt: true,
+        },
+        orderBy: { scheduledAt: 'desc' },
+      }),
+      prisma.order.findMany({
+        where: {
+          companyId,
+          customerName: { equals: customer.name, mode: 'insensitive' },
+        },
+        select: {
+          id: true,
+          customerName: true,
+          total: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    const appointmentServiceIds = Array.from(
+      new Set(
+        (appointments as any[])
+          .map((item: any) => String(item.serviceId || '').trim())
+          .filter(Boolean)
+      )
+    );
+    const appointmentServiceNames = Array.from(
+      new Set(
+        (appointments as any[])
+          .map((item: any) => String(item.serviceName || '').trim())
+          .filter(Boolean)
+      )
+    );
+    const servicesData =
+      appointmentServiceIds.length || appointmentServiceNames.length
+        ? await (prisma as any).appointmentService.findMany({
+            where: {
+              companyId,
+              OR: [
+                ...(appointmentServiceIds.length ? [{ id: { in: appointmentServiceIds } }] : []),
+                ...(appointmentServiceNames.length ? [{ name: { in: appointmentServiceNames } }] : []),
+              ],
+            },
+            select: { id: true, name: true, price: true },
+          })
+        : [];
+
+    const servicePriceById = new Map<string, number>(
+      (servicesData as any[]).map((item: any) => [String(item.id), Number(item.price || 0)])
+    );
+    const servicePriceByName = new Map<string, number>(
+      (servicesData as any[]).map((item: any) => [
+        this.normalizeComparableText(item.name),
+        Number(item.price || 0),
+      ])
+    );
+
+    const normalizeStatusSafe = (value: unknown) => {
+      try {
+        return this.normalizeAppointmentStatus(String(value || ''), 'pendente');
+      } catch (_error) {
+        return 'pendente';
+      }
+    };
+
+    const completedAppointments = (appointments as any[]).filter(
+      (item: any) => normalizeStatusSafe(item.status) === 'concluido'
+    );
+    const appointmentTotalSpent = completedAppointments.reduce((sum: number, item: any) => {
+      const byId = item.serviceId ? servicePriceById.get(String(item.serviceId)) : undefined;
+      const byName = servicePriceByName.get(this.normalizeComparableText(item.serviceName));
+      return sum + this.toNumber(byId ?? byName ?? 0);
+    }, 0);
+
+    const paidOrders = orders.filter((item) => String(item.status || '').toLowerCase() === 'paid');
+    const paidOrdersSpent = paidOrders.reduce((sum, item) => sum + this.toNumber(item.total), 0);
+
+    const favoriteProfessionalMap = new Map<string, { name: string; count: number }>();
+    for (const item of completedAppointments) {
+      const normalizedName = this.normalizeComparableText(item.professionalName);
+      if (!normalizedName) continue;
+      const current = favoriteProfessionalMap.get(normalizedName);
+      if (current) {
+        current.count += 1;
+      } else {
+        favoriteProfessionalMap.set(normalizedName, {
+          name: String(item.professionalName || '').trim(),
+          count: 1,
+        });
+      }
+    }
+    const favoriteProfessional = Array.from(favoriteProfessionalMap.values()).sort((a, b) => b.count - a.count)[0] || null;
+
+    const sortedAppointmentsAsc = [...(appointments as any[])].sort(
+      (a: any, b: any) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
+    );
+    const firstAppointmentAt = sortedAppointmentsAsc[0]?.scheduledAt
+      ? new Date(sortedAppointmentsAsc[0].scheduledAt)
+      : null;
+    const lastAppointmentAt = sortedAppointmentsAsc[sortedAppointmentsAsc.length - 1]?.scheduledAt
+      ? new Date(sortedAppointmentsAsc[sortedAppointmentsAsc.length - 1].scheduledAt)
+      : null;
+
+    let activeMonths = 0;
+    let averageAppointmentsPerMonth = 0;
+    let daysSinceLastAppointment: number | null = null;
+
+    if (firstAppointmentAt && lastAppointmentAt) {
+      activeMonths =
+        (lastAppointmentAt.getFullYear() - firstAppointmentAt.getFullYear()) * 12 +
+        (lastAppointmentAt.getMonth() - firstAppointmentAt.getMonth()) +
+        1;
+      averageAppointmentsPerMonth = activeMonths > 0 ? appointments.length / activeMonths : appointments.length;
+      const dayMs = 24 * 60 * 60 * 1000;
+      daysSinceLastAppointment = Math.max(
+        0,
+        Math.floor((Date.now() - lastAppointmentAt.getTime()) / dayMs)
+      );
+    }
+
+    return {
+      customer: {
+        id: customer.id,
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone,
+        document: customer.document,
+        is_active: customer.isActive,
+        created_at: customer.createdAt,
+      },
+      summary: {
+        total_services: appointments.length,
+        completed_services: completedAppointments.length,
+        total_orders: orders.length,
+        paid_orders: paidOrders.length,
+        total_spent: paidOrdersSpent > 0 ? paidOrdersSpent : appointmentTotalSpent,
+        total_spent_orders: paidOrdersSpent,
+        total_spent_services: appointmentTotalSpent,
+      },
+      frequency: {
+        first_appointment_at: firstAppointmentAt ? firstAppointmentAt.toISOString() : null,
+        last_appointment_at: lastAppointmentAt ? lastAppointmentAt.toISOString() : null,
+        active_months: activeMonths,
+        average_appointments_per_month: Number(averageAppointmentsPerMonth.toFixed(2)),
+        days_since_last_appointment: daysSinceLastAppointment,
+      },
+      favorite_professional: favoriteProfessional
+        ? {
+            name: favoriteProfessional.name,
+            attendance_count: favoriteProfessional.count,
+          }
+        : null,
+      services_history: (appointments as any[]).slice(0, 30).map((item: any) => {
+        const byId = item.serviceId ? servicePriceById.get(String(item.serviceId)) : undefined;
+        const byName = servicePriceByName.get(this.normalizeComparableText(item.serviceName));
+        return {
+          appointment_id: item.id,
+          service_id: item.serviceId || null,
+          service_name: item.serviceName || null,
+          professional_id: item.professionalId || null,
+          professional_name: item.professionalName || null,
+          scheduled_at: item.scheduledAt,
+          status: normalizeStatusSafe(item.status),
+          price: this.toNumber(byId ?? byName ?? 0),
+        };
+      }),
+      orders_history: orders.slice(0, 30).map((item) => ({
+        order_id: item.id,
+        status: item.status,
+        total: this.toNumber(item.total),
+        created_at: item.createdAt,
+        updated_at: item.updatedAt,
+      })),
     };
   }
 

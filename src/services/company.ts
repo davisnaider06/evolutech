@@ -137,10 +137,17 @@ export const companyService = {
     const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
     return request(`/pdv/orders${suffix}`);
   },
+  previewPdvLoyalty: async (data: {
+    customer_name?: string;
+    subtotal?: number;
+    service_quantity?: number;
+    manual_discount?: number;
+  }) => request('/pdv/loyalty/preview', { method: 'POST', body: JSON.stringify(data) }),
   checkoutPdv: async (data: {
     customerName?: string;
     paymentMethod: 'dinheiro' | 'pix' | 'cartao' | 'credito' | 'debito';
     discount?: number;
+    applyLoyalty?: boolean;
     items: Array<{ itemType: 'product' | 'service'; itemId: string; quantity: number }>;
   }) => request('/pdv/checkout', { method: 'POST', body: JSON.stringify(data) }),
   listBillingCharges: async (params?: {
@@ -180,6 +187,8 @@ export const companyService = {
     isActive?: boolean;
   }>) => request('/products/import', { method: 'POST', body: JSON.stringify({ products }) }),
   listTeamMembers: async () => request('/team/members'),
+  customerHistory: async (customerId: string) =>
+    request(`/customers/${encodeURIComponent(customerId)}/history`),
   createTeamMember: async (data: { fullName: string; email: string; password?: string }) =>
     request('/team/members', { method: 'POST', body: JSON.stringify(data) }),
   listMyTasks: async () => request('/tasks/my'),

@@ -42,6 +42,17 @@ router.delete('/tasks/my/:taskId', companyController.deleteMyTask.bind(companyCo
 router.post('/tasks/my/:taskId/move', companyController.moveMyTask.bind(companyController));
 router.get('/team/members', companyController.listTeamMembers.bind(companyController));
 router.post('/team/members', companyController.createTeamMember.bind(companyController));
+router.get('/customers/:customerId/history', companyController.getCustomerHistory.bind(companyController));
+router.get('/loyalty/settings', companyController.getLoyaltySettings.bind(companyController));
+router.put('/loyalty/settings', companyController.updateLoyaltySettings.bind(companyController));
+router.get('/loyalty/customers/:customerId', companyController.getCustomerLoyaltyProfile.bind(companyController));
+router.get('/subscriptions/plans', companyController.listSubscriptionPlans.bind(companyController));
+router.post('/subscriptions/plans', companyController.upsertSubscriptionPlan.bind(companyController));
+router.put('/subscriptions/plans', companyController.upsertSubscriptionPlan.bind(companyController));
+router.get('/subscriptions/customers', companyController.listCustomerSubscriptions.bind(companyController));
+router.post('/subscriptions/customers', companyController.upsertCustomerSubscription.bind(companyController));
+router.put('/subscriptions/customers', companyController.upsertCustomerSubscription.bind(companyController));
+router.post('/pdv/loyalty/preview', companyController.previewPdvLoyalty.bind(companyController));
 router.get('/pdv/products', companyController.listPdvProducts.bind(companyController));
 router.get('/pdv/orders', companyController.listPdvOrders.bind(companyController));
 router.post('/pdv/checkout', companyController.checkoutPdv.bind(companyController));
