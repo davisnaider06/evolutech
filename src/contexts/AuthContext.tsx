@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+﻿import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { UserRole, AuthState, Company } from '@/types/auth';
 import { toast } from 'sonner';
 import { API_URL } from '@/config/api';
@@ -23,52 +23,88 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   const [company, setCompany] = useState<Company | null>(null);
 
-  // Verifica se existe um token salvo ao carregar a página
+  const decodeTokenPayload = (token: string): any | null => {
+    try {
+      const parts = token.split('.');
+      if (parts.length < 2) return null;
+      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const json = decodeURIComponent(
+        atob(base64)
+          .split('')
+          .map((char) => `%${`00${char.charCodeAt(0).toString(16)}`.slice(-2)}`)
+          .join('')
+      );
+      return JSON.parse(json);
+    } catch (_error) {
+      return null;
+    }
+  };
+
+  // Verifica se existe um token salvo ao carregar a página.
   const checkAuth = useCallback(async () => {
     const token = localStorage.getItem('evolutech_token');
-    
+
     if (!token) {
       setAuthState({ user: null, isAuthenticated: false, isLoading: false });
       return;
     }
 
     try {
-      // Valida o token no backend e pega dados frescos
+      // Bootstrap rápido via claims do JWT para evitar atraso visual no login/reload.
+      const tokenData = decodeTokenPayload(token);
+      if (tokenData?.userId && tokenData?.role) {
+        setAuthState({
+          user: {
+            id: tokenData.userId,
+            email: tokenData.email || '',
+            name: tokenData.fullName || 'Usuário',
+            role: tokenData.role as UserRole,
+            tenantId: tokenData.companyId || undefined,
+            tenantName: tokenData.companyName || undefined,
+            tenantSlug: undefined,
+            avatar: null,
+            createdAt: new Date(),
+          },
+          isAuthenticated: true,
+          isLoading: false,
+        });
+      }
+
+      // Valida token e puxa dados frescos do backend.
       const response = await fetch(`${API_URL}/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (response.ok) {
         const data = await response.json();
-        
+
         const userData = {
-            id: data.user.id,
-            email: data.user.email,
-            name: data.user.name, // Backend agora retorna 'name'
-            role: data.user.role as UserRole,
-            tenantId: data.user.tenantId,
-            tenantName: data.user.tenantName,
-            tenantSlug: data.user.tenantSlug,
-            avatar: null, // Avatar seria implementado via upload no futuro
-            createdAt: new Date(data.user.created_at || Date.now())
+          id: data.user.id,
+          email: data.user.email,
+          name: data.user.name,
+          role: data.user.role as UserRole,
+          tenantId: data.user.tenantId,
+          tenantName: data.user.tenantName,
+          tenantSlug: data.user.tenantSlug,
+          avatar: null,
+          createdAt: new Date(data.user.created_at || Date.now()),
         };
 
         setAuthState({
-            user: userData,
-            isAuthenticated: true,
-            isLoading: false
+          user: userData,
+          isAuthenticated: true,
+          isLoading: false,
         });
 
         if (data.company) {
-            setCompany(data.company);
+          setCompany(data.company);
         }
-
       } else {
         throw new Error('Sessão expirada');
       }
     } catch (error) {
       console.error('Erro de auth:', error);
-      localStorage.removeItem('evolutech_token'); // Limpa token inválido
+      localStorage.removeItem('evolutech_token');
       setAuthState({ user: null, isAuthenticated: false, isLoading: false });
       setCompany(null);
     }
@@ -78,36 +114,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     checkAuth();
   }, [checkAuth]);
 
-  // Função chamada pelo Login.tsx ao receber sucesso do backend
   const login = (token: string, userData: any) => {
     localStorage.setItem('evolutech_token', token);
-    
-    // Normaliza os dados para o formato do App
+
     const normalizedUser = {
-        ...userData,
-        role: userData.role as UserRole,
-        tenantId: userData.tenantId,
-        tenantName: userData.tenantName,
-        tenantSlug: userData.tenantSlug,
+      ...userData,
+      role: userData.role as UserRole,
+      tenantId: userData.tenantId,
+      tenantName: userData.tenantName,
+      tenantSlug: userData.tenantSlug,
     };
 
     setAuthState({
       user: normalizedUser,
       isAuthenticated: true,
-      isLoading: false
+      isLoading: false,
     });
-
-    if (userData.tenantId) {
-        // Se o login já retornou dados da empresa (se implementarmos isso no back), setamos aqui
-        // Por enquanto deixamos null ou fazemos um fetch extra se necessário
-    }
   };
 
   const logout = () => {
     localStorage.removeItem('evolutech_token');
     setAuthState({ user: null, isAuthenticated: false, isLoading: false });
     setCompany(null);
-    toast.info("Você saiu do sistema");
+    toast.info('Você saiu do sistema');
   };
 
   const getRedirectPath = useCallback(() => {
@@ -122,14 +151,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [authState.user]);
 
   const hasPermission = (requiredRoles: UserRole[]) => {
-      return authState.user ? requiredRoles.includes(authState.user.role) : false;
+    return authState.user ? requiredRoles.includes(authState.user.role) : false;
   };
 
   return (
-    <AuthContext.Provider value={{ 
-      ...authState, login, logout, hasPermission, company, getRedirectPath, 
+    <AuthContext.Provider value={{
+      ...authState,
+      login,
+      logout,
+      hasPermission,
+      company,
+      getRedirectPath,
       isEvolutechUser: ['SUPER_ADMIN_EVOLUTECH', 'ADMIN_EVOLUTECH'].includes(authState.user?.role || ''),
-      isCompanyUser: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'].includes(authState.user?.role || '')
+      isCompanyUser: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'].includes(authState.user?.role || ''),
     }}>
       {children}
     </AuthContext.Provider>
@@ -137,3 +171,4 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 };
 
 export const useAuth = () => useContext(AuthContext)!;
+

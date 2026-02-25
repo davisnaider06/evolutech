@@ -1,8 +1,10 @@
-import { prisma } from '../db';
+﻿import { prisma } from '../db';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { AppRole } from '../types';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret_fallback_dev';
+const JWT_EXPIRES_IN = (process.env.JWT_EXPIRES_IN || '24h') as jwt.SignOptions['expiresIn'];
 const OWNER_DEFAULT_MODULES = [
   { codigo: 'dashboard', nome: 'Dashboard' },
   { codigo: 'reports', nome: 'Relatorios' },
@@ -11,9 +13,17 @@ const OWNER_DEFAULT_MODULES = [
   { codigo: 'gateways', nome: 'Gateways' },
 ];
 
+type JwtAuthPayload = {
+  userId: string;
+  email: string;
+  fullName: string;
+  role?: AppRole;
+  companyId?: string | null;
+  companyName?: string | null;
+};
+
 export class AuthService {
   async login(email: string, passwordPlain: string) {
-    // Busca usuário e já traz as Roles juntas (JOIN automático)
     const normalizedEmail = String(email || '').trim().toLowerCase();
     const user = await prisma.user.findUnique({
       where: { email: normalizedEmail },
@@ -23,7 +33,17 @@ export class AuthService {
         fullName: true,
         passwordHash: true,
         roles: {
-          include: { company: true },
+          select: {
+            role: true,
+            companyId: true,
+            company: {
+              select: {
+                name: true,
+                slug: true,
+                sistemaBaseId: true,
+              },
+            },
+          },
           orderBy: { createdAt: 'desc' },
           take: 1,
         },
@@ -36,18 +56,18 @@ export class AuthService {
     const isValid = await bcrypt.compare(passwordPlain, user.passwordHash);
     if (!isValid) throw new Error('Credenciais inválidas');
 
-    // Pega o primeiro papel (assumindo 1 role ativa por login por enquanto)
-    const activeRole = user.roles[0]; 
+    const activeRole = user.roles[0];
 
-    const token = jwt.sign(
-      { 
-        userId: user.id, 
-        role: activeRole?.role, 
-        companyId: activeRole?.companyId 
-      }, 
-      JWT_SECRET, 
-      { expiresIn: '24h' }
-    );
+    const tokenPayload: JwtAuthPayload = {
+      userId: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      role: activeRole?.role,
+      companyId: activeRole?.companyId || null,
+      companyName: activeRole?.company?.name || null,
+    };
+
+    const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 
     return {
       token,
@@ -71,7 +91,17 @@ export class AuthService {
         fullName: true,
         email: true,
         roles: {
-          include: { company: true }, // Traz dados da empresa
+          select: {
+            role: true,
+            companyId: true,
+            company: {
+              select: {
+                name: true,
+                slug: true,
+                sistemaBaseId: true,
+              },
+            },
+          },
           orderBy: { createdAt: 'desc' },
           take: 1,
         }
@@ -150,3 +180,4 @@ export class AuthService {
     };
   }
 }
+

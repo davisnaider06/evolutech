@@ -42,12 +42,45 @@ const codeMatchesAlias = (rawCode: string, alias: string) => {
 };
 
 export const useCompanyModules = () => {
-  const { user } = useAuth();
+  const { user, company, isLoading: isAuthLoading } = useAuth();
   const [modules, setModules] = useState<CompanyModule[]>([]);
   const [activeCodes, setActiveCodes] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  const resolveOwnerDefaults = useCallback(
+    (input: CompanyModule[]) => {
+      if (user?.role !== 'DONO_EMPRESA') return input;
+
+      const defaultOwnerModules = OWNER_DEFAULT_CODES
+        .filter((code) => !input.some((module) => module.codigo === code))
+        .map((code) => ({
+          id: `owner-default-${code}`,
+          codigo: code,
+          nome: code,
+          icone: null,
+        }));
+
+      return [...input, ...defaultOwnerModules];
+    },
+    [user?.role]
+  );
+
   const fetchModules = useCallback(async () => {
+    const contextModules = ((company as any)?.modules || []) as CompanyModule[];
+    if (contextModules.length > 0) {
+      const mapped = contextModules.map((item) => ({
+        id: item.id,
+        codigo: (item.codigo || '').toLowerCase(),
+        nome: item.nome,
+        icone: item.icone || null,
+      }));
+      const finalModules = resolveOwnerDefaults(mapped);
+      setModules(finalModules);
+      setActiveCodes(finalModules.map((m) => m.codigo));
+      setIsLoading(false);
+      return;
+    }
+
     const token = localStorage.getItem('evolutech_token');
     if (!token) {
       setModules([]);
@@ -75,20 +108,7 @@ export const useCompanyModules = () => {
         nome: item.nome,
         icone: item.icone || null,
       }));
-
-      const defaultOwnerModules =
-        user?.role === 'DONO_EMPRESA'
-          ? OWNER_DEFAULT_CODES
-              .filter((code) => !mapped.some((module) => module.codigo === code))
-              .map((code) => ({
-                id: `owner-default-${code}`,
-                codigo: code,
-                nome: code,
-                icone: null,
-              }))
-          : [];
-
-      const finalModules = [...mapped, ...defaultOwnerModules];
+      const finalModules = resolveOwnerDefaults(mapped);
 
       setModules(finalModules);
       setActiveCodes(finalModules.map((m) => m.codigo));
@@ -99,11 +119,12 @@ export const useCompanyModules = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [user?.role]);
+  }, [company, resolveOwnerDefaults]);
 
   useEffect(() => {
+    if (isAuthLoading) return;
     fetchModules();
-  }, [fetchModules]);
+  }, [fetchModules, isAuthLoading]);
 
   const hasModule = useCallback(
     (moduleCode: string): boolean => {

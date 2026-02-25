@@ -12,6 +12,7 @@ import paymentWebhookRoutes from './routes/payment-webhook.routes';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const requestLogEnabled = process.env.REQUEST_LOG_ENABLED === 'true';
 const corsOrigins = String(process.env.CORS_ORIGIN || '*')
   .split(',')
   .map((origin) => origin.trim())
@@ -28,10 +29,12 @@ app.use('/api/public/payments/webhook', paymentWebhookRoutes);
 app.use(express.json());
 
 // Logger de Requisições
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  next();
-});
+if (requestLogEnabled) {
+  app.use((req, _res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    next();
+  });
+}
 
 // Registro de Rotas
 app.use('/api/auth', authRoutes);       // Login e Perfil
