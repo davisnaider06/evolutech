@@ -30,8 +30,12 @@ app.use(express.json());
 
 // Logger de Requisições
 if (requestLogEnabled) {
-  app.use((req, _res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  app.use((req, res, next) => {
+    const startedAt = Date.now();
+    res.on('finish', () => {
+      const elapsedMs = Date.now() - startedAt;
+      console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} -> ${res.statusCode} (${elapsedMs}ms)`);
+    });
     next();
   });
 }

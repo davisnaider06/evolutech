@@ -5,6 +5,8 @@ import { AuthedRequest, AppRole } from '../types';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret_fallback_dev';
 const AUTH_REQUIRE_DB_CHECK = process.env.AUTH_REQUIRE_DB_CHECK === 'true';
+const AUTH_PERF_DEBUG = process.env.AUTH_PERF_DEBUG === 'true';
+const AUTH_SLOW_MS = Number(process.env.AUTH_SLOW_MS || 200);
 
 type JwtClaims = {
   userId: string;
@@ -18,6 +20,7 @@ type JwtClaims = {
 };
 
 export const authenticateToken = async (req: AuthedRequest, res: Response, next: NextFunction) => {
+  const startedAt = Date.now();
   const authHeader = req.headers.authorization;
   const token = authHeader?.split(' ')[1];
 
@@ -45,6 +48,14 @@ export const authenticateToken = async (req: AuthedRequest, res: Response, next:
         companyId: decoded.companyId || null,
         companyName: decoded.companyName || null,
       };
+      const elapsedMs = Date.now() - startedAt;
+      res.locals.authPerfMs = elapsedMs;
+      if (AUTH_PERF_DEBUG) {
+        res.setHeader('X-Auth-Middleware-Ms', String(elapsedMs));
+      }
+      if (elapsedMs > AUTH_SLOW_MS) {
+        console.warn(`[auth.middleware] slow request ${elapsedMs}ms ${req.method} ${req.originalUrl}`);
+      }
       next();
       return;
     }
@@ -84,6 +95,15 @@ export const authenticateToken = async (req: AuthedRequest, res: Response, next:
       companyId: activeRole?.companyId || null,
       companyName: activeRole?.company?.name || null,
     };
+
+    const elapsedMs = Date.now() - startedAt;
+    res.locals.authPerfMs = elapsedMs;
+    if (AUTH_PERF_DEBUG) {
+      res.setHeader('X-Auth-Middleware-Ms', String(elapsedMs));
+    }
+    if (elapsedMs > AUTH_SLOW_MS) {
+      console.warn(`[auth.middleware] slow request ${elapsedMs}ms ${req.method} ${req.originalUrl}`);
+    }
 
     next();
   } catch (_error) {

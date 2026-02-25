@@ -6,8 +6,22 @@ import { authenticateToken } from '../middlewares/auth.middleware';
 const router = Router();
 const companyController = new CompanyController();
 const dashboardController = new DashboardController();
+const COMPANY_PERF_DEBUG = process.env.COMPANY_PERF_DEBUG === 'true';
+const COMPANY_SLOW_MS = Number(process.env.COMPANY_SLOW_MS || 300);
 
 router.use(authenticateToken);
+if (COMPANY_PERF_DEBUG) {
+  router.use((req, res, next) => {
+    const startedAt = Date.now();
+    res.on('finish', () => {
+      const elapsedMs = Date.now() - startedAt;
+      if (elapsedMs > COMPANY_SLOW_MS) {
+        console.warn(`[company.routes] slow ${elapsedMs}ms ${req.method} ${req.originalUrl}`);
+      }
+    });
+    next();
+  });
+}
 
 router.get('/financeiro/overview', companyController.getFinancialOverview.bind(companyController));
 router.get('/reports/overview', companyController.getReportsOverview.bind(companyController));

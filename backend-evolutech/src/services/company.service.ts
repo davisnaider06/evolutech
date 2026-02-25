@@ -1,4 +1,4 @@
-import { prisma } from '../db';
+﻿import { prisma } from '../db';
 import { AuthenticatedUser } from '../types';
 import { TABLE_CONFIG } from '../config/tableConfig';
 import bcrypt from 'bcryptjs';
@@ -18,6 +18,8 @@ class CompanyServiceError extends Error {
 
 export class CompanyService {
   private paymentService = new PaymentService();
+  private moduleAccessCache = new Map<string, { allowed: boolean; expiresAt: number }>();
+  private moduleAccessCacheTtlMs = Number(process.env.MODULE_ACCESS_CACHE_TTL_MS || 30000);
   private appointmentStatuses = new Set([
     'pendente',
     'confirmado',
@@ -43,6 +45,34 @@ export class CompanyService {
   private toNumber(value: unknown): number {
     const numeric = Number(value ?? 0);
     return Number.isFinite(numeric) ? numeric : 0;
+  }
+
+  private getModuleCacheKey(companyId: string, moduleCodes: string[]) {
+    const normalized = moduleCodes
+      .map((code) => String(code || '').trim().toLowerCase())
+      .filter(Boolean)
+      .sort()
+      .join('|');
+    return `${companyId}:${normalized}`;
+  }
+
+  private getCachedModuleAccess(companyId: string, moduleCodes: string[]) {
+    const key = this.getModuleCacheKey(companyId, moduleCodes);
+    const cached = this.moduleAccessCache.get(key);
+    if (!cached) return null;
+    if (cached.expiresAt < Date.now()) {
+      this.moduleAccessCache.delete(key);
+      return null;
+    }
+    return cached.allowed;
+  }
+
+  private setCachedModuleAccess(companyId: string, moduleCodes: string[], allowed: boolean) {
+    const key = this.getModuleCacheKey(companyId, moduleCodes);
+    this.moduleAccessCache.set(key, {
+      allowed,
+      expiresAt: Date.now() + this.moduleAccessCacheTtlMs,
+    });
   }
 
   private getMonthBounds(referenceDate: Date) {
@@ -175,6 +205,8 @@ export class CompanyService {
     const moduleCodes = config?.moduleCodes || [];
     if (moduleCodes.length === 0) return;
     if (this.hasOwnerDefaultAccess(user, moduleCodes)) return;
+    const cached = this.getCachedModuleAccess(companyId, moduleCodes);
+    if (cached === true) return;
 
     const hasModule = await prisma.companyModule.findFirst({
       where: {
@@ -189,11 +221,13 @@ export class CompanyService {
     });
 
     if (!hasModule) {
+      this.setCachedModuleAccess(companyId, moduleCodes, false);
       throw new CompanyServiceError(
         `Módulo "${moduleCodes[0]}" não está ativo para esta empresa`,
         403
       );
     }
+    this.setCachedModuleAccess(companyId, moduleCodes, true);
   }
 
   async listTableData(table: string, user: AuthenticatedUser, queryParams: any) {
@@ -502,6 +536,8 @@ export class CompanyService {
   private async ensureAnyModuleAccess(user: AuthenticatedUser, companyId: string, moduleCodes: string[]) {
     if (this.isAdminRole(user.role)) return;
     if (this.hasOwnerDefaultAccess(user, moduleCodes)) return;
+    const cached = this.getCachedModuleAccess(companyId, moduleCodes);
+    if (cached === true) return;
 
     const hasModule = await prisma.companyModule.findFirst({
       where: {
@@ -516,8 +552,10 @@ export class CompanyService {
     });
 
     if (!hasModule) {
+      this.setCachedModuleAccess(companyId, moduleCodes, false);
       throw new CompanyServiceError(`Modulo "${moduleCodes[0]}" nao esta ativo para esta empresa`, 403);
     }
+    this.setCachedModuleAccess(companyId, moduleCodes, true);
   }
 
   private hasOwnerDefaultAccess(user: AuthenticatedUser, moduleCodes: string[]) {
@@ -2304,12 +2342,18 @@ export class CompanyService {
       await this.ensureAnyModuleAccess(user, companyId, ['financeiro', 'financial']);
     }
     const { start, end } = this.parseDateRange(queryParams, 180);
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+    const historyStart = new Date(now.getFullYear(), now.getMonth() - 24, 1);
 
-    const [paidOrders, monthlyNewCustomers, activeUsersByCompany, paidOrdersInRange, pendingOrdersInRange, paidTransactionsInRange, auditLogsInRange, customersTotalCount] = await Promise.all([
+    const [paidOrders, monthlyNewCustomers, activeUsersByCompany, paidOrdersInRange, pendingOrdersInRange, paidTransactionsInRange, auditLogsInRange, customersTotalCount, lifetimeRevenueAgg, mrrCurrentAgg, mrrPreviousAgg] = await Promise.all([
       prisma.order.findMany({
         where: {
           ...(isOwner && companyId ? { companyId } : {}),
           status: 'paid',
+          createdAt: { gte: historyStart },
         },
         select: {
           id: true,
@@ -2320,7 +2364,9 @@ export class CompanyService {
         orderBy: { createdAt: 'asc' },
       }),
       prisma.customer.findMany({
-        where: isOwner && companyId ? { companyId } : undefined,
+        where: isOwner && companyId
+          ? { companyId, createdAt: { gte: historyStart } }
+          : { createdAt: { gte: historyStart } },
         select: {
           companyId: true,
           createdAt: true,
@@ -2370,6 +2416,29 @@ export class CompanyService {
       }),
       prisma.customer.count({
         where: isOwner && companyId ? { companyId } : undefined,
+      }),
+      prisma.order.aggregate({
+        where: {
+          ...(isOwner && companyId ? { companyId } : {}),
+          status: 'paid',
+        },
+        _sum: { total: true },
+      }),
+      prisma.order.aggregate({
+        where: {
+          ...(isOwner && companyId ? { companyId } : {}),
+          status: 'paid',
+          createdAt: { gte: monthStart },
+        },
+        _sum: { total: true },
+      }),
+      prisma.order.aggregate({
+        where: {
+          ...(isOwner && companyId ? { companyId } : {}),
+          status: 'paid',
+          createdAt: { gte: prevMonthStart, lte: prevMonthEnd },
+        },
+        _sum: { total: true },
       }),
     ]);
 
@@ -2441,20 +2510,11 @@ export class CompanyService {
       }
     });
 
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
-
-    const mrrCurrent = paidOrders
-      .filter((item) => item.createdAt >= monthStart)
-      .reduce((sum, item) => sum + this.toNumber(item.total), 0);
-    const mrrPrevious = paidOrders
-      .filter((item) => item.createdAt >= prevMonthStart && item.createdAt <= prevMonthEnd)
-      .reduce((sum, item) => sum + this.toNumber(item.total), 0);
+    const mrrCurrent = this.toNumber(mrrCurrentAgg._sum.total);
+    const mrrPrevious = this.toNumber(mrrPreviousAgg._sum.total);
     const mrrGrowth = mrrPrevious > 0 ? ((mrrCurrent - mrrPrevious) / mrrPrevious) * 100 : 0;
 
-    const lifetimeRevenue = paidOrders.reduce((sum, item) => sum + this.toNumber(item.total), 0);
+    const lifetimeRevenue = this.toNumber(lifetimeRevenueAgg._sum.total);
     const ltv = customersTotalCount > 0 ? lifetimeRevenue / customersTotalCount : 0;
     const paidRevenueInRange = paidOrdersInRange.reduce((sum, item) => sum + this.toNumber(item.total), 0);
     const ticketMedio = paidOrdersInRange.length > 0 ? paidRevenueInRange / paidOrdersInRange.length : 0;
