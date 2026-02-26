@@ -20,6 +20,8 @@ export class CompanyService {
   private paymentService = new PaymentService();
   private moduleAccessCache = new Map<string, { allowed: boolean; expiresAt: number }>();
   private moduleAccessCacheTtlMs = Number(process.env.MODULE_ACCESS_CACHE_TTL_MS || 30000);
+  private companyPlanCache = new Map<string, { plan: string; expiresAt: number }>();
+  private companyPlanCacheTtlMs = Number(process.env.COMPANY_PLAN_CACHE_TTL_MS || 30000);
   private appointmentStatuses = new Set([
     'pendente',
     'confirmado',
@@ -42,6 +44,37 @@ export class CompanyService {
     'gateways',
     'commissions_owner',
     'comissoes_dono',
+  ]);
+  private startPlanModuleAliases = new Set([
+    'appointments',
+    'agendamentos',
+    'customers',
+    'clientes',
+    'users',
+    'equipe',
+    'funcionarios',
+    'team',
+    'dashboard',
+  ]);
+  private proPlanModuleAliases = new Set([
+    'products',
+    'produtos',
+    'pdv',
+    'orders',
+    'pedidos',
+    'cash',
+    'caixa',
+    'gateways',
+    'gateway',
+    'commissions',
+    'comissoes',
+    'commissions_owner',
+    'commissions_staff',
+    'comissoes_dono',
+    'subscriptions',
+    'assinaturas',
+    'loyalty',
+    'fidelidade',
   ]);
 
   private toNumber(value: unknown): number {
@@ -83,6 +116,56 @@ export class CompanyService {
       allowed,
       expiresAt: Date.now() + this.moduleAccessCacheTtlMs,
     });
+  }
+
+  private normalizeCompanyPlan(plan?: string | null) {
+    const raw = String(plan || '').trim().toLowerCase();
+    if (raw === 'pro') return 'pro';
+    if (raw === 'start' || raw === 'starter' || raw === 'free') return 'start';
+    return 'start';
+  }
+
+  private async getCompanyPlan(companyId: string) {
+    const cached = this.companyPlanCache.get(companyId);
+    if (cached && cached.expiresAt > Date.now()) return cached.plan;
+
+    const company = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: { plan: true },
+    });
+    const plan = this.normalizeCompanyPlan(company?.plan);
+    this.companyPlanCache.set(companyId, {
+      plan,
+      expiresAt: Date.now() + this.companyPlanCacheTtlMs,
+    });
+    return plan;
+  }
+
+  private enforcePlanModuleAccess(companyPlan: string, moduleCodes: string[]) {
+    const normalizedCodes = moduleCodes
+      .map((item) => String(item || '').trim().toLowerCase())
+      .filter(Boolean);
+
+    if (companyPlan === 'pro') return;
+
+    const disallowed = normalizedCodes.find((code) => this.proPlanModuleAliases.has(code));
+    if (disallowed) {
+      throw new CompanyServiceError(
+        `Modulo "${disallowed}" disponivel apenas no plano Pro`,
+        403
+      );
+    }
+
+    const hasAllowedStartModule = normalizedCodes.some(
+      (code) => this.startPlanModuleAliases.has(code)
+    );
+    if (!hasAllowedStartModule) {
+      const requested = normalizedCodes[0] || 'modulo';
+      throw new CompanyServiceError(
+        `Modulo "${requested}" nao disponivel no plano Start`,
+        403
+      );
+    }
   }
 
   private getMonthBounds(referenceDate: Date) {
@@ -253,6 +336,8 @@ export class CompanyService {
     const config = TABLE_CONFIG[table];
     const moduleCodes = config?.moduleCodes || [];
     if (moduleCodes.length === 0) return;
+    const companyPlan = await this.getCompanyPlan(companyId);
+    this.enforcePlanModuleAccess(companyPlan, moduleCodes);
     if (this.hasOwnerDefaultAccess(user, moduleCodes)) return;
     const cached = this.getCachedModuleAccess(companyId, moduleCodes);
     if (cached === true) return;
@@ -584,6 +669,8 @@ export class CompanyService {
 
   private async ensureAnyModuleAccess(user: AuthenticatedUser, companyId: string, moduleCodes: string[]) {
     if (this.isAdminRole(user.role)) return;
+    const companyPlan = await this.getCompanyPlan(companyId);
+    this.enforcePlanModuleAccess(companyPlan, moduleCodes);
     if (this.hasOwnerDefaultAccess(user, moduleCodes)) return;
     const cached = this.getCachedModuleAccess(companyId, moduleCodes);
     if (cached === true) return;
@@ -743,6 +830,7 @@ export class CompanyService {
   ) {
     const companyId = this.resolveCompanyId(user, data);
     await this.ensureAnyModuleAccess(user, companyId, ['pdv', 'orders', 'pedidos']);
+    await this.reconcileCompanySubscriptions(companyId, user.id);
 
     const subtotal = Math.max(0, Number(data.subtotal || 0));
     const serviceQuantity = Math.max(0, Number(data.service_quantity || 0));
@@ -979,6 +1067,121 @@ export class CompanyService {
     return endAt;
   }
 
+  private async reconcileCompanySubscriptions(companyId: string, actorUserId?: string | null) {
+    const now = new Date();
+    return prisma.$transaction(async (tx) => {
+      const dueSubscriptions = await (tx as any).customerSubscription.findMany({
+        where: {
+          companyId,
+          status: { in: ['active', 'pending'] },
+          endAt: { lt: now },
+        },
+        include: {
+          customer: { select: { id: true, name: true } },
+          plan: {
+            select: {
+              id: true,
+              name: true,
+              interval: true,
+              includedServices: true,
+              isUnlimited: true,
+              isActive: true,
+            },
+          },
+        },
+      });
+
+      let expiredCount = 0;
+      let renewedCount = 0;
+
+      for (const item of dueSubscriptions) {
+        const canRenew = Boolean(item.autoRenew && item.plan?.isActive);
+        if (!canRenew) {
+          await (tx as any).customerSubscription.update({
+            where: { id: item.id },
+            data: { status: 'expired' },
+          });
+          expiredCount += 1;
+          continue;
+        }
+
+        const existingFuture = await (tx as any).customerSubscription.findFirst({
+          where: {
+            companyId,
+            customerId: item.customerId,
+            planId: item.planId,
+            status: { in: ['active', 'pending'] },
+            startAt: { gt: item.endAt },
+          },
+          select: { id: true },
+        });
+
+        await (tx as any).customerSubscription.update({
+          where: { id: item.id },
+          data: { status: 'expired' },
+        });
+        expiredCount += 1;
+
+        if (existingFuture) continue;
+
+        const startAt = new Date(item.endAt);
+        startAt.setMilliseconds(startAt.getMilliseconds() + 1);
+        const endAt = this.calculateSubscriptionEndAt(startAt, item.plan.interval);
+        const remainingServices = item.plan.isUnlimited
+          ? null
+          : Math.max(0, Number(item.plan.includedServices || 0));
+
+        const renewed = await (tx as any).customerSubscription.create({
+          data: {
+            companyId,
+            customerId: item.customerId,
+            planId: item.planId,
+            status: 'active',
+            startAt,
+            endAt,
+            remainingServices,
+            autoRenew: true,
+            amount: item.amount,
+            notes: 'Renovacao automatica',
+          },
+        });
+
+        const renewalOrder = await tx.order.create({
+          data: {
+            companyId,
+            customerName: item.customer?.name || null,
+            status: 'paid',
+            total: item.amount,
+          },
+        });
+        await this.syncCompanyMonthlyRevenue(tx, companyId, renewalOrder.createdAt);
+
+        await tx.auditLog.create({
+          data: {
+            userId: actorUserId || null,
+            companyId,
+            action: 'SUBSCRIPTION_RENEWED',
+            resource: 'customer_subscriptions',
+            details: {
+              previous_subscription_id: item.id,
+              renewed_subscription_id: renewed.id,
+              plan_id: item.planId,
+              plan_name: item.plan?.name || null,
+              customer_id: item.customerId,
+              customer_name: item.customer?.name || null,
+              renewal_order_id: renewalOrder.id,
+              amount: Number(item.amount || 0),
+            },
+          },
+        });
+
+        renewedCount += 1;
+      }
+
+      return { expiredCount, renewedCount };
+    });
+  }
+
   async listSubscriptionPlans(
     user: AuthenticatedUser,
     queryParams: { company_id?: string; status?: string } = {}
@@ -1080,18 +1283,10 @@ export class CompanyService {
   ) {
     const companyId = this.resolveCompanyId(user, queryParams);
     await this.ensureAnyModuleAccess(user, companyId, ['subscriptions', 'assinaturas']);
+    await this.reconcileCompanySubscriptions(companyId, user.id);
 
     const customerId = String(queryParams.customer_id || '').trim();
     const status = String(queryParams.status || '').trim();
-
-    await (prisma as any).customerSubscription.updateMany({
-      where: {
-        companyId,
-        status: { in: ['active', 'pending'] },
-        endAt: { lt: new Date() },
-      },
-      data: { status: 'expired' },
-    });
 
     const rows = await (prisma as any).customerSubscription.findMany({
       where: {
@@ -1223,6 +1418,7 @@ export class CompanyService {
   ) {
     const companyId = this.resolveCompanyId(user, queryParams);
     await this.ensureAnyModuleAccess(user, companyId, ['subscriptions', 'assinaturas']);
+    await this.reconcileCompanySubscriptions(companyId, user.id);
 
     const customerId = String(queryParams.customer_id || '').trim();
     const subscriptionId = String(queryParams.subscription_id || '').trim();
@@ -2205,6 +2401,7 @@ export class CompanyService {
   ) {
     const companyId = this.resolveCompanyId(user, data);
     await this.ensureAnyModuleAccess(user, companyId, ['pdv', 'orders', 'pedidos']);
+    await this.reconcileCompanySubscriptions(companyId, user.id);
 
     const items = Array.isArray(data.items) ? data.items : [];
     if (items.length === 0) throw new CompanyServiceError('Carrinho vazio', 400);
