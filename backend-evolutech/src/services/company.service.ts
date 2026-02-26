@@ -179,6 +179,42 @@ export class CompanyService {
     return { success: true };
   }
 
+  // Módulo WhatsApp
+
+  private normalizePhone(phone: unknown) {
+    if (!digits){
+      throw new CompanyServiceError('Telefone Obrigatório', 400);
+    }
+    if (digits.length === 10 || digits.length === 11) {
+      return `55${digits}`;
+    }
+    if (digits.length === 12 || digits.length === 13){
+      return digits
+    }
+
+    throw new CompanyServiceError('Telefone invalido. Use DDD + número com ou sem código do país', 400);
+  }
+
+  async sendWhatsApp(
+    user: AuthenticatedUser,
+    data: {
+      phone?: string;
+      message?: string;
+      delayMessage?: number;
+      company_id?: string;
+      companyId?: string;
+    }
+  ){
+    const companyId = this.resolveCompanyId(user, data);
+
+    const message = String(data = message || "").trim();
+    if (!message) {
+      throw new CompanyServiceError('Mensagem Obrigatória', 400);
+    }
+  }
+
+  // Acaba aqui o Módulo WhatsApp
+
   private async ensureAnyModuleAccess(user: AuthenticatedUser, companyId: string, moduleCodes: string[]) {
     if (this.isAdminRole(user.role)) return;
 
