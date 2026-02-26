@@ -29,7 +29,7 @@ router.get('/commissions/profiles', companyController.listCommissionProfiles.bin
 router.put('/commissions/profiles/:professionalId', companyController.upsertCommissionProfile.bind(companyController));
 router.post('/commissions/adjustments', companyController.createCommissionAdjustment.bind(companyController));
 router.get('/commissions/overview', companyController.getCommissionsOverview.bind(companyController));
-router.get('/commissions/export', companyController.exportCommissionsCsv.bind(companyController));
+router.get('/commissions/export', companyController.exportCommissionsExcel.bind(companyController));
 router.get('/commissions/payouts', companyController.listCommissionPayouts.bind(companyController));
 router.put('/commissions/payouts', companyController.upsertCommissionPayout.bind(companyController));
 router.get('/dashboard/metrics', dashboardController.getMetrics.bind(dashboardController));

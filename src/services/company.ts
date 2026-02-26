@@ -82,7 +82,7 @@ export const companyService = {
     amount_paid?: number;
     note?: string;
   }) => request('/commissions/payouts', { method: 'PUT', body: JSON.stringify(data) }),
-  exportCommissionsCsv: async (month?: string) => {
+  exportCommissionsExcel: async (month?: string) => {
     const searchParams = new URLSearchParams();
     if (month) searchParams.set('month', month);
     const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
@@ -95,7 +95,7 @@ export const companyService = {
       throw new Error(data.error || `Erro ${response.status}`);
     }
 
-    return response.text();
+    return response.blob();
   },
   list: async (table: string, params?: Record<string, string | number | undefined>) => {
     const searchParams = new URLSearchParams();

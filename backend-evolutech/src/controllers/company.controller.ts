@@ -413,16 +413,19 @@ export class CompanyController {
     }
   }
 
-  async exportCommissionsCsv(req: AuthedRequest, res: Response) {
+  async exportCommissionsExcel(req: AuthedRequest, res: Response) {
     try {
-      const csv = await service.exportCommissionsCsv(req.user!, req.query as any);
+      const fileBuffer = await service.exportCommissionsExcel(req.user!, req.query as any);
       const month = String(req.query.month || '').trim() || new Date().toISOString().slice(0, 7);
-      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
       res.setHeader(
         'Content-Disposition',
-        `attachment; filename="comissoes-${month}.csv"`
+        `attachment; filename="comissoes-${month}.xlsx"`
       );
-      return res.status(200).send(csv);
+      return res.status(200).send(fileBuffer);
     } catch (error: unknown) {
       return this.handleError(error, res);
     }

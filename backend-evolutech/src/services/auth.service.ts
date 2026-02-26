@@ -24,6 +24,13 @@ type JwtAuthPayload = {
 };
 
 export class AuthService {
+  private meCache = new Map<string, { payload: any; expiresAt: number }>();
+  private meCacheTtlMs = Number(process.env.AUTH_ME_CACHE_TTL_MS || 15000);
+
+  private buildMeCacheKey(userId: string, role?: AppRole, companyId?: string | null) {
+    return `${userId}:${role || 'unknown'}:${companyId || 'none'}`;
+  }
+
   async login(email: string, passwordPlain: string) {
     const normalizedEmail = String(email || '').trim().toLowerCase();
     const user = await prisma.user.findUnique({
@@ -32,6 +39,7 @@ export class AuthService {
         id: true,
         email: true,
         fullName: true,
+        isActive: true,
         passwordHash: true,
         roles: {
           select: {
@@ -52,6 +60,7 @@ export class AuthService {
     });
 
     if (!user) throw new Error('Credenciais inválidas');
+    if (!user.isActive) throw new Error('Usuario inativo');
     if (!user.passwordHash) throw new Error('Usuário sem senha definida');
 
     const isValid = await bcrypt.compare(passwordPlain, user.passwordHash);
@@ -112,6 +121,12 @@ export class AuthService {
     if (!user) return null;
     const activeRole = user.roles[0];
     const companyId = activeRole?.companyId;
+    const meCacheKey = this.buildMeCacheKey(userId, activeRole?.role, companyId);
+    const now = Date.now();
+    const cached = this.meCache.get(meCacheKey);
+    if (cached && cached.expiresAt > now) {
+      return cached.payload;
+    }
 
     const [companyModules, sistemaBaseModules] = companyId
       ? await Promise.all([
@@ -169,7 +184,7 @@ export class AuthService {
       }
     }
 
-    return {
+    const payload = {
       id: user.id,
       full_name: user.fullName,
       email: user.email,
@@ -179,6 +194,11 @@ export class AuthService {
       company_slug: activeRole?.company?.slug,
       modules: Array.from(moduleMap.values()),
     };
+    this.meCache.set(meCacheKey, {
+      payload,
+      expiresAt: now + this.meCacheTtlMs,
+    });
+    return payload;
   }
 }
 

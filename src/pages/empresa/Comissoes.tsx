@@ -158,12 +158,11 @@ const Comissoes: React.FC = () => {
 
   const handleExport = async () => {
     try {
-      const csv = await companyService.exportCommissionsCsv(month);
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const blob = await companyService.exportCommissionsExcel(month);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `comissoes-${month}.csv`;
+      a.download = `comissoes-${month}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success('Relatorio exportado');
@@ -228,7 +227,7 @@ const Comissoes: React.FC = () => {
           <Button variant="outline" onClick={loadData} disabled={loading}>
             {loading ? 'Atualizando...' : 'Atualizar'}
           </Button>
-          {isOwner ? <Button onClick={handleExport}>Exportar CSV</Button> : null}
+          {isOwner ? <Button onClick={handleExport}>Exportar Excel</Button> : null}
         </CardContent>
       </Card>
 

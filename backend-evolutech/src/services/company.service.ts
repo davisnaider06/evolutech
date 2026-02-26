@@ -3,6 +3,7 @@ import { AuthenticatedUser } from '../types';
 import { TABLE_CONFIG } from '../config/tableConfig';
 import bcrypt from 'bcryptjs';
 import { TaskStatus } from '@prisma/client';
+import * as XLSX from 'xlsx';
 import { PaymentService } from './payment.service';
 import { decryptSecret, encryptSecret } from '../utils/crypto.util';
 
@@ -2175,68 +2176,56 @@ export class CompanyService {
     };
   }
 
-  async exportCommissionsCsv(
+  async exportCommissionsExcel(
     user: AuthenticatedUser,
     queryParams: { month?: string; professional_id?: string; company_id?: string; companyId?: string } = {}
   ) {
     this.ensureOwnerCompanyRole(user);
     const result = await this.getCommissionsOverview(user, queryParams);
-    const header = [
-      'Mes',
-      'Profissional',
-      'Email',
-      'Cargo',
-      'Receita Servicos',
-      'Receita Produtos',
-      '% Servicos',
-      '% Produtos',
-      'Fixo Mensal',
-      'Ajustes',
-      'Comissao Servicos',
-      'Comissao Produtos',
-      'Comissao Total',
-      'Status Pagamento',
-      'Valor Pago',
-      'Valor Pendente',
-      'Pago Em',
+    const rows = (Array.isArray(result.data) ? result.data : []).map((row: any) => ({
+      Mes: result.period.month,
+      Profissional: row.professional_name || '',
+      Email: row.professional_email || '',
+      Cargo: row.role || '',
+      ReceitaServicos: Number(row.service_revenue || 0),
+      ReceitaProdutos: Number(row.product_revenue || 0),
+      PercentualServicos: Number(row.service_commission_pct || 0),
+      PercentualProdutos: Number(row.product_commission_pct || 0),
+      FixoMensal: Number(row.monthly_fixed_amount || 0),
+      Ajustes: Number(row.monthly_adjustments || 0),
+      ComissaoServicos: Number(row.service_commission_amount || 0),
+      ComissaoProdutos: Number(row.product_commission_amount || 0),
+      ComissaoTotal: Number(row.total_commission || 0),
+      StatusPagamento: row.payout_status || 'pending',
+      ValorPago: Number(row.amount_paid || 0),
+      ValorPendente: Number(row.amount_pending || 0),
+      PagoEm: row.paid_at ? new Date(row.paid_at).toISOString() : '',
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    worksheet['!cols'] = [
+      { wch: 10 },
+      { wch: 28 },
+      { wch: 30 },
+      { wch: 22 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 16 },
+      { wch: 18 },
+      { wch: 14 },
+      { wch: 16 },
+      { wch: 24 },
     ];
 
-    const escapeCsv = (value: unknown) => {
-      const raw = String(value ?? '');
-      if (raw.includes(',') || raw.includes('"') || raw.includes('\n')) {
-        return `"${raw.replace(/"/g, '""')}"`;
-      }
-      return raw;
-    };
-
-    const lines = [
-      header.join(','),
-      ...result.data.map((row: any) =>
-        [
-          result.period.month,
-          row.professional_name,
-          row.professional_email || '',
-          row.role,
-          row.service_revenue.toFixed(2),
-          row.product_revenue.toFixed(2),
-          row.service_commission_pct.toFixed(2),
-          row.product_commission_pct.toFixed(2),
-          row.monthly_fixed_amount.toFixed(2),
-          row.monthly_adjustments.toFixed(2),
-          row.service_commission_amount.toFixed(2),
-          row.product_commission_amount.toFixed(2),
-          row.total_commission.toFixed(2),
-          row.payout_status,
-          row.amount_paid.toFixed(2),
-          row.amount_pending.toFixed(2),
-          row.paid_at ? new Date(row.paid_at).toISOString() : '',
-        ]
-          .map(escapeCsv)
-          .join(',')
-      ),
-    ];
-
-    return lines.join('\n');
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Comissoes');
+    return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
   }
 
   async upsertCommissionPayout(

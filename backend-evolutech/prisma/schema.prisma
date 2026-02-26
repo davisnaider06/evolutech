@@ -462,7 +462,7 @@ model CustomerLoyaltyProfile {
 model CustomerLoyaltyTransaction {
   id                   String                @id @default(uuid())
   companyId            String                @map("empresa_id")
-  customerId           String   @unique @map("customer_id")
+  customerId           String                @map("customer_id")
   profileId            String                @map("profile_id")
   orderId              String?               @map("order_id")
   transactionType      LoyaltyTransactionType @map("transaction_type")
