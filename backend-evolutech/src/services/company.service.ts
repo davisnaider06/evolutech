@@ -179,7 +179,7 @@ export class CompanyService {
     return { success: true };
   }
 
-  // Módulo WhatsApp
+  // Módulo WhatsApp ////////////////////////////
 
   private normalizePhone(phone: unknown) {
     if (!digits){
@@ -213,7 +213,66 @@ export class CompanyService {
     }
   }
 
-  // Acaba aqui o Módulo WhatsApp
+  const phone = this.normalizePhone(data.phone);
+  const delayMessage = Number(data.delayMessage || 0);
+
+  const baseUrl = String(process.env.ZAPI_BASE_URL || 'http://api.z-api.io/instances').replace(/\/+$/,"");
+  const instanceId = String(process.env.ZAPI_INSTANCE_ID || '').trim();
+  const instanceToken = String(process.env.ZAPI_INSTANCE_TOKEN || '').trim(); 
+  const clientToken = String(process.env.ZAPI_CLIENT_TOKEN || "").trim();
+
+  if( !instanceId || !instanceToken ) {
+    throw new CompanyServiceError(
+      'Z-api não configurada. Defina ZAPI_INSTANCE_ID ou ZAPI_INSTANCE_TOKEN no .env',
+      500
+    );
+  }
+
+  const endpoint = `${baseUrl}/${instanceId}/token/${instanceToken}/send-text`;
+  const headers: Record<string, string> = { 'Content-type': 'application/json'};
+  if ( clientToken ) {
+    headers['Client-Token'] = clientToken;
+  }
+
+  let responseBody: any = null;
+  let responseStatus: 0;
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        phone,
+        message
+        delayMessage: Number.isFinite(delayMessage) ? Math.max(0, delayMessage): 0;
+      }),
+    });
+
+    responseStatus = response.status;
+    const raw = await response.text();
+    try{
+      responseBody = raw ? JSON.parse(raw) : null;
+    } catch {
+      responseBody = raw || null;
+    }
+
+    if (!response.ok) {
+      throw new CompanyServiceError(
+        `Falha ao enviar mensagem pela Z-API (status ${response.status})`,
+        502
+      );
+    }
+  } catch (error) {
+    if (error instancedof CompanyServiceError) {
+      throw error;
+    }
+
+    throw new CompanyServiceError('Erro de comunicação com a Z-API', 502);
+  }
+
+  return { const endpoint = `${baseUrl}`}
+
+  // Acaba aqui o Módulo WhatsApp /////////////////////////////
 
   private async ensureAnyModuleAccess(user: AuthenticatedUser, companyId: string, moduleCodes: string[]) {
     if (this.isAdminRole(user.role)) return;
