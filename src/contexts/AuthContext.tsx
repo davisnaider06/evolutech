@@ -146,6 +146,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       case 'ADMIN_EVOLUTECH': return '/admin-evolutech/operacional';
       case 'DONO_EMPRESA': return '/empresa/dashboard';
       case 'FUNCIONARIO_EMPRESA': return '/empresa/app';
+      case 'CLIENTE': return '/cliente/dashboard';
       default: return '/login';
     }
   }, [authState.user]);

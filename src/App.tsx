@@ -7,8 +7,10 @@ import { ClerkProvider, SignUp } from "@clerk/clerk-react"; // Adicionado Clerk
 
 // Mantemos o AuthProvider por enquanto, mas vamos reescrever o miolo dele no próximo passo
 import { AuthProvider } from "@/contexts/AuthContext"; 
+import { CustomerAuthProvider } from "@/contexts/CustomerAuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { AuthGuard } from "@/components/guards/AuthGuard";
+import { CustomerAuthGuard } from "@/components/guards/CustomerAuthGuard";
 import { ModuleGuard } from "@/components/guards/ModuleGuard";
 import { RoleRedirect } from "@/components/guards/RoleRedirect";
 import { AdminEvolutechLayout } from "@/components/layouts/AdminEvolutechLayout";
@@ -20,6 +22,9 @@ import Login from "./pages/Login";
 import AcceptInvite from "./pages/AcceptInvite";
 import NotFound from "./pages/NotFound";
 import LandingVendas from "./pages/LandingVendas";
+import CustomerLogin from "./pages/customer/CustomerLogin";
+import CustomerRegister from "./pages/customer/CustomerRegister";
+import CustomerDashboard from "./pages/customer/CustomerDashboard";
 
 // Admin Evolutech pages
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -82,11 +87,12 @@ const App = () => (
           em vez do Supabase, mantendo a compatibilidade com AuthGuard.
         */}
         <AuthProvider>
-          <ThemeProvider>
-            <Toaster />
-            <Sonner />
-            <BrowserRouter>
-              <Routes>
+          <CustomerAuthProvider>
+            <ThemeProvider>
+              <Toaster />
+              <Sonner />
+              <BrowserRouter>
+                <Routes>
                 {/* Public Routes */}
                 <Route path="/" element={<Index />} />
                 <Route path="/vendas" element={<LandingVendas />} />
@@ -95,6 +101,17 @@ const App = () => (
                 <Route path="/aceitar-convite" element={<AcceptInvite />} />
                 <Route path="/chat/:slug" element={<ChatbotPublic />} />
                 <Route path="/agendar/:slug" element={<AgendamentoCliente />} />
+                <Route path="/cliente/login" element={<CustomerLogin />} />
+                <Route path="/cliente/cadastro" element={<CustomerRegister />} />
+                <Route path="/cliente" element={<Navigate to="/cliente/login" replace />} />
+                <Route
+                  path="/cliente/dashboard"
+                  element={
+                    <CustomerAuthGuard>
+                      <CustomerDashboard />
+                    </CustomerAuthGuard>
+                  }
+                />
                 
                 {/* Role-based redirect after login */}
                 <Route path="/redirect" element={<RoleRedirect />} />
@@ -351,9 +368,10 @@ const App = () => (
 
                 {/* 404 */}
                 <Route path="*" element={<NotFound />} />
-              </Routes>
-            </BrowserRouter>
-          </ThemeProvider>
+                </Routes>
+              </BrowserRouter>
+            </ThemeProvider>
+          </CustomerAuthProvider>
         </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>

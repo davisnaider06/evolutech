@@ -13,6 +13,7 @@ const roleStyles: Record<UserRole, string> = {
   ADMIN_EVOLUTECH: 'bg-role-admin-evolutech/20 text-role-admin-evolutech border-role-admin-evolutech/30',
   DONO_EMPRESA: 'bg-role-client-admin/20 text-role-client-admin border-role-client-admin/30',
   FUNCIONARIO_EMPRESA: 'bg-role-employee/20 text-role-employee border-role-employee/30',
+  CLIENTE: 'bg-primary/10 text-primary border-primary/30',
 };
 
 export const RoleBadge: React.FC<RoleBadgeProps> = ({ role, size = 'md', className }) => {

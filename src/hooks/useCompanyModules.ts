@@ -29,6 +29,8 @@ const MODULE_ALIASES: Record<string, string[]> = {
   users: ['users', 'equipe', 'funcionarios', 'team'],
   support: ['support', 'suporte'],
   training: ['training', 'treinamentos'],
+  customer_portal: ['customer_portal', 'portal_cliente'],
+  courses: ['courses', 'cursos'],
   dashboard: ['dashboard'],
   settings: ['settings', 'configuracoes'],
   design: ['design', 'personalizacao'],

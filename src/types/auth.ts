@@ -1,10 +1,11 @@
-export type UserRole = 
+export type UserRole =
   | 'SUPER_ADMIN_EVOLUTECH'
   | 'ADMIN_EVOLUTECH'
   | 'DONO_EMPRESA'
-  | 'FUNCIONARIO_EMPRESA';
+  | 'FUNCIONARIO_EMPRESA'
+  | 'CLIENTE';
 
-export type DbRole = 
+export type DbRole =
   | 'super_admin_evolutech'
   | 'admin_evolutech'
   | 'dono_empresa'
@@ -190,7 +191,8 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   SUPER_ADMIN_EVOLUTECH: 'Super Admin',
   ADMIN_EVOLUTECH: 'Admin Evolutech',
   DONO_EMPRESA: 'Dono da Empresa',
-  FUNCIONARIO_EMPRESA: 'Funcionário',
+  FUNCIONARIO_EMPRESA: 'Funcionario',
+  CLIENTE: 'Cliente',
 };
 
 export const ROLE_COLORS: Record<UserRole, string> = {
@@ -198,6 +200,7 @@ export const ROLE_COLORS: Record<UserRole, string> = {
   ADMIN_EVOLUTECH: 'bg-role-admin-evolutech',
   DONO_EMPRESA: 'bg-role-client-admin',
   FUNCIONARIO_EMPRESA: 'bg-role-employee',
+  CLIENTE: 'bg-primary',
 };
 
 export const dbRoleToUserRole = (dbRole: DbRole): UserRole => {
@@ -211,7 +214,11 @@ export const dbRoleToUserRole = (dbRole: DbRole): UserRole => {
 };
 
 export const userRoleToDbRole = (userRole: UserRole): DbRole => {
-  const map: Record<UserRole, DbRole> = {
+  if (userRole === 'CLIENTE') {
+    throw new Error('Role CLIENTE nao possui equivalente em DbRole');
+  }
+
+  const map: Record<Exclude<UserRole, 'CLIENTE'>, DbRole> = {
     SUPER_ADMIN_EVOLUTECH: 'super_admin_evolutech',
     ADMIN_EVOLUTECH: 'admin_evolutech',
     DONO_EMPRESA: 'dono_empresa',
