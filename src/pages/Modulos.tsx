@@ -31,6 +31,8 @@ interface Modulo {
   nicho: string | null;
   precoMensal: number;
   isCore: boolean;
+  isPro?: boolean;
+  allowedRoles?: string[];
   status: 'active' | 'inactive' | 'pending';
 }
 
@@ -48,6 +50,8 @@ export default function Modulos() {
     nicho: 'geral',
     preco_mensal: 0,
     is_core: false,
+    is_pro: false,
+    allowed_roles: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] as string[],
     status: 'active' as 'active' | 'inactive' | 'pending',
   });
 
@@ -76,6 +80,8 @@ export default function Modulos() {
       nicho: 'geral',
       preco_mensal: 0,
       is_core: false,
+      is_pro: false,
+      allowed_roles: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
       status: 'active',
     });
   };
@@ -90,6 +96,10 @@ export default function Modulos() {
       nicho: modulo.nicho || 'geral',
       preco_mensal: Number(modulo.precoMensal || 0),
       is_core: modulo.isCore,
+      is_pro: Boolean(modulo.isPro),
+      allowed_roles: Array.isArray(modulo.allowedRoles) && modulo.allowedRoles.length > 0
+        ? modulo.allowedRoles
+        : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
       status: modulo.status,
     });
     setIsDialogOpen(true);
@@ -133,6 +143,20 @@ export default function Modulos() {
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
 
+  const toggleAllowedRole = (role: 'DONO_EMPRESA' | 'FUNCIONARIO_EMPRESA') => {
+    setFormData((old) => {
+      const current = old.allowed_roles || [];
+      const next = current.includes(role) ? current.filter((item) => item !== role) : [...current, role];
+      return {
+        ...old,
+        allowed_roles: next.length ? next : ['DONO_EMPRESA'],
+      };
+    });
+  };
+
+  const roleLabel = (role: string) =>
+    role === 'DONO_EMPRESA' ? 'Dono' : role === 'FUNCIONARIO_EMPRESA' ? 'Funcionario' : role;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -161,6 +185,31 @@ export default function Modulos() {
               <div className="flex items-center justify-between">
                 <span>Modulo core</span>
                 <Switch checked={formData.is_core} onCheckedChange={(checked) => setFormData({ ...formData, is_core: checked })} />
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Modulo Pro</span>
+                <Switch checked={formData.is_pro} onCheckedChange={(checked) => setFormData({ ...formData, is_pro: checked })} />
+              </div>
+              <div className="space-y-2">
+                <span className="text-sm font-medium">Roles permitidos</span>
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={formData.allowed_roles.includes('DONO_EMPRESA')}
+                      onChange={() => toggleAllowedRole('DONO_EMPRESA')}
+                    />
+                    Dono
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={formData.allowed_roles.includes('FUNCIONARIO_EMPRESA')}
+                      onChange={() => toggleAllowedRole('FUNCIONARIO_EMPRESA')}
+                    />
+                    Funcionario
+                  </label>
+                </div>
               </div>
               <Select value={formData.status} onValueChange={(v: 'active' | 'inactive' | 'pending') => setFormData({ ...formData, status: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -206,6 +255,14 @@ export default function Modulos() {
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Codigo: {modulo.codigo}</span>
                   <span className="font-semibold text-primary">{formatCurrency(Number(modulo.precoMensal || 0))}</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {modulo.isPro && <Badge variant="outline">Pro</Badge>}
+                  {(modulo.allowedRoles || ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA']).map((role) => (
+                    <Badge key={`${modulo.id}-${role}`} variant="secondary">
+                      {roleLabel(role)}
+                    </Badge>
+                  ))}
                 </div>
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" className="flex-1" onClick={() => openEdit(modulo)}>

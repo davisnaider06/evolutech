@@ -274,8 +274,10 @@ const App = () => (
                   <Route
                     path="/empresa/relatorios"
                     element={
-                      <AuthGuard allowedRoles={['DONO_EMPRESA']}>
-                        <Relatorios />
+                      <AuthGuard allowedRoles={['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA']}>
+                        <ModuleGuard moduleCode="reports">
+                          <Relatorios />
+                        </ModuleGuard>
                       </AuthGuard>
                     }
                   />
@@ -292,7 +294,7 @@ const App = () => (
                   <Route 
                     path="/empresa/financeiro" 
                     element={
-                      <AuthGuard allowedRoles={['DONO_EMPRESA']}>
+                      <AuthGuard allowedRoles={['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA']}>
                         <ModuleGuard moduleCode="finance">
                           <Financeiro />
                         </ModuleGuard>
@@ -312,15 +314,17 @@ const App = () => (
                   <Route
                     path="/empresa/fidelidade"
                     element={
-                      <AuthGuard allowedRoles={['DONO_EMPRESA']}>
-                        <Fidelidade />
+                      <AuthGuard allowedRoles={['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA']}>
+                        <ModuleGuard moduleCode="loyalty">
+                          <Fidelidade />
+                        </ModuleGuard>
                       </AuthGuard>
                     }
                   />
                   <Route
                     path="/empresa/assinaturas"
                     element={
-                      <AuthGuard allowedRoles={['DONO_EMPRESA']}>
+                      <AuthGuard allowedRoles={['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA']}>
                         <ModuleGuard moduleCode="subscriptions">
                           <Assinaturas />
                         </ModuleGuard>

@@ -46,41 +46,7 @@ export class CompanyService {
     'commissions_owner',
     'comissoes_dono',
   ]);
-  private startPlanModuleAliases = new Set([
-    'appointments',
-    'agendamentos',
-    'customers',
-    'clientes',
-    'users',
-    'equipe',
-    'funcionarios',
-    'team',
-    'dashboard',
-  ]);
-  private proPlanModuleAliases = new Set([
-    'products',
-    'produtos',
-    'pdv',
-    'orders',
-    'pedidos',
-    'cash',
-    'caixa',
-    'gateways',
-    'gateway',
-    'commissions',
-    'comissoes',
-    'commissions_owner',
-    'commissions_staff',
-    'comissoes_dono',
-    'subscriptions',
-    'assinaturas',
-    'loyalty',
-    'fidelidade',
-    'courses',
-    'cursos',
-    'customer_portal',
-    'portal_cliente',
-  ]);
+  private defaultCompanyAllowedRoles = ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'];
 
   private toNumber(value: unknown): number {
     const numeric = Number(value ?? 0);
@@ -95,17 +61,21 @@ export class CompanyService {
       .replace(/[\u0300-\u036f]/g, '');
   }
 
-  private getModuleCacheKey(companyId: string, moduleCodes: string[]) {
+  private getModuleCacheKey(companyId: string, moduleCodes: string[], role: AuthenticatedUser['role']) {
     const normalized = moduleCodes
       .map((code) => String(code || '').trim().toLowerCase())
       .filter(Boolean)
       .sort()
       .join('|');
-    return `${companyId}:${normalized}`;
+    return `${companyId}:${role}:${normalized}`;
   }
 
-  private getCachedModuleAccess(companyId: string, moduleCodes: string[]) {
-    const key = this.getModuleCacheKey(companyId, moduleCodes);
+  private getCachedModuleAccess(
+    companyId: string,
+    moduleCodes: string[],
+    role: AuthenticatedUser['role']
+  ) {
+    const key = this.getModuleCacheKey(companyId, moduleCodes, role);
     const cached = this.moduleAccessCache.get(key);
     if (!cached) return null;
     if (cached.expiresAt < Date.now()) {
@@ -115,8 +85,13 @@ export class CompanyService {
     return cached.allowed;
   }
 
-  private setCachedModuleAccess(companyId: string, moduleCodes: string[], allowed: boolean) {
-    const key = this.getModuleCacheKey(companyId, moduleCodes);
+  private setCachedModuleAccess(
+    companyId: string,
+    moduleCodes: string[],
+    role: AuthenticatedUser['role'],
+    allowed: boolean
+  ) {
+    const key = this.getModuleCacheKey(companyId, moduleCodes, role);
     this.moduleAccessCache.set(key, {
       allowed,
       expiresAt: Date.now() + this.moduleAccessCacheTtlMs,
@@ -125,9 +100,13 @@ export class CompanyService {
 
   private normalizeCompanyPlan(plan?: string | null) {
     const raw = String(plan || '').trim().toLowerCase();
-    if (raw === 'pro') return 'pro';
+    if (raw === 'pro' || raw === 'professional' || raw === 'enterprise') return 'pro';
     if (raw === 'start' || raw === 'starter' || raw === 'free') return 'start';
     return 'start';
+  }
+
+  private isProPlan(companyPlan: string) {
+    return String(companyPlan || '').toLowerCase() === 'pro';
   }
 
   private async getCompanyPlan(companyId: string) {
@@ -146,28 +125,28 @@ export class CompanyService {
     return plan;
   }
 
-  private enforcePlanModuleAccess(companyPlan: string, moduleCodes: string[]) {
-    const normalizedCodes = moduleCodes
-      .map((item) => String(item || '').trim().toLowerCase())
-      .filter(Boolean);
+  private enforcePlanModuleAccess(companyPlan: string, requestedCodes: string[], matchedModules: any[]) {
+    if (this.isProPlan(companyPlan)) return;
+    const proOnly = matchedModules.find((item) => Boolean(item?.modulo?.isPro));
+    if (!proOnly) return;
 
-    if (companyPlan === 'pro') return;
-
-    const disallowed = normalizedCodes.find((code) => this.proPlanModuleAliases.has(code));
-    if (disallowed) {
-      throw new CompanyServiceError(
-        `Modulo "${disallowed}" disponivel apenas no plano Pro`,
-        403
-      );
-    }
-
-    const hasAllowedStartModule = normalizedCodes.some(
-      (code) => this.startPlanModuleAliases.has(code)
+    throw new CompanyServiceError(
+      `Modulo "${proOnly.modulo?.codigo || requestedCodes[0] || 'modulo'}" disponivel apenas no plano Pro`,
+      403
     );
-    if (!hasAllowedStartModule) {
-      const requested = normalizedCodes[0] || 'modulo';
+  }
+
+  private enforceRoleModuleAccess(userRole: string, requestedCodes: string[], matchedModules: any[]) {
+    const allowed = matchedModules.some((item) => {
+      const roles = Array.isArray(item?.modulo?.allowedRoles) && item.modulo.allowedRoles.length > 0
+        ? item.modulo.allowedRoles
+        : this.defaultCompanyAllowedRoles;
+      return roles.includes(userRole);
+    });
+
+    if (!allowed) {
       throw new CompanyServiceError(
-        `Modulo "${requested}" nao disponivel no plano Start`,
+        `Modulo "${requestedCodes[0] || 'modulo'}" nao permitido para o perfil atual`,
         403
       );
     }
@@ -344,12 +323,12 @@ export class CompanyService {
     const moduleCodes = config?.moduleCodes || [];
     if (moduleCodes.length === 0) return;
     const companyPlan = await this.getCompanyPlan(companyId);
-    this.enforcePlanModuleAccess(companyPlan, moduleCodes);
+
     if (this.hasOwnerDefaultAccess(user, moduleCodes)) return;
-    const cached = this.getCachedModuleAccess(companyId, moduleCodes);
+    const cached = this.getCachedModuleAccess(companyId, moduleCodes, user.role);
     if (cached === true) return;
 
-    const hasModule = await prisma.companyModule.findFirst({
+    const hasModule = await (prisma as any).companyModule.findFirst({
       where: {
         companyId,
         isActive: true,
@@ -358,17 +337,28 @@ export class CompanyService {
           codigo: { in: moduleCodes },
         },
       },
-      select: { id: true },
+      select: {
+        id: true,
+        modulo: {
+          select: {
+            codigo: true,
+            isPro: true,
+            allowedRoles: true,
+          },
+        },
+      },
     });
 
     if (!hasModule) {
-      this.setCachedModuleAccess(companyId, moduleCodes, false);
+      this.setCachedModuleAccess(companyId, moduleCodes, user.role, false);
       throw new CompanyServiceError(
         `M�dulo "${moduleCodes[0]}" n�o est� ativo para esta empresa`,
         403
       );
     }
-    this.setCachedModuleAccess(companyId, moduleCodes, true);
+    this.enforcePlanModuleAccess(companyPlan, moduleCodes, hasModule ? [hasModule] : []);
+    this.enforceRoleModuleAccess(user.role, moduleCodes, hasModule ? [hasModule] : []);
+    this.setCachedModuleAccess(companyId, moduleCodes, user.role, true);
   }
 
   async listTableData(table: string, user: AuthenticatedUser, queryParams: any) {
@@ -686,12 +676,12 @@ export class CompanyService {
   private async ensureAnyModuleAccess(user: AuthenticatedUser, companyId: string, moduleCodes: string[]) {
     if (this.isAdminRole(user.role)) return;
     const companyPlan = await this.getCompanyPlan(companyId);
-    this.enforcePlanModuleAccess(companyPlan, moduleCodes);
+
     if (this.hasOwnerDefaultAccess(user, moduleCodes)) return;
-    const cached = this.getCachedModuleAccess(companyId, moduleCodes);
+    const cached = this.getCachedModuleAccess(companyId, moduleCodes, user.role);
     if (cached === true) return;
 
-    const hasModule = await prisma.companyModule.findFirst({
+    const hasModule = await (prisma as any).companyModule.findFirst({
       where: {
         companyId,
         isActive: true,
@@ -700,14 +690,25 @@ export class CompanyService {
           codigo: { in: moduleCodes },
         },
       },
-      select: { id: true },
+      select: {
+        id: true,
+        modulo: {
+          select: {
+            codigo: true,
+            isPro: true,
+            allowedRoles: true,
+          },
+        },
+      },
     });
 
     if (!hasModule) {
-      this.setCachedModuleAccess(companyId, moduleCodes, false);
+      this.setCachedModuleAccess(companyId, moduleCodes, user.role, false);
       throw new CompanyServiceError(`Modulo "${moduleCodes[0]}" nao esta ativo para esta empresa`, 403);
     }
-    this.setCachedModuleAccess(companyId, moduleCodes, true);
+    this.enforcePlanModuleAccess(companyPlan, moduleCodes, hasModule ? [hasModule] : []);
+    this.enforceRoleModuleAccess(user.role, moduleCodes, hasModule ? [hasModule] : []);
+    this.setCachedModuleAccess(companyId, moduleCodes, user.role, true);
   }
 
   private hasOwnerDefaultAccess(user: AuthenticatedUser, moduleCodes: string[]) {

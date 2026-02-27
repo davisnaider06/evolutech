@@ -24,6 +24,8 @@ interface Modulo {
   codigo: string;
   descricao: string | null;
   isCore: boolean;
+  isPro?: boolean;
+  allowedRoles?: string[];
   precoMensal: number;
   status: 'active' | 'inactive' | 'pending';
 }
@@ -56,6 +58,8 @@ export default function GestaoSistemasBase() {
     status: 'active' as 'active' | 'inactive' | 'pending',
   });
   const highlightedModuleCodes = new Set(['customer_portal', 'courses']);
+  const roleLabel = (role: string) =>
+    role === 'DONO_EMPRESA' ? 'Dono' : role === 'FUNCIONARIO_EMPRESA' ? 'Funcionario' : role;
 
   const fetchAll = async () => {
     try {
@@ -270,6 +274,12 @@ export default function GestaoSistemasBase() {
                         {highlightedModuleCodes.has((modulo.codigo || '').toLowerCase()) && (
                           <Badge variant="outline">Portal Cliente</Badge>
                         )}
+                        {modulo.isPro && <Badge variant="outline">Pro</Badge>}
+                        {(modulo.allowedRoles || ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA']).map((role) => (
+                          <Badge key={`${modulo.id}-${role}`} variant="secondary">
+                            {roleLabel(role)}
+                          </Badge>
+                        ))}
                       </div>
                     </div>
                     <Checkbox checked={isModuloSelected(modulo.id)} onCheckedChange={() => toggleModulo(modulo.id)} />

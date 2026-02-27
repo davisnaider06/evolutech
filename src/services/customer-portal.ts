@@ -2,9 +2,12 @@ import { API_URL } from '@/config/api';
 import {
   CustomerAppointment,
   CustomerAuthResponse,
+  CustomerBookingOptionsResponse,
+  CustomerCourseCatalogItem,
   CustomerCourseAccess,
   CustomerDashboardResponse,
   CustomerLoyaltyResponse,
+  CustomerPlanCatalogItem,
   CustomerPortalCompanyOption,
   CustomerSubscription,
 } from '@/types/customer-portal';
@@ -59,13 +62,37 @@ export const customerAuthService = {
 
 export const customerPortalService = {
   dashboard: () => customerRequest<CustomerDashboardResponse>('/customer/dashboard'),
+  bookingOptions: () => customerRequest<CustomerBookingOptionsResponse>('/customer/booking-options'),
   appointments: () => customerRequest<CustomerAppointment[]>('/customer/appointments'),
+  createAppointment: (payload: { service_id: string; professional_id: string; scheduled_at: string }) =>
+    customerRequest<{
+      id: string;
+      scheduled_at: string;
+      status: string;
+      service_name: string;
+      professional_name: string;
+    }>('/customer/appointments', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   cancelAppointment: (appointmentId: string) =>
     customerRequest<{ id: string; status: string; scheduled_at: string }>(
       `/customer/appointments/${encodeURIComponent(appointmentId)}/cancel`,
       { method: 'PATCH' }
     ),
+  plans: () => customerRequest<CustomerPlanCatalogItem[]>('/customer/plans'),
+  subscribePlan: (planId: string) =>
+    customerRequest<{ id: string; status: string; start_at: string; end_at: string }>(
+      `/customer/subscriptions/${encodeURIComponent(planId)}/subscribe`,
+      { method: 'POST' }
+    ),
   subscriptions: () => customerRequest<CustomerSubscription[]>('/customer/subscriptions'),
   loyalty: () => customerRequest<CustomerLoyaltyResponse>('/customer/loyalty'),
+  availableCourses: () => customerRequest<CustomerCourseCatalogItem[]>('/customer/courses/available'),
+  purchaseCourse: (courseId: string) =>
+    customerRequest<{ access_id: string; status: string; start_at: string }>(
+      `/customer/courses/${encodeURIComponent(courseId)}/purchase`,
+      { method: 'POST' }
+    ),
   courses: () => customerRequest<CustomerCourseAccess[]>('/customer/courses'),
 };

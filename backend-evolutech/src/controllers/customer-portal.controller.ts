@@ -33,6 +33,24 @@ export class CustomerPortalController {
     }
   }
 
+  async getBookingOptions(req: AuthedCustomerRequest, res: Response) {
+    try {
+      const result = await service.getBookingOptions(req.customer!);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async createMyAppointment(req: AuthedCustomerRequest, res: Response) {
+    try {
+      const result = await service.createMyAppointment(req.customer!, req.body || {});
+      return res.status(201).json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   async cancelMyAppointment(req: AuthedCustomerRequest, res: Response) {
     try {
       const result = await service.cancelMyAppointment(req.customer!, req.params.appointmentId);
@@ -51,6 +69,24 @@ export class CustomerPortalController {
     }
   }
 
+  async listAvailablePlans(req: AuthedCustomerRequest, res: Response) {
+    try {
+      const result = await service.listAvailablePlans(req.customer!);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async subscribePlan(req: AuthedCustomerRequest, res: Response) {
+    try {
+      const result = await service.subscribePlan(req.customer!, req.params.planId);
+      return res.status(201).json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   async getMyLoyalty(req: AuthedCustomerRequest, res: Response) {
     try {
       const result = await service.getMyLoyalty(req.customer!);
@@ -64,6 +100,24 @@ export class CustomerPortalController {
     try {
       const result = await service.listMyCourses(req.customer!);
       return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async listAvailableCourses(req: AuthedCustomerRequest, res: Response) {
+    try {
+      const result = await service.listAvailableCourses(req.customer!);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async purchaseCourse(req: AuthedCustomerRequest, res: Response) {
+    try {
+      const result = await service.purchaseCourse(req.customer!, req.params.courseId);
+      return res.status(201).json(result);
     } catch (error: unknown) {
       return this.handleError(error, res);
     }

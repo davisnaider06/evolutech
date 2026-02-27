@@ -57,13 +57,13 @@ const navItems: NavItem[] = [
   { icon: ReceiptText, label: 'PDV', path: '/empresa/pdv', moduleCode: 'pdv' },
   { icon: ReceiptText, label: 'Cobranças', path: '/empresa/cobrancas', moduleCode: 'billing' },
   { icon: ShoppingCart, label: 'Pedidos', path: '/empresa/pedidos', moduleCode: 'orders' },
-  { icon: Wallet, label: 'Caixa', path: '/empresa/caixa', moduleCode: 'cash', ownerOnly: true },
-  { icon: CreditCard, label: 'Financeiro', path: '/empresa/financeiro', moduleCode: 'finance', ownerOnly: true },
+  { icon: Wallet, label: 'Caixa', path: '/empresa/caixa', moduleCode: 'cash' },
+  { icon: CreditCard, label: 'Financeiro', path: '/empresa/financeiro', moduleCode: 'finance' },
   { icon: Wallet, label: 'Comissoes', path: '/empresa/comissoes', moduleCode: 'commissions' },
-  { icon: Gift, label: 'Fidelidade', path: '/empresa/fidelidade', moduleCode: 'loyalty', ownerOnly: true },
-  { icon: Repeat, label: 'Assinaturas', path: '/empresa/assinaturas', moduleCode: 'subscriptions', ownerOnly: true },
+  { icon: Gift, label: 'Fidelidade', path: '/empresa/fidelidade', moduleCode: 'loyalty' },
+  { icon: Repeat, label: 'Assinaturas', path: '/empresa/assinaturas', moduleCode: 'subscriptions' },
   { icon: CreditCard, label: 'Gateways', path: '/empresa/gateways', moduleCode: 'finance', ownerOnly: true, alwaysShow: true },
-  { icon: BarChart3, label: 'Relatórios', path: '/empresa/relatorios', moduleCode: 'reports', ownerOnly: true },
+  { icon: BarChart3, label: 'Relatórios', path: '/empresa/relatorios', moduleCode: 'reports' },
   
   // Team management (core for owners)
   { icon: UserPlus, label: 'Equipe', path: '/empresa/equipe', moduleCode: 'users', ownerOnly: true },
@@ -77,55 +77,9 @@ const navItems: NavItem[] = [
   { icon: Settings, label: 'Configurações', path: '/empresa/configuracoes', moduleCode: 'settings', ownerOnly: true, alwaysShow: true },
 ];
 
-const MODULE_ALIASES: Record<string, string[]> = {
-  customers: ['customers', 'clientes'],
-  products: ['products', 'produtos'],
-  inventory: ['inventory', 'estoque'],
-  appointments: ['appointments', 'agendamentos'],
-  orders: ['orders', 'pedidos'],
-  pdv: ['pdv', 'orders', 'pedidos'],
-  billing: ['billing', 'cobrancas', 'cobranca'],
-  cash: ['cash', 'caixa'],
-  finance: ['finance', 'financeiro'],
-  gateways: ['gateways', 'gateway'],
-  reports: ['reports', 'relatorios'],
-  commissions: ['commissions', 'comissoes', 'commissions_staff', 'commissions_owner', 'comissoes_dono'],
-  subscriptions: ['subscriptions', 'assinaturas'],
-  loyalty: ['loyalty', 'fidelidade'],
-  users: ['users', 'equipe', 'funcionarios', 'team'],
-  support: ['support', 'suporte'],
-  training: ['training', 'treinamentos'],
-  customer_portal: ['customer_portal', 'portal_cliente'],
-  courses: ['courses', 'cursos'],
-  dashboard: ['dashboard'],
-  settings: ['settings', 'configuracoes'],
-  design: ['design', 'personalizacao'],
-};
-
-const codeMatchesAlias = (rawCode: string, alias: string) => {
-  const code = (rawCode || '').toLowerCase();
-  const normalizedAlias = alias.toLowerCase();
-  return (
-    code === normalizedAlias ||
-    code.startsWith(`${normalizedAlias}_`) ||
-    code.startsWith(`${normalizedAlias}-`)
-  );
-};
-
-const OWNER_DEFAULT_MODULES = new Set([
-  'dashboard',
-  'reports',
-  'users',
-  'finance',
-  'gateways',
-  'gateway',
-  'commissions_owner',
-  'comissoes_dono',
-]);
-
 export const EmpresaLayout: React.FC = () => {
   const { user, logout, company } = useAuth();
-  const { activeCodes } = useCompanyModules();
+  const { hasModuleForCurrentRole } = useCompanyModules();
   const navigate = useNavigate();
   const location = useLocation();
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -146,17 +100,7 @@ export const EmpresaLayout: React.FC = () => {
     // Always show utility items only for owners
     if (item.alwaysShow && isOwner) return true;
     
-    // Check module activation (case-insensitive)
-    if (item.moduleCode) {
-      const acceptedCodes = MODULE_ALIASES[item.moduleCode] || [item.moduleCode];
-      const isOwnerDefault = acceptedCodes.some((code) => OWNER_DEFAULT_MODULES.has(code));
-      if (isOwner && isOwnerDefault) return true;
-
-      const hasModule = activeCodes.some((code) =>
-        acceptedCodes.some((alias) => codeMatchesAlias(code || '', alias))
-      );
-      if (!hasModule) return false;
-    }
+    if (item.moduleCode && !hasModuleForCurrentRole(item.moduleCode)) return false;
     
     return true;
   });

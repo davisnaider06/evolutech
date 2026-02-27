@@ -1,5 +1,4 @@
-import bcrypt from 'bcryptjs';
-import { Role, Status } from '@prisma/client';
+import { Status } from '@prisma/client';
 import { prisma } from '../db';
 
 export interface CreateTenantInput {
@@ -8,10 +7,6 @@ export interface CreateTenantInput {
   companyPlan?: string;
   companyStatus?: 'active' | 'inactive' | 'pending';
   sistemaBaseId: string;
-  ownerFullName: string;
-  ownerEmail: string;
-  ownerPassword?: string;
-  ownerRole?: string;
 }
 
 interface TenantOnboardingResult {
@@ -21,24 +16,12 @@ interface TenantOnboardingResult {
     slug: string;
     sistemaBaseId: string;
   };
-  owner: {
-    id: string;
-    email: string;
-    fullName: string;
-    role: Role;
-  };
   modulosLiberados: {
     total: number;
     moduloIds: string[];
   };
-  credentials: {
-    email: string;
-    temporaryPassword: string;
-    requiresPasswordChange: boolean;
-  };
 }
 
-const OWNER_ROLE_FALLBACK: Role = 'DONO_EMPRESA';
 const ALLOWED_COMPANY_STATUS: ReadonlySet<Status> = new Set(['active', 'inactive', 'pending']);
 
 const normalizeText = (value: string): string =>
@@ -55,25 +38,6 @@ const toSlug = (value: string): string =>
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
 
-const generateTemporaryPassword = (): string => {
-  const randomBlock = Math.random().toString(36).slice(2, 10);
-  return `Ev0!${randomBlock}`;
-};
-
-const resolveOwnerRole = (roleInput?: string): Role => {
-  const role = (roleInput || '').toUpperCase().trim();
-
-  if (role === 'ADMIN_EMPRESA') {
-    return OWNER_ROLE_FALLBACK;
-  }
-
-  if (role === 'DONO_EMPRESA') {
-    return 'DONO_EMPRESA';
-  }
-
-  return OWNER_ROLE_FALLBACK;
-};
-
 const resolveCompanyStatus = (statusInput?: string): Status => {
   const value = (statusInput || 'active').trim().toLowerCase() as Status;
   return ALLOWED_COMPANY_STATUS.has(value) ? value : 'active';
@@ -82,52 +46,40 @@ const resolveCompanyStatus = (statusInput?: string): Status => {
 export class TenantService {
   async onboardTenant(input: CreateTenantInput): Promise<TenantOnboardingResult> {
     const companyName = input.companyName?.trim();
-    const ownerFullName = input.ownerFullName?.trim();
-    const ownerEmail = input.ownerEmail?.trim().toLowerCase();
     const sistemaBaseId = input.sistemaBaseId?.trim();
     const companyDocument = input.companyDocument?.trim();
-    const ownerRole = resolveOwnerRole(input.ownerRole);
     const companyStatus = resolveCompanyStatus(input.companyStatus);
 
-    if (!companyName || !ownerFullName || !ownerEmail || !sistemaBaseId) {
-      throw new Error('Campos obrigatórios ausentes para onboarding');
+    if (!companyName || !sistemaBaseId) {
+      throw new Error('Campos obrigatorios ausentes para onboarding');
     }
-
-    const temporaryPassword = input.ownerPassword?.trim() || generateTemporaryPassword();
-    const passwordHash = await bcrypt.hash(temporaryPassword, 10);
 
     const created = await prisma.$transaction(async (tx) => {
       const sistemaBase = await tx.sistemaBase.findUnique({
         where: { id: sistemaBaseId },
-        include: { modulos: { select: { moduloId: true } } }
+        include: { modulos: { select: { moduloId: true } } },
       });
 
       if (!sistemaBase) {
-        throw new Error('Sistema Base não encontrado');
+        throw new Error('Sistema Base nao encontrado');
       }
 
       if (!sistemaBase.isActive) {
         throw new Error('Sistema Base inativo');
       }
 
-      const existingOwner = await tx.user.findUnique({
-        where: { email: ownerEmail }
-      });
-
-      // Reuse user if this e-mail already exists globally
-
       const slugBase = toSlug(companyName);
       if (!slugBase) {
-        throw new Error('Não foi possível gerar slug válido para a empresa');
+        throw new Error('Nao foi possivel gerar slug valido para a empresa');
       }
 
       const existingSlugs = await tx.company.findMany({
         where: {
           slug: {
-            startsWith: slugBase
-          }
+            startsWith: slugBase,
+          },
         },
-        select: { slug: true }
+        select: { slug: true },
       });
 
       const slugSet = new Set(existingSlugs.map((item) => item.slug));
@@ -143,48 +95,10 @@ export class TenantService {
           name: companyName,
           slug: slugCandidate,
           document: companyDocument || null,
-          plan: input.companyPlan?.trim() || 'free',
+          plan: input.companyPlan?.trim() || 'starter',
           status: companyStatus,
-          sistemaBaseId
-        }
-      });
-
-      const ownerUser = existingOwner
-        ? await tx.user.update({
-            where: { id: existingOwner.id },
-            data: {
-              fullName: ownerFullName,
-              passwordHash,
-              isActive: true
-            }
-          })
-        : await tx.user.create({
-            data: {
-              email: ownerEmail,
-              fullName: ownerFullName,
-              passwordHash,
-              isActive: true
-            }
-          });
-
-      const existingRole = await tx.userRole.findFirst({
-        where: {
-          userId: ownerUser.id,
-          companyId: company.id
+          sistemaBaseId,
         },
-        select: { id: true }
-      });
-
-      if (existingRole) {
-        throw new Error('Este usuario ja esta vinculado a esta empresa');
-      }
-
-      await tx.userRole.create({
-        data: {
-          userId: ownerUser.id,
-          companyId: company.id,
-          role: ownerRole
-        }
       });
 
       const moduloIds = Array.from(new Set(sistemaBase.modulos.map((m) => m.moduloId)));
@@ -194,16 +108,15 @@ export class TenantService {
           data: moduloIds.map((moduloId) => ({
             companyId: company.id,
             moduloId,
-            isActive: true
+            isActive: true,
           })),
-          skipDuplicates: true
+          skipDuplicates: true,
         });
       }
 
       return {
         company,
-        ownerUser,
-        moduloIds
+        moduloIds,
       };
     });
 
@@ -212,23 +125,12 @@ export class TenantService {
         id: created.company.id,
         name: created.company.name,
         slug: created.company.slug,
-        sistemaBaseId: created.company.sistemaBaseId as string
-      },
-      owner: {
-        id: created.ownerUser.id,
-        email: created.ownerUser.email,
-        fullName: created.ownerUser.fullName,
-        role: ownerRole
+        sistemaBaseId: created.company.sistemaBaseId as string,
       },
       modulosLiberados: {
         total: created.moduloIds.length,
-        moduloIds: created.moduloIds
+        moduloIds: created.moduloIds,
       },
-      credentials: {
-        email: created.ownerUser.email,
-        temporaryPassword,
-        requiresPasswordChange: true
-      }
     };
   }
 }

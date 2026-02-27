@@ -92,7 +92,7 @@ export class AdminController {
 
   async createModulo(req: Request, res: Response) {
     try {
-      const { nome, codigo, preco_mensal, is_core, icone, descricao, nicho, status } = req.body;
+      const { nome, codigo, preco_mensal, is_core, is_pro, allowed_roles, icone, descricao, nicho, status } = req.body;
 
       if (!nome || !codigo) {
         return res.status(400).json({ error: 'Nome e codigo sao obrigatorios' });
@@ -103,6 +103,8 @@ export class AdminController {
         codigo,
         preco_mensal,
         is_core,
+        is_pro,
+        allowed_roles,
         icone,
         descricao,
         nicho,
@@ -213,6 +215,8 @@ export class AdminController {
           codigo: item.modulo.codigo,
           descricao: item.modulo.descricao,
           is_core: item.modulo.isCore,
+          is_pro: (item.modulo as any).isPro,
+          allowed_roles: (item.modulo as any).allowedRoles || ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
           preco_mensal: Number(item.modulo.precoMensal),
           status: item.modulo.status
         }

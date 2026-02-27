@@ -7,6 +7,8 @@ export interface CompanyModule {
   codigo: string;
   nome: string;
   icone: string | null;
+  allowed_roles?: string[];
+  is_pro?: boolean;
 }
 
 const OWNER_DEFAULT_CODES = ['dashboard', 'reports', 'users', 'finance', 'gateways', 'commissions_owner'];
@@ -63,6 +65,8 @@ export const useCompanyModules = () => {
           codigo: code,
           nome: code,
           icone: null,
+          allowed_roles: ['DONO_EMPRESA'],
+          is_pro: false,
         }));
 
       return [...input, ...defaultOwnerModules];
@@ -76,9 +80,11 @@ export const useCompanyModules = () => {
       const mapped = contextModules.map((item) => ({
         id: item.id,
         codigo: (item.codigo || '').toLowerCase(),
-        nome: item.nome,
-        icone: item.icone || null,
-      }));
+          nome: item.nome,
+          icone: item.icone || null,
+          allowed_roles: item.allowed_roles || ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
+          is_pro: Boolean(item.is_pro),
+        }));
       const finalModules = resolveOwnerDefaults(mapped);
       setModules(finalModules);
       setActiveCodes(finalModules.map((m) => m.codigo));
@@ -110,9 +116,11 @@ export const useCompanyModules = () => {
       const mapped = backendModules.map((item) => ({
         id: item.id,
         codigo: (item.codigo || '').toLowerCase(),
-        nome: item.nome,
-        icone: item.icone || null,
-      }));
+          nome: item.nome,
+          icone: item.icone || null,
+          allowed_roles: item.allowed_roles || ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
+          is_pro: Boolean(item.is_pro),
+        }));
       const finalModules = resolveOwnerDefaults(mapped);
 
       setModules(finalModules);
@@ -142,6 +150,27 @@ export const useCompanyModules = () => {
     [activeCodes]
   );
 
+  const hasModuleForCurrentRole = useCallback(
+    (moduleCode: string): boolean => {
+      const normalized = moduleCode.toLowerCase();
+      const acceptedCodes = MODULE_ALIASES[normalized] || [normalized];
+      const currentRole = user?.role;
+      if (!currentRole) return false;
+
+      return modules.some((module) => {
+        const code = String(module.codigo || '').toLowerCase();
+        const codeMatch = acceptedCodes.some((alias) => codeMatchesAlias(code, alias));
+        if (!codeMatch) return false;
+        const allowedRoles =
+          Array.isArray(module.allowed_roles) && module.allowed_roles.length > 0
+            ? module.allowed_roles
+            : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'];
+        return allowedRoles.includes(currentRole);
+      });
+    },
+    [modules, user?.role]
+  );
+
   const refreshModules = useCallback(() => {
     setIsLoading(true);
     fetchModules();
@@ -152,6 +181,7 @@ export const useCompanyModules = () => {
     activeCodes,
     isLoading,
     hasModule,
+    hasModuleForCurrentRole,
     refreshModules,
   };
 };

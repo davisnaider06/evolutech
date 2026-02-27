@@ -150,13 +150,27 @@ export class AuthService {
         ])
       : [[], []];
 
-    const moduleMap = new Map<string, { id: string; codigo: string; nome: string; icone: string | null }>();
+    const moduleMap = new Map<
+      string,
+      {
+        id: string;
+        codigo: string;
+        nome: string;
+        icone: string | null;
+        is_pro: boolean;
+        allowed_roles: string[];
+      }
+    >();
     for (const item of companyModules) {
       moduleMap.set(item.modulo.id, {
         id: item.modulo.id,
         codigo: item.modulo.codigo,
         nome: item.modulo.nome,
         icone: item.modulo.icone,
+        is_pro: Boolean((item.modulo as any).isPro),
+        allowed_roles: Array.isArray((item.modulo as any).allowedRoles)
+          ? (item.modulo as any).allowedRoles
+          : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
       });
     }
     for (const item of sistemaBaseModules) {
@@ -165,6 +179,10 @@ export class AuthService {
         codigo: item.modulo.codigo,
         nome: item.modulo.nome,
         icone: item.modulo.icone,
+        is_pro: Boolean((item.modulo as any).isPro),
+        allowed_roles: Array.isArray((item.modulo as any).allowedRoles)
+          ? (item.modulo as any).allowedRoles
+          : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
       });
     }
 
@@ -179,6 +197,8 @@ export class AuthService {
             codigo: moduleItem.codigo,
             nome: moduleItem.nome,
             icone: null,
+            is_pro: false,
+            allowed_roles: ['DONO_EMPRESA'],
           });
         }
       }

@@ -95,6 +95,8 @@ model Modulo {
   nicho        String?             @default("geral")
   precoMensal  Decimal             @default(0) @map("preco_mensal") @db.Decimal(10, 2)
   isCore       Boolean             @default(false) @map("is_core")
+  isPro        Boolean             @default(false) @map("is_pro")
+  allowedRoles Role[]              @default([DONO_EMPRESA, FUNCIONARIO_EMPRESA]) @map("allowed_roles")
   status       Status              @default(active)
   createdAt    DateTime            @default(now()) @map("created_at")
   empresas     CompanyModule[]

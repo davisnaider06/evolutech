@@ -9,9 +9,12 @@ import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
 import { customerPortalService } from '@/services/customer-portal';
 import {
   CustomerAppointment,
+  CustomerBookingOptionsResponse,
+  CustomerCourseCatalogItem,
   CustomerCourseAccess,
   CustomerDashboardResponse,
   CustomerLoyaltyResponse,
+  CustomerPlanCatalogItem,
   CustomerSubscription,
 } from '@/types/customer-portal';
 
@@ -27,29 +30,46 @@ const CustomerDashboard: React.FC = () => {
   const [dashboard, setDashboard] = useState<CustomerDashboardResponse | null>(null);
   const [appointments, setAppointments] = useState<CustomerAppointment[]>([]);
   const [subscriptions, setSubscriptions] = useState<CustomerSubscription[]>([]);
+  const [plansCatalog, setPlansCatalog] = useState<CustomerPlanCatalogItem[]>([]);
   const [loyalty, setLoyalty] = useState<CustomerLoyaltyResponse | null>(null);
   const [courses, setCourses] = useState<CustomerCourseAccess[]>([]);
+  const [coursesCatalog, setCoursesCatalog] = useState<CustomerCourseCatalogItem[]>([]);
+  const [bookingOptions, setBookingOptions] = useState<CustomerBookingOptionsResponse | null>(null);
+  const [appointmentForm, setAppointmentForm] = useState({
+    service_id: '',
+    professional_id: '',
+    scheduled_at: '',
+  });
   const [loading, setLoading] = useState(true);
   const [cancelingId, setCancelingId] = useState<string | null>(null);
+  const [creatingAppointment, setCreatingAppointment] = useState(false);
+  const [subscribingPlanId, setSubscribingPlanId] = useState<string | null>(null);
+  const [purchasingCourseId, setPurchasingCourseId] = useState<string | null>(null);
   const { customer, company, logout } = useCustomerAuth();
   const navigate = useNavigate();
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [dashboardData, appointmentsData, subscriptionsData, loyaltyData, coursesData] =
+      const [dashboardData, appointmentsData, subscriptionsData, loyaltyData, coursesData, bookingData, plansData, availableCoursesData] =
         await Promise.all([
           customerPortalService.dashboard(),
           customerPortalService.appointments(),
           customerPortalService.subscriptions(),
           customerPortalService.loyalty(),
           customerPortalService.courses(),
+          customerPortalService.bookingOptions(),
+          customerPortalService.plans(),
+          customerPortalService.availableCourses(),
         ]);
       setDashboard(dashboardData);
       setAppointments(appointmentsData);
       setSubscriptions(subscriptionsData);
       setLoyalty(loyaltyData);
       setCourses(coursesData);
+      setBookingOptions(bookingData);
+      setPlansCatalog(plansData);
+      setCoursesCatalog(availableCoursesData);
     } catch (error: any) {
       toast.error(error.message || 'Erro ao carregar portal');
     } finally {
@@ -62,6 +82,25 @@ const CustomerDashboard: React.FC = () => {
   }, []);
 
   const canCancelStatus = useMemo(() => new Set(['pendente', 'confirmado']), []);
+
+  const handleCreateAppointment = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!appointmentForm.service_id || !appointmentForm.professional_id || !appointmentForm.scheduled_at) {
+      toast.error('Preencha servico, profissional e data/hora');
+      return;
+    }
+    setCreatingAppointment(true);
+    try {
+      await customerPortalService.createAppointment(appointmentForm);
+      toast.success('Agendamento criado com sucesso');
+      setAppointmentForm({ service_id: '', professional_id: '', scheduled_at: '' });
+      await loadData();
+    } catch (error: any) {
+      toast.error(error.message || 'Nao foi possivel agendar');
+    } finally {
+      setCreatingAppointment(false);
+    }
+  };
 
   const handleCancelAppointment = async (appointmentId: string) => {
     if (!window.confirm('Deseja cancelar este agendamento?')) return;
@@ -80,6 +119,32 @@ const CustomerDashboard: React.FC = () => {
   const handleLogout = () => {
     logout();
     navigate('/cliente/login', { replace: true });
+  };
+
+  const handleSubscribePlan = async (planId: string) => {
+    setSubscribingPlanId(planId);
+    try {
+      await customerPortalService.subscribePlan(planId);
+      toast.success('Assinatura ativada');
+      await loadData();
+    } catch (error: any) {
+      toast.error(error.message || 'Falha ao assinar plano');
+    } finally {
+      setSubscribingPlanId(null);
+    }
+  };
+
+  const handlePurchaseCourse = async (courseId: string) => {
+    setPurchasingCourseId(courseId);
+    try {
+      await customerPortalService.purchaseCourse(courseId);
+      toast.success('Curso adquirido com sucesso');
+      await loadData();
+    } catch (error: any) {
+      toast.error(error.message || 'Falha ao adquirir curso');
+    } finally {
+      setPurchasingCourseId(null);
+    }
   };
 
   if (loading) {
@@ -129,6 +194,37 @@ const CustomerDashboard: React.FC = () => {
                 <CardDescription>Visualize e cancele agendamentos pendentes.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
+                <form className="grid gap-2 rounded border p-3 md:grid-cols-4" onSubmit={handleCreateAppointment}>
+                  <select
+                    className="h-10 rounded border px-2 text-sm"
+                    value={appointmentForm.service_id}
+                    onChange={(event) => setAppointmentForm((old) => ({ ...old, service_id: event.target.value }))}
+                  >
+                    <option value="">Servico</option>
+                    {(bookingOptions?.services || []).map((item) => (
+                      <option key={item.id} value={item.id}>{item.name}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="h-10 rounded border px-2 text-sm"
+                    value={appointmentForm.professional_id}
+                    onChange={(event) => setAppointmentForm((old) => ({ ...old, professional_id: event.target.value }))}
+                  >
+                    <option value="">Profissional</option>
+                    {(bookingOptions?.professionals || []).map((item) => (
+                      <option key={item.id} value={item.id}>{item.name}</option>
+                    ))}
+                  </select>
+                  <input
+                    className="h-10 rounded border px-2 text-sm"
+                    type="datetime-local"
+                    value={appointmentForm.scheduled_at}
+                    onChange={(event) => setAppointmentForm((old) => ({ ...old, scheduled_at: event.target.value }))}
+                  />
+                  <Button type="submit" disabled={creatingAppointment}>
+                    {creatingAppointment ? 'Agendando...' : 'Novo agendamento'}
+                  </Button>
+                </form>
                 {appointments.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Nenhum agendamento encontrado.</p>
                 ) : (
@@ -166,6 +262,23 @@ const CustomerDashboard: React.FC = () => {
                 <CardTitle>Minhas Assinaturas</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
+                <div className="grid gap-3 md:grid-cols-2">
+                  {plansCatalog.map((plan) => (
+                    <div key={plan.id} className="rounded border p-3">
+                      <p className="font-medium">{plan.name}</p>
+                      <p className="text-sm text-muted-foreground">{plan.description || '-'}</p>
+                      <p className="text-sm">Valor: {formatCurrency(plan.price)}</p>
+                      <Button
+                        size="sm"
+                        className="mt-2"
+                        disabled={subscribingPlanId === plan.id}
+                        onClick={() => handleSubscribePlan(plan.id)}
+                      >
+                        {subscribingPlanId === plan.id ? 'Processando...' : 'Assinar plano'}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
                 {subscriptions.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Nenhuma assinatura encontrada.</p>
                 ) : (
@@ -220,6 +333,23 @@ const CustomerDashboard: React.FC = () => {
                 <CardTitle>Meus Cursos</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
+                <div className="grid gap-3 md:grid-cols-2">
+                  {coursesCatalog.map((course) => (
+                    <div key={course.id} className="rounded border p-3">
+                      <p className="font-medium">{course.title}</p>
+                      <p className="text-sm text-muted-foreground">{course.description || '-'}</p>
+                      <p className="text-sm">Valor: {formatCurrency(course.price)}</p>
+                      <Button
+                        size="sm"
+                        className="mt-2"
+                        disabled={purchasingCourseId === course.id}
+                        onClick={() => handlePurchaseCourse(course.id)}
+                      >
+                        {purchasingCourseId === course.id ? 'Processando...' : 'Comprar curso'}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
                 {courses.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Nenhum curso encontrado.</p>
                 ) : (

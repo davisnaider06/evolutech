@@ -118,3 +118,30 @@ export interface CustomerCourseAccess {
     is_active: boolean;
   } | null;
 }
+
+export interface CustomerBookingOption {
+  id: string;
+  name: string;
+}
+
+export interface CustomerBookingOptionsResponse {
+  services: Array<CustomerBookingOption & { duration_minutes: number; price: number }>;
+  professionals: CustomerBookingOption[];
+}
+
+export interface CustomerPlanCatalogItem {
+  id: string;
+  name: string;
+  description?: string | null;
+  interval: string;
+  price: number;
+  included_services?: number | null;
+  is_unlimited: boolean;
+}
+
+export interface CustomerCourseCatalogItem {
+  id: string;
+  title: string;
+  description?: string | null;
+  price: number;
+}

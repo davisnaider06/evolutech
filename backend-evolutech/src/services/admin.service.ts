@@ -311,8 +311,15 @@ export class AdminService {
     nicho?: string;
     preco_mensal?: number;
     is_core?: boolean;
+    is_pro?: boolean;
+    allowed_roles?: Role[];
     status?: Status;
   }) {
+    const allowedRoles =
+      Array.isArray(data.allowed_roles) && data.allowed_roles.length > 0
+        ? data.allowed_roles
+        : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'];
+
     return prisma.modulo.create({
       data: {
         nome: data.nome,
@@ -322,6 +329,8 @@ export class AdminService {
         nicho: data.nicho || 'geral',
         precoMensal: data.preco_mensal || 0,
         isCore: data.is_core || false,
+        isPro: data.is_pro === true,
+        allowedRoles,
         status: data.status || 'active'
       } as any
     });
@@ -465,8 +474,17 @@ export class AdminService {
     nicho?: string;
     preco_mensal?: number;
     is_core?: boolean;
+    is_pro?: boolean;
+    allowed_roles?: Role[];
     status?: Status;
   }) {
+    const nextAllowedRoles =
+      Array.isArray(data.allowed_roles) && data.allowed_roles.length > 0
+        ? data.allowed_roles
+        : data.allowed_roles === undefined
+          ? undefined
+          : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'];
+
     return prisma.modulo.update({
       where: { id: moduloId },
       data: {
@@ -476,6 +494,8 @@ export class AdminService {
         nicho: data.nicho,
         precoMensal: data.preco_mensal,
         isCore: data.is_core,
+        isPro: data.is_pro,
+        allowedRoles: nextAllowedRoles,
         status: data.status
       } as any
     });

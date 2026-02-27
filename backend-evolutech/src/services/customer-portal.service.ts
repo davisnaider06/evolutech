@@ -380,6 +380,236 @@ export class CustomerPortalService {
         : null,
     }));
   }
+
+  async getBookingOptions(auth: AuthenticatedCustomer) {
+    const context = await this.getCustomerContext(auth);
+    const [services, professionals] = await Promise.all([
+      (prisma as any).appointmentService.findMany({
+        where: { companyId: context.companyId, isActive: true },
+        select: { id: true, name: true, durationMinutes: true, price: true },
+        orderBy: { name: 'asc' },
+      }),
+      prisma.userRole.findMany({
+        where: {
+          companyId: context.companyId,
+          role: { in: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+          user: { isActive: true },
+        },
+        select: {
+          userId: true,
+          user: { select: { fullName: true } },
+        },
+        orderBy: { user: { fullName: 'asc' } },
+      }),
+    ]);
+
+    return {
+      services: services.map((item: any) => ({
+        id: item.id,
+        name: item.name,
+        duration_minutes: Number(item.durationMinutes || 30),
+        price: this.toNumber(item.price),
+      })),
+      professionals: professionals.map((item: any) => ({
+        id: item.userId,
+        name: item.user.fullName,
+      })),
+    };
+  }
+
+  async createMyAppointment(
+    auth: AuthenticatedCustomer,
+    payload: { service_id?: string; professional_id?: string; scheduled_at?: string }
+  ) {
+    const context = await this.getCustomerContext(auth);
+    const serviceId = String(payload.service_id || '').trim();
+    const professionalId = String(payload.professional_id || '').trim();
+    const scheduledAtRaw = String(payload.scheduled_at || '').trim();
+    if (!serviceId || !professionalId || !scheduledAtRaw) {
+      throw new CustomerPortalError('Campos obrigatorios: service_id, professional_id, scheduled_at', 400);
+    }
+
+    const scheduledAt = new Date(scheduledAtRaw);
+    if (Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() < Date.now()) {
+      throw new CustomerPortalError('Data/hora invalida para agendamento', 400);
+    }
+
+    const [service, professional] = await Promise.all([
+      (prisma as any).appointmentService.findFirst({
+        where: { id: serviceId, companyId: context.companyId, isActive: true },
+        select: { id: true, name: true, durationMinutes: true },
+      }),
+      prisma.userRole.findFirst({
+        where: {
+          companyId: context.companyId,
+          userId: professionalId,
+          role: { in: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+          user: { isActive: true },
+        },
+        select: { userId: true, user: { select: { fullName: true } } },
+      }),
+    ]);
+
+    if (!service || !professional) {
+      throw new CustomerPortalError('Servico ou profissional invalido', 400);
+    }
+
+    const conflict = await (prisma as any).appointment.findFirst({
+      where: {
+        companyId: context.companyId,
+        professionalId: professional.userId,
+        scheduledAt,
+        status: { in: ['pendente', 'confirmado'] },
+      },
+      select: { id: true },
+    });
+    if (conflict) {
+      throw new CustomerPortalError('Horario ja reservado. Escolha outro horario', 409);
+    }
+
+    const created = await (prisma as any).appointment.create({
+      data: {
+        companyId: context.companyId,
+        customerId: context.customerId,
+        serviceId: service.id,
+        professionalId: professional.userId,
+        customerName: context.customer.name,
+        serviceName: service.name,
+        professionalName: professional.user.fullName,
+        scheduledAt,
+        status: 'pendente',
+      },
+      select: {
+        id: true,
+        scheduledAt: true,
+        status: true,
+        serviceName: true,
+        professionalName: true,
+      },
+    });
+
+    return {
+      id: created.id,
+      scheduled_at: created.scheduledAt,
+      status: created.status,
+      service_name: created.serviceName,
+      professional_name: created.professionalName,
+    };
+  }
+
+  async listAvailablePlans(auth: AuthenticatedCustomer) {
+    const context = await this.getCustomerContext(auth);
+    const plans = await (prisma as any).subscriptionPlan.findMany({
+      where: { companyId: context.companyId, isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    return plans.map((item: any) => ({
+      id: item.id,
+      name: item.name,
+      description: item.description,
+      interval: item.interval,
+      price: this.toNumber(item.price),
+      included_services: item.includedServices,
+      is_unlimited: item.isUnlimited,
+    }));
+  }
+
+  async subscribePlan(auth: AuthenticatedCustomer, planIdRaw: string) {
+    const context = await this.getCustomerContext(auth);
+    const planId = String(planIdRaw || '').trim();
+    if (!planId) throw new CustomerPortalError('planId obrigatorio', 400);
+
+    const plan = await (prisma as any).subscriptionPlan.findFirst({
+      where: { id: planId, companyId: context.companyId, isActive: true },
+      select: {
+        id: true,
+        interval: true,
+        price: true,
+        includedServices: true,
+        isUnlimited: true,
+      },
+    });
+    if (!plan) throw new CustomerPortalError('Plano nao encontrado', 404);
+
+    const startAt = new Date();
+    const endAt = new Date(startAt);
+    if (plan.interval === 'yearly') endAt.setFullYear(endAt.getFullYear() + 1);
+    else if (plan.interval === 'quarterly') endAt.setMonth(endAt.getMonth() + 3);
+    else endAt.setMonth(endAt.getMonth() + 1);
+
+    const created = await (prisma as any).customerSubscription.create({
+      data: {
+        companyId: context.companyId,
+        customerId: context.customerId,
+        planId: plan.id,
+        status: 'active',
+        startAt,
+        endAt,
+        remainingServices: plan.isUnlimited ? null : Number(plan.includedServices || 0),
+        autoRenew: true,
+        amount: this.toNumber(plan.price),
+      },
+      select: { id: true, status: true, startAt: true, endAt: true },
+    });
+
+    return {
+      id: created.id,
+      status: created.status,
+      start_at: created.startAt,
+      end_at: created.endAt,
+    };
+  }
+
+  async listAvailableCourses(auth: AuthenticatedCustomer) {
+    const context = await this.getCustomerContext(auth);
+    const courses = await (prisma as any).course.findMany({
+      where: { companyId: context.companyId, isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    return courses.map((item: any) => ({
+      id: item.id,
+      title: item.title,
+      description: item.description,
+      price: this.toNumber(item.price),
+    }));
+  }
+
+  async purchaseCourse(auth: AuthenticatedCustomer, courseIdRaw: string) {
+    const context = await this.getCustomerContext(auth);
+    const courseId = String(courseIdRaw || '').trim();
+    if (!courseId) throw new CustomerPortalError('courseId obrigatorio', 400);
+
+    const course = await (prisma as any).course.findFirst({
+      where: { id: courseId, companyId: context.companyId, isActive: true },
+      select: { id: true, price: true },
+    });
+    if (!course) throw new CustomerPortalError('Curso nao encontrado', 404);
+
+    const existing = await (prisma as any).courseAccess.findFirst({
+      where: { companyId: context.companyId, customerId: context.customerId, courseId: course.id, status: 'active' },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new CustomerPortalError('Curso ja adquirido', 409);
+    }
+
+    const created = await (prisma as any).courseAccess.create({
+      data: {
+        companyId: context.companyId,
+        customerId: context.customerId,
+        courseId: course.id,
+        status: 'active',
+        amountPaid: this.toNumber(course.price),
+      },
+      select: { id: true, status: true, startAt: true },
+    });
+
+    return {
+      access_id: created.id,
+      status: created.status,
+      start_at: created.startAt,
+    };
+  }
 }
 
 export { CustomerPortalError };
