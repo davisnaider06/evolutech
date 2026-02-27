@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -139,9 +139,16 @@ const AgendamentoCliente: React.FC = () => {
             </CardDescription>
           </CardHeader>
           <CardFooter>
-            <Button className="w-full" onClick={() => window.location.reload()}>
-              Fazer novo agendamento
-            </Button>
+            <div className="w-full space-y-3">
+              <Button className="w-full" onClick={() => window.location.reload()}>
+                Fazer novo agendamento
+              </Button>
+              <p className="text-sm text-muted-foreground">
+                <Link className="text-primary underline" to={`/cliente/${slug}/cadastro`}>
+                  cliente se cadastre aqui
+                </Link>
+              </p>
+            </div>
           </CardFooter>
         </Card>
       </div>
@@ -277,21 +284,28 @@ const AgendamentoCliente: React.FC = () => {
           </CardContent>
 
           <CardFooter>
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={
-                loading ||
-                !!error ||
-                loadingOptions ||
-                loadingSlots ||
-                services.length === 0 ||
-                professionals.length === 0 ||
-                !formData.scheduled_at
-              }
-            >
-              {loading ? 'Enviando...' : 'Confirmar agendamento'}
-            </Button>
+            <div className="w-full space-y-3">
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={
+                  loading ||
+                  !!error ||
+                  loadingOptions ||
+                  loadingSlots ||
+                  services.length === 0 ||
+                  professionals.length === 0 ||
+                  !formData.scheduled_at
+                }
+              >
+                {loading ? 'Enviando...' : 'Confirmar agendamento'}
+              </Button>
+              <p className="text-sm text-muted-foreground text-center">
+                <Link className="text-primary underline" to={`/cliente/${slug}/cadastro`}>
+                  cliente se cadastre aqui
+                </Link>
+              </p>
+            </div>
           </CardFooter>
         </form>
       </Card>

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,7 @@ import { customerAuthService } from '@/services/customer-portal';
 import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
 
 const CustomerRegister: React.FC = () => {
+  const { slug } = useParams<{ slug?: string }>();
   const [form, setForm] = useState({
     company_slug: '',
     full_name: '',
@@ -20,6 +21,13 @@ const CustomerRegister: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const { login } = useCustomerAuth();
   const navigate = useNavigate();
+  const hasSlugFromRoute = useMemo(() => Boolean((slug || '').trim()), [slug]);
+
+  useEffect(() => {
+    if (hasSlugFromRoute) {
+      setForm((old) => ({ ...old, company_slug: String(slug).trim().toLowerCase() }));
+    }
+  }, [hasSlugFromRoute, slug]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -64,7 +72,11 @@ const CustomerRegister: React.FC = () => {
                 value={form.company_slug}
                 onChange={(event) => setForm((old) => ({ ...old, company_slug: event.target.value }))}
                 required
+                readOnly={hasSlugFromRoute}
               />
+              {hasSlugFromRoute && (
+                <p className="text-xs text-muted-foreground">Empresa identificada automaticamente pelo link.</p>
+              )}
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="full_name">Nome completo</Label>
@@ -120,7 +132,13 @@ const CustomerRegister: React.FC = () => {
             </div>
           </form>
           <p className="mt-4 text-sm text-muted-foreground">
-            Ja possui conta? <Link className="text-primary underline" to="/cliente/login">Fazer login</Link>
+            Ja possui conta?{' '}
+            <Link
+              className="text-primary underline"
+              to={hasSlugFromRoute ? `/cliente/${form.company_slug}/login` : '/cliente/login'}
+            >
+              Fazer login
+            </Link>
           </p>
         </CardContent>
       </Card>

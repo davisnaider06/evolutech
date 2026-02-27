@@ -103,6 +103,8 @@ const App = () => (
                 <Route path="/agendar/:slug" element={<AgendamentoCliente />} />
                 <Route path="/cliente/login" element={<CustomerLogin />} />
                 <Route path="/cliente/cadastro" element={<CustomerRegister />} />
+                <Route path="/cliente/:slug/login" element={<CustomerLogin />} />
+                <Route path="/cliente/:slug/cadastro" element={<CustomerRegister />} />
                 <Route path="/cliente" element={<Navigate to="/cliente/login" replace />} />
                 <Route
                   path="/cliente/dashboard"
