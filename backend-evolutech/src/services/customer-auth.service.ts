@@ -26,7 +26,7 @@ class CustomerAuthError extends Error {
 }
 
 export class CustomerAuthService {
-  private async ensureCustomerPortalEnabled(companyId: string) {
+  private async getCustomerPortalModuleId() {
     const portalModule = await prisma.modulo.findFirst({
       where: {
         codigo: { in: ['customer_portal', 'portal_cliente'] },
@@ -39,10 +39,16 @@ export class CustomerAuthService {
       throw new CustomerAuthError('Modulo customer_portal nao encontrado no catalogo', 500);
     }
 
+    return portalModule.id;
+  }
+
+  private async ensureCustomerPortalEnabled(companyId: string) {
+    const portalModuleId = await this.getCustomerPortalModuleId();
+
     const enabled = await prisma.companyModule.findFirst({
       where: {
         companyId,
-        moduloId: portalModule.id,
+        moduloId: portalModuleId,
         isActive: true,
       },
       select: { id: true },
@@ -51,6 +57,38 @@ export class CustomerAuthService {
     if (!enabled) {
       throw new CustomerAuthError('Portal do cliente nao habilitado para esta empresa', 403);
     }
+  }
+
+  async listCompanies() {
+    const portalModuleId = await this.getCustomerPortalModuleId();
+    const rows = await prisma.companyModule.findMany({
+      where: {
+        moduloId: portalModuleId,
+        isActive: true,
+        company: { status: 'active' },
+      },
+      select: {
+        company: {
+          select: { id: true, name: true, slug: true },
+        },
+      },
+      orderBy: {
+        company: { name: 'asc' },
+      },
+    });
+
+    const mapped = rows
+      .map((row) => row.company)
+      .filter((company): company is { id: string; name: string; slug: string } => Boolean(company));
+
+    const uniqueBySlug = new Map<string, { id: string; name: string; slug: string }>();
+    for (const company of mapped) {
+      if (!uniqueBySlug.has(company.slug)) {
+        uniqueBySlug.set(company.slug, company);
+      }
+    }
+
+    return Array.from(uniqueBySlug.values());
   }
 
   private signCustomerToken(payload: CustomerJwtPayload) {

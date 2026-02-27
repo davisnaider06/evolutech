@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
@@ -127,6 +127,11 @@ const Login: React.FC = () => {
             </Button>
 
           </form>
+          <p className="mt-4 w-full text-center text-sm text-muted-foreground">
+            <Link className="text-primary underline" to="/cliente/cadastro">
+              cliente se cadastre aqui
+            </Link>
+          </p>
 
         </div>
 

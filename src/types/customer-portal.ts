@@ -13,6 +13,12 @@ export interface CustomerAuthCompany {
   slug: string;
 }
 
+export interface CustomerPortalCompanyOption {
+  id: string;
+  name: string;
+  slug: string;
+}
+
 export interface CustomerAuthResponse {
   token: string;
   customer: CustomerAuthUser;

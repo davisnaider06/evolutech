@@ -24,6 +24,15 @@ export class CustomerAuthController {
     }
   }
 
+  async listCompanies(_req: Request, res: Response) {
+    try {
+      const result = await service.listCompanies();
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   async login(req: Request, res: Response) {
     try {
       const result = await service.login(req.body || {});

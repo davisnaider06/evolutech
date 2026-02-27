@@ -5,6 +5,7 @@ import {
   CustomerCourseAccess,
   CustomerDashboardResponse,
   CustomerLoyaltyResponse,
+  CustomerPortalCompanyOption,
   CustomerSubscription,
 } from '@/types/customer-portal';
 
@@ -30,6 +31,8 @@ const customerRequest = async <T>(path: string, init?: RequestInit): Promise<T> 
 };
 
 export const customerAuthService = {
+  listCompanies: () => customerRequest<CustomerPortalCompanyOption[]>('/customer-auth/companies'),
+
   register: (payload: {
     company_slug: string;
     full_name: string;

@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { customerAuthService } from '@/services/customer-portal';
 import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
+import { CustomerPortalCompanyOption } from '@/types/customer-portal';
 
 const CustomerRegister: React.FC = () => {
   const { slug } = useParams<{ slug?: string }>();
@@ -18,10 +19,27 @@ const CustomerRegister: React.FC = () => {
     password: '',
     confirmPassword: '',
   });
+  const [companies, setCompanies] = useState<CustomerPortalCompanyOption[]>([]);
+  const [loadingCompanies, setLoadingCompanies] = useState(true);
   const [loading, setLoading] = useState(false);
   const { login } = useCustomerAuth();
   const navigate = useNavigate();
   const hasSlugFromRoute = useMemo(() => Boolean((slug || '').trim()), [slug]);
+
+  useEffect(() => {
+    const loadCompanies = async () => {
+      try {
+        setLoadingCompanies(true);
+        const data = await customerAuthService.listCompanies();
+        setCompanies(data || []);
+      } catch (error: any) {
+        toast.error(error.message || 'Erro ao carregar empresas');
+      } finally {
+        setLoadingCompanies(false);
+      }
+    };
+    loadCompanies();
+  }, []);
 
   useEffect(() => {
     if (hasSlugFromRoute) {
@@ -60,20 +78,29 @@ const CustomerRegister: React.FC = () => {
       <Card className="w-full max-w-lg">
         <CardHeader>
           <CardTitle>Criar conta no Portal do Cliente</CardTitle>
-          <CardDescription>Acesse sua empresa usando o slug informado pelo estabelecimento.</CardDescription>
+          <CardDescription>Selecione sua empresa e conclua seu cadastro.</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
             <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="company_slug">Slug da empresa</Label>
-              <Input
+              <Label htmlFor="company_slug">Empresa</Label>
+              <select
                 id="company_slug"
-                placeholder="barbearia-x"
                 value={form.company_slug}
                 onChange={(event) => setForm((old) => ({ ...old, company_slug: event.target.value }))}
                 required
-                readOnly={hasSlugFromRoute}
-              />
+                disabled={loadingCompanies || hasSlugFromRoute}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">
+                  {loadingCompanies ? 'Carregando empresas...' : 'Selecione sua empresa'}
+                </option>
+                {companies.map((company) => (
+                  <option key={company.id} value={company.slug}>
+                    {company.name}
+                  </option>
+                ))}
+              </select>
               {hasSlugFromRoute && (
                 <p className="text-xs text-muted-foreground">Empresa identificada automaticamente pelo link.</p>
               )}
