@@ -76,6 +76,10 @@ export class CompanyService {
     'assinaturas',
     'loyalty',
     'fidelidade',
+    'courses',
+    'cursos',
+    'customer_portal',
+    'portal_cliente',
   ]);
 
   private toNumber(value: unknown): number {
@@ -211,6 +215,8 @@ export class CompanyService {
       appointment_services: (prisma as any).appointmentService,
       appointment_availability: (prisma as any).appointmentAvailability,
       orders: prisma.order,
+      courses: (prisma as any).course,
+      course_accesses: (prisma as any).courseAccess,
     };
     return map[tableName];
   }
@@ -428,6 +434,9 @@ export class CompanyService {
 
     const companyId = this.resolveCompanyId(user, data);
     await this.validateModuleAccess(table, user, companyId);
+    if ((table === 'courses' || table === 'course_accesses') && user.role !== 'DONO_EMPRESA') {
+      throw new CompanyServiceError('Apenas DONO_EMPRESA pode gerenciar cursos', 403);
+    }
 
     const payload = { ...data };
     delete payload.id;
@@ -458,6 +467,9 @@ export class CompanyService {
     });
     if (!existing) throw new CompanyServiceError('Registro n�o encontrado', 404);
     if (!this.checkAccess(user, existing.companyId)) throw new CompanyServiceError('Acesso negado', 403);
+    if ((table === 'courses' || table === 'course_accesses') && user.role !== 'DONO_EMPRESA') {
+      throw new CompanyServiceError('Apenas DONO_EMPRESA pode gerenciar cursos', 403);
+    }
 
     if (
       table === 'appointments' &&
@@ -544,6 +556,9 @@ export class CompanyService {
     });
     if (!existing) throw new CompanyServiceError('Registro n�o encontrado', 404);
     if (!this.checkAccess(user, existing.companyId)) throw new CompanyServiceError('Acesso negado', 403);
+    if ((table === 'courses' || table === 'course_accesses') && user.role !== 'DONO_EMPRESA') {
+      throw new CompanyServiceError('Apenas DONO_EMPRESA pode gerenciar cursos', 403);
+    }
 
     if (
       table === 'appointments' &&
@@ -3367,10 +3382,14 @@ export class CompanyService {
       (prisma as any).appointment.findMany({
         where: {
           companyId,
-          customerName: { equals: customer.name, mode: 'insensitive' },
+          OR: [
+            { customerId: customer.id },
+            { customerName: { equals: customer.name, mode: 'insensitive' } },
+          ],
         },
         select: {
           id: true,
+          customerId: true,
           customerName: true,
           serviceId: true,
           serviceName: true,
@@ -4657,7 +4676,7 @@ export class CompanyService {
           companyId: company.id,
           isActive: true,
         },
-        select: { id: true, name: true },
+        select: { id: true, name: true, durationMinutes: true },
       }),
       prisma.userRole.findFirst({
         where: {
@@ -4735,32 +4754,45 @@ export class CompanyService {
     }
 
     const created = await prisma.$transaction(async (tx) => {
+      let customerRecord: { id: string } | null = null;
       if (customerPhone) {
         const existingCustomer = await tx.customer.findFirst({
           where: { companyId: company.id, phone: customerPhone },
-          select: { id: true },
+          select: { id: true, email: true, document: true },
         });
 
         if (existingCustomer) {
-          await tx.customer.update({
+          customerRecord = await tx.customer.update({
             where: { id: existingCustomer.id },
             data: { name: customerName, isActive: true },
+            select: { id: true },
           });
         } else {
-          await tx.customer.create({
+          customerRecord = await tx.customer.create({
             data: {
               companyId: company.id,
               name: customerName,
               phone: customerPhone,
               isActive: true,
             },
+            select: { id: true },
           });
         }
+      } else {
+        const existingByName = await tx.customer.findFirst({
+          where: {
+            companyId: company.id,
+            name: { equals: customerName, mode: 'insensitive' },
+          },
+          select: { id: true },
+        });
+        customerRecord = existingByName;
       }
 
       const appointment = await (tx as any).appointment.create({
         data: {
           companyId: company.id,
+          customerId: customerRecord?.id || null,
           serviceId: service.id,
           professionalId: professional.userId,
           customerName,

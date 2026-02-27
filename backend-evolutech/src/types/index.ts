@@ -17,3 +17,16 @@ export interface AuthenticatedUser {
 export interface AuthedRequest extends Request {
   user?: AuthenticatedUser;
 }
+
+export interface AuthenticatedCustomer {
+  accountId: string;
+  customerId: string;
+  companyId: string;
+  role: 'CLIENTE';
+  email: string;
+  fullName: string;
+}
+
+export interface AuthedCustomerRequest extends Request {
+  customer?: AuthenticatedCustomer;
+}

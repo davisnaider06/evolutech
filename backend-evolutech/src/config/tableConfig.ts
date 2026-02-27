@@ -49,4 +49,18 @@ export const TABLE_CONFIG: Record<string, TableConfig> = {
     dateField: 'createdAt',
     moduleCodes: ['orders', 'pedidos'],
   },
+  courses: {
+    searchFields: ['title', 'description'],
+    allowedOrderBy: ['title', 'createdAt', 'updatedAt', 'price', 'isActive'],
+    defaultOrderBy: 'createdAt',
+    dateField: 'createdAt',
+    moduleCodes: ['courses', 'cursos'],
+  },
+  course_accesses: {
+    searchFields: ['status'],
+    allowedOrderBy: ['createdAt', 'updatedAt', 'status', 'startAt', 'endAt'],
+    defaultOrderBy: 'createdAt',
+    dateField: 'createdAt',
+    moduleCodes: ['courses', 'cursos'],
+  },
 };

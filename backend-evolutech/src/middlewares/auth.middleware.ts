@@ -1,7 +1,7 @@
 ﻿import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../db';
-import { AuthedRequest, AppRole } from '../types';
+import { AuthedCustomerRequest, AuthedRequest, AppRole } from '../types';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret_fallback_dev';
 const AUTH_REQUIRE_DB_CHECK = process.env.AUTH_REQUIRE_DB_CHECK === 'true';
@@ -15,6 +15,17 @@ type JwtClaims = {
   role?: AppRole;
   companyId?: string | null;
   companyName?: string | null;
+  iat?: number;
+  exp?: number;
+};
+
+type CustomerJwtClaims = {
+  accountId: string;
+  customerId: string;
+  companyId: string;
+  email?: string;
+  fullName?: string;
+  role?: 'CLIENTE';
   iat?: number;
   exp?: number;
 };
@@ -117,5 +128,41 @@ export const requireRoles = (roles: AppRole[]) => (req: AuthedRequest, res: Resp
     return;
   }
   next();
+};
+
+export const authenticateCustomerToken = async (
+  req: AuthedCustomerRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.split(' ')[1];
+
+  if (!token) {
+    res.status(401).json({ error: 'Token não fornecido' });
+    return;
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as CustomerJwtClaims;
+
+    if (!decoded.accountId || !decoded.customerId || !decoded.companyId) {
+      res.status(403).json({ error: 'Token inválido' });
+      return;
+    }
+
+    req.customer = {
+      accountId: decoded.accountId,
+      customerId: decoded.customerId,
+      companyId: decoded.companyId,
+      role: 'CLIENTE',
+      email: decoded.email || '',
+      fullName: decoded.fullName || '',
+    };
+
+    next();
+  } catch (_error) {
+    res.status(403).json({ error: 'Token inválido' });
+  }
 };
 

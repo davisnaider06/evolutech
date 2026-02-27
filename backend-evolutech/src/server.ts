@@ -9,6 +9,8 @@ import companyRoutes from './routes/company.routes';
 import tenantRoutes from './routes/tenant.routes';
 import publicRoutes from './routes/public.routes';
 import paymentWebhookRoutes from './routes/payment-webhook.routes';
+import customerAuthRoutes from './routes/customer-auth.routes';
+import customerRoutes from './routes/customer.routes';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -46,6 +48,8 @@ app.use('/api/admin', adminRoutes);     // Configurações do SaaS (Whitelabel)
 app.use('/api/admin', tenantRoutes);    // Onboarding de tenants (Empresa + Dono + Módulos)
 app.use('/api/company', companyRoutes); // Dados Operacionais (Clientes, Produtos)
 app.use('/api/public', publicRoutes);   // Agendamento público por link
+app.use('/api/customer-auth', customerAuthRoutes); // Cadastro/Login do cliente final
+app.use('/api/customer', customerRoutes); // Portal autenticado do cliente final
 
 // Rota Raiz
 app.get('/', (req, res) => {

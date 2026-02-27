@@ -46,6 +46,7 @@ model Company {
   auditLogs      AuditLog[]
   sistemaBase    SistemaBase?    @relation(fields: [sistemaBaseId], references: [id])
   customers      Customer[]
+  customerAccounts CustomerAccount[]
   modules        CompanyModule[]
   orders         Order[]
   products       Product[]
@@ -63,6 +64,8 @@ model Company {
   subscriptionPlans SubscriptionPlan[]
   customerSubscriptions CustomerSubscription[]
   subscriptionUsages SubscriptionUsage[]
+  courses       Course[]
+  courseAccesses CourseAccess[]
 
   @@index([sistemaBaseId])
   @@map("companies")
@@ -152,9 +155,12 @@ model Customer {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+  account   CustomerAccount?
   loyaltyProfile CustomerLoyaltyProfile?
   loyaltyTransactions CustomerLoyaltyTransaction[]
   subscriptions CustomerSubscription[]
+  courseAccesses CourseAccess[]
 
   @@index([companyId])
   @@map("customers")
@@ -302,6 +308,7 @@ model Task {
 model Appointment {
   id           String   @id @default(uuid())
   companyId    String   @map("empresa_id")
+  customerId   String?  @map("customer_id")
   serviceId    String?  @map("service_id")
   professionalId String? @map("professional_id")
   customerName String   @map("customer_name")
@@ -312,12 +319,33 @@ model Appointment {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
   company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer     Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   service      AppointmentService? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
 
   @@index([companyId, serviceId])
   @@index([companyId, professionalId, scheduledAt])
+  @@index([companyId, customerId, scheduledAt])
 
   @@map("appointments")
+}
+
+model CustomerAccount {
+  id           String   @id @default(uuid())
+  companyId     String   @map("empresa_id")
+  customerId    String   @unique @map("customer_id")
+  email         String
+  passwordHash  String   @map("password_hash")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  lastLoginAt   DateTime? @map("last_login_at")
+
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer      Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, email])
+  @@index([companyId, isActive])
+  @@map("customer_accounts")
 }
 
 model AppointmentService {
@@ -546,12 +574,52 @@ model SubscriptionUsage {
   @@map("subscription_usages")
 }
 
+model Course {
+  id          String   @id @default(uuid())
+  companyId   String   @map("empresa_id")
+  title       String
+  description String?
+  price       Decimal  @default(0) @db.Decimal(10, 2)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  courseAccesses CourseAccess[]
+
+  @@index([companyId, isActive])
+  @@map("courses")
+}
+
+model CourseAccess {
+  id         String            @id @default(uuid())
+  companyId  String            @map("empresa_id")
+  customerId String            @map("customer_id")
+  courseId   String            @map("course_id")
+  status     CourseAccessStatus @default(active)
+  startAt    DateTime          @default(now()) @map("start_at")
+  endAt      DateTime?         @map("end_at")
+  amountPaid Decimal           @default(0) @map("amount_paid") @db.Decimal(10, 2)
+  createdAt  DateTime          @default(now()) @map("created_at")
+  updatedAt  DateTime          @updatedAt @map("updated_at")
+
+  company    Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer   Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  course     Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, customerId, courseId])
+  @@index([companyId, customerId, status])
+  @@index([companyId, courseId, status])
+  @@map("course_accesses")
+}
+
 
 enum Role {
   SUPER_ADMIN_EVOLUTECH
   ADMIN_EVOLUTECH
   DONO_EMPRESA
   FUNCIONARIO_EMPRESA
+  CLIENTE
 }
 
 enum Status {
@@ -588,4 +656,11 @@ enum LoyaltyTransactionType {
   bonus
   adjustment
   tenth_service_discount
+}
+
+enum CourseAccessStatus {
+  active
+  pending
+  canceled
+  expired
 }
