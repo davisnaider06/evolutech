@@ -6,7 +6,16 @@ const tenantService = new TenantService();
 export class TenantController {
   async createTenant(req: Request, res: Response) {
     try {
-      const { empresaNome, empresaDocumento, empresaPlano, empresaStatus, sistemaBaseId } = req.body ?? {};
+      const {
+        empresaNome,
+        empresaDocumento,
+        empresaPlano,
+        empresaStatus,
+        sistemaBaseId,
+        ownerFullName,
+        ownerEmail,
+        ownerPassword,
+      } = req.body ?? {};
 
       if (!empresaNome || !sistemaBaseId) {
         return res.status(400).json({
@@ -20,6 +29,9 @@ export class TenantController {
         companyPlan: empresaPlano,
         companyStatus: empresaStatus,
         sistemaBaseId,
+        ownerFullName,
+        ownerEmail,
+        ownerPassword,
       });
 
       return res.status(201).json(result);

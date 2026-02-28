@@ -1,4 +1,5 @@
-import { Status } from '@prisma/client';
+import bcrypt from 'bcryptjs';
+import { Role, Status } from '@prisma/client';
 import { prisma } from '../db';
 
 export interface CreateTenantInput {
@@ -7,6 +8,9 @@ export interface CreateTenantInput {
   companyPlan?: string;
   companyStatus?: 'active' | 'inactive' | 'pending';
   sistemaBaseId: string;
+  ownerFullName?: string;
+  ownerEmail?: string;
+  ownerPassword?: string;
 }
 
 interface TenantOnboardingResult {
@@ -16,13 +20,26 @@ interface TenantOnboardingResult {
     slug: string;
     sistemaBaseId: string;
   };
+  owner: {
+    id: string;
+    email: string;
+    fullName: string;
+    role: Role;
+  };
   modulosLiberados: {
     total: number;
     moduloIds: string[];
   };
+  credentials: {
+    email: string;
+    temporaryPassword: string;
+    requiresPasswordChange: boolean;
+  };
 }
 
 const ALLOWED_COMPANY_STATUS: ReadonlySet<Status> = new Set(['active', 'inactive', 'pending']);
+const OWNER_ROLE: Role = 'DONO_EMPRESA';
+const APPOINTMENTS_CODES = new Set(['agendamentos', 'appointments']);
 
 const normalizeText = (value: string): string =>
   value
@@ -43,6 +60,11 @@ const resolveCompanyStatus = (statusInput?: string): Status => {
   return ALLOWED_COMPANY_STATUS.has(value) ? value : 'active';
 };
 
+const generateTemporaryPassword = (): string => {
+  const randomBlock = Math.random().toString(36).slice(2, 10);
+  return `Ev0!${randomBlock}`;
+};
+
 export class TenantService {
   async onboardTenant(input: CreateTenantInput): Promise<TenantOnboardingResult> {
     const companyName = input.companyName?.trim();
@@ -54,34 +76,38 @@ export class TenantService {
       throw new Error('Campos obrigatorios ausentes para onboarding');
     }
 
+    const ownerFullName =
+      String(input.ownerFullName || '').trim() || `Dono ${companyName}`;
+    const ownerEmailInput = String(input.ownerEmail || '').trim().toLowerCase();
+    const ownerEmail =
+      ownerEmailInput ||
+      `${toSlug(companyName)}.owner@evolutech.local`;
+    const temporaryPassword = String(input.ownerPassword || '').trim() || generateTemporaryPassword();
+    const ownerPasswordHash = await bcrypt.hash(temporaryPassword, 10);
+
     const created = await prisma.$transaction(async (tx) => {
       const sistemaBase = await tx.sistemaBase.findUnique({
         where: { id: sistemaBaseId },
-        include: { modulos: { select: { moduloId: true } } },
-      });
-
-      if (!sistemaBase) {
-        throw new Error('Sistema Base nao encontrado');
-      }
-
-      if (!sistemaBase.isActive) {
-        throw new Error('Sistema Base inativo');
-      }
-
-      const slugBase = toSlug(companyName);
-      if (!slugBase) {
-        throw new Error('Nao foi possivel gerar slug valido para a empresa');
-      }
-
-      const existingSlugs = await tx.company.findMany({
-        where: {
-          slug: {
-            startsWith: slugBase,
+        include: {
+          modulos: {
+            select: {
+              moduloId: true,
+              modulo: { select: { codigo: true } },
+            },
           },
         },
-        select: { slug: true },
       });
 
+      if (!sistemaBase) throw new Error('Sistema Base nao encontrado');
+      if (!sistemaBase.isActive) throw new Error('Sistema Base inativo');
+
+      const slugBase = toSlug(companyName);
+      if (!slugBase) throw new Error('Nao foi possivel gerar slug valido para a empresa');
+
+      const existingSlugs = await tx.company.findMany({
+        where: { slug: { startsWith: slugBase } },
+        select: { slug: true },
+      });
       const slugSet = new Set(existingSlugs.map((item) => item.slug));
       let slugCandidate = slugBase;
       let suffix = 2;
@@ -101,8 +127,39 @@ export class TenantService {
         },
       });
 
-      const moduloIds = Array.from(new Set(sistemaBase.modulos.map((m) => m.moduloId)));
+      const existingUser = await tx.user.findUnique({
+        where: { email: ownerEmail },
+        select: { id: true },
+      });
+      const ownerUser = existingUser
+        ? await tx.user.update({
+            where: { id: existingUser.id },
+            data: {
+              fullName: ownerFullName,
+              passwordHash: ownerPasswordHash,
+              isActive: true,
+            },
+          })
+        : await tx.user.create({
+            data: {
+              email: ownerEmail,
+              fullName: ownerFullName,
+              passwordHash: ownerPasswordHash,
+              isActive: true,
+            },
+          });
 
+      const existingRole = await tx.userRole.findFirst({
+        where: { userId: ownerUser.id, companyId: company.id },
+        select: { id: true },
+      });
+      if (!existingRole) {
+        await tx.userRole.create({
+          data: { userId: ownerUser.id, companyId: company.id, role: OWNER_ROLE },
+        });
+      }
+
+      const moduloIds = Array.from(new Set(sistemaBase.modulos.map((m) => m.moduloId)));
       if (moduloIds.length > 0) {
         await tx.companyModule.createMany({
           data: moduloIds.map((moduloId) => ({
@@ -114,11 +171,47 @@ export class TenantService {
         });
       }
 
-      return {
-        company,
-        moduloIds,
-      };
-    });
+      const hasAppointmentsModule = sistemaBase.modulos.some((item) =>
+        APPOINTMENTS_CODES.has(String(item.modulo?.codigo || '').toLowerCase())
+      );
+      if (hasAppointmentsModule) {
+        const hasService = await (tx as any).appointmentService.findFirst({
+          where: { companyId: company.id },
+          select: { id: true },
+        });
+        if (!hasService) {
+          await (tx as any).appointmentService.create({
+            data: {
+              companyId: company.id,
+              name: 'Corte Tradicional',
+              description: 'Servico inicial criado automaticamente',
+              durationMinutes: 30,
+              price: 40,
+              isActive: true,
+            },
+          });
+        }
+
+        const hasAvailability = await (tx as any).appointmentAvailability.findFirst({
+          where: { companyId: company.id, professionalId: ownerUser.id, isActive: true },
+          select: { id: true },
+        });
+        if (!hasAvailability) {
+          await (tx as any).appointmentAvailability.createMany({
+            data: [
+              { companyId: company.id, professionalId: ownerUser.id, weekday: 1, startTime: '09:00', endTime: '18:00', isActive: true },
+              { companyId: company.id, professionalId: ownerUser.id, weekday: 2, startTime: '09:00', endTime: '18:00', isActive: true },
+              { companyId: company.id, professionalId: ownerUser.id, weekday: 3, startTime: '09:00', endTime: '18:00', isActive: true },
+              { companyId: company.id, professionalId: ownerUser.id, weekday: 4, startTime: '09:00', endTime: '18:00', isActive: true },
+              { companyId: company.id, professionalId: ownerUser.id, weekday: 5, startTime: '09:00', endTime: '18:00', isActive: true },
+            ],
+            skipDuplicates: true,
+          });
+        }
+      }
+
+      return { company, ownerUser, moduloIds };
+    }, { maxWait: 10000, timeout: 30000 });
 
     return {
       company: {
@@ -127,9 +220,20 @@ export class TenantService {
         slug: created.company.slug,
         sistemaBaseId: created.company.sistemaBaseId as string,
       },
+      owner: {
+        id: created.ownerUser.id,
+        email: created.ownerUser.email,
+        fullName: created.ownerUser.fullName,
+        role: OWNER_ROLE,
+      },
       modulosLiberados: {
         total: created.moduloIds.length,
         moduloIds: created.moduloIds,
+      },
+      credentials: {
+        email: created.ownerUser.email,
+        temporaryPassword,
+        requiresPasswordChange: true,
       },
     };
   }
