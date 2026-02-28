@@ -23,6 +23,7 @@ router.get('/pdv/orders', companyController.listPdvOrders.bind(companyController
 router.post('/pdv/checkout', companyController.checkoutPdv.bind(companyController));
 router.post('/pdv/orders/:orderId/confirm-pix', companyController.confirmPixPayment.bind(companyController));
 router.post('/products/import', companyController.importProducts.bind(companyController));
+router.post('/whatsapp/send', companyController.sendWhatsApp.bind(companyController));
 
 router.get('/:table', companyController.list.bind(companyController));
 router.post('/:table', companyController.create.bind(companyController));

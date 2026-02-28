@@ -98,4 +98,11 @@ export const companyService = {
     request(`/tasks/my/${taskId}`, { method: 'DELETE' }),
   moveMyTask: async (taskId: string, data: { status: 'todo' | 'doing' | 'done'; targetIndex?: number }) =>
     request(`/tasks/my/${taskId}/move`, { method: 'POST', body: JSON.stringify(data) }),
+  sendWhatsApp: async (data: {
+    phone: string;
+    message: string;
+    delayMessage?: number;
+    company_id?: string;
+    companyId?: string;
+  }) => request('/whatsapp/send', { method: 'POST', body: JSON.stringify(data) }),
 };

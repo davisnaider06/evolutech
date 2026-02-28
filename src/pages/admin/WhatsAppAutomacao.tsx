@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { companyService } from '@/services/company';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { toast } from 'sonner';
 import { 
   MessageSquare, 
   AlertTriangle, 
@@ -17,9 +20,10 @@ import {
   RefreshCw,
   Bell,
   Calendar,
-  UserCheck,
   MessageCircle,
-  Gift
+  Gift,
+  Send,
+  Loader2
 } from 'lucide-react';
 
 interface WhatsAppConfig {
@@ -59,6 +63,11 @@ const WhatsAppAutomacao: React.FC = () => {
   const [recentDispatches, setRecentDispatches] = useState<DispatchLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [testPhone, setTestPhone] = useState('');
+  const [testMessage, setTestMessage] = useState('Teste Evolutech: mensagem enviada com sucesso.');
+  const [testDelay, setTestDelay] = useState('0');
+  const [sendingTest, setSendingTest] = useState(false);
+  const [lastTestResponse, setLastTestResponse] = useState<any | null>(null);
 
   const isSuperAdmin = hasPermission(['SUPER_ADMIN_EVOLUTECH']);
 
@@ -112,6 +121,37 @@ const WhatsAppAutomacao: React.FC = () => {
     c.company?.name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const handleSendTestMessage = async () => {
+    const phone = testPhone.trim();
+    const message = testMessage.trim();
+    const delayMessage = Number(testDelay || 0);
+
+    if (!phone) {
+      toast.error('Informe um telefone para teste');
+      return;
+    }
+
+    if (!message) {
+      toast.error('Informe uma mensagem de teste');
+      return;
+    }
+
+    setSendingTest(true);
+    try {
+      const result = await companyService.sendWhatsApp({
+        phone,
+        message,
+        delayMessage: Number.isFinite(delayMessage) ? Math.max(0, delayMessage) : 0,
+      });
+      setLastTestResponse(result);
+      toast.success('Mensagem de teste enviada');
+    } catch (error: any) {
+      toast.error(error?.message || 'Falha ao enviar mensagem de teste');
+    } finally {
+      setSendingTest(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -146,6 +186,86 @@ const WhatsAppAutomacao: React.FC = () => {
           </ul>
         </AlertDescription>
       </Alert>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Send className="h-5 w-5 text-green-600" />
+            Envio de Mensagens
+          </CardTitle>
+          <CardDescription>
+            Dispara uma mensagem usando o endpoint <code>/api/company/whatsapp/send</code>.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!isSuperAdmin && (
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Permissao insuficiente</AlertTitle>
+              <AlertDescription>
+                Este teste foi pensado para o perfil SUPER_ADMIN_EVOLUTECH.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="md:col-span-2 space-y-2">
+              <label className="text-sm font-medium">Telefone (com DDD, com ou sem 55)</label>
+              <Input
+                value={testPhone}
+                onChange={(e) => setTestPhone(e.target.value)}
+                placeholder="11999998888"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Delay (segundos)</label>
+              <Input
+                type="number"
+                min={0}
+                value={testDelay}
+                onChange={(e) => setTestDelay(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Mensagem</label>
+            <Textarea
+              value={testMessage}
+              onChange={(e) => setTestMessage(e.target.value)}
+              rows={4}
+              placeholder="Digite a mensagem de teste"
+            />
+          </div>
+
+          <Button
+            onClick={handleSendTestMessage}
+            disabled={sendingTest || !isSuperAdmin}
+            className="min-w-[180px]"
+          >
+            {sendingTest ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Enviando...
+              </>
+            ) : (
+              <>
+                <Send className="mr-2 h-4 w-4" />
+                Enviar teste
+              </>
+            )}
+          </Button>
+
+          {lastTestResponse && (
+            <div className="rounded-lg border bg-muted/30 p-3 text-sm space-y-1">
+              <p><strong>Status:</strong> {String(lastTestResponse.responseStatus ?? '-')}</p>
+              <p><strong>Telefone:</strong> {String(lastTestResponse.phone ?? '-')}</p>
+              <p><strong>Provider:</strong> {String(lastTestResponse.provider ?? '-')}</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-4">

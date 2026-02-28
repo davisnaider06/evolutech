@@ -84,6 +84,15 @@ export class CompanyController {
     }
   }
 
+   async sendWhatsApp(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.sendWhatsApp(req.user!, req.body || {});
+      return res.status(201).json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   async importProducts(req: AuthedRequest, res: Response) {
     try {
       const result = await service.importProducts(req.user!, req.body || {});
