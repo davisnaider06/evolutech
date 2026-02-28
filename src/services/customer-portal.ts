@@ -2,12 +2,14 @@ import { API_URL } from '@/config/api';
 import {
   CustomerAppointment,
   CustomerAuthResponse,
+  CustomerAvailableSlotsResponse,
   CustomerBookingOptionsResponse,
   CustomerCourseCatalogItem,
   CustomerCourseAccess,
   CustomerDashboardResponse,
   CustomerLoyaltyResponse,
   CustomerPlanCatalogItem,
+  CustomerSubscriptionPurchaseResult,
   CustomerPortalCompanyOption,
   CustomerSubscription,
 } from '@/types/customer-portal';
@@ -64,6 +66,14 @@ export const customerPortalService = {
   dashboard: () => customerRequest<CustomerDashboardResponse>('/customer/dashboard'),
   bookingOptions: () => customerRequest<CustomerBookingOptionsResponse>('/customer/booking-options'),
   appointments: () => customerRequest<CustomerAppointment[]>('/customer/appointments'),
+  appointmentSlots: (params: { date: string; service_id: string; professional_id: string }) => {
+    const search = new URLSearchParams({
+      date: params.date,
+      service_id: params.service_id,
+      professional_id: params.professional_id,
+    }).toString();
+    return customerRequest<CustomerAvailableSlotsResponse>(`/customer/appointments/slots?${search}`);
+  },
   createAppointment: (payload: { service_id: string; professional_id: string; scheduled_at: string }) =>
     customerRequest<{
       id: string;
@@ -81,10 +91,10 @@ export const customerPortalService = {
       { method: 'PATCH' }
     ),
   plans: () => customerRequest<CustomerPlanCatalogItem[]>('/customer/plans'),
-  subscribePlan: (planId: string) =>
-    customerRequest<{ id: string; status: string; start_at: string; end_at: string }>(
+  subscribePlan: (planId: string, payload: { payment_method: 'pix' | 'credito' | 'debito' | 'cartao' }) =>
+    customerRequest<CustomerSubscriptionPurchaseResult>(
       `/customer/subscriptions/${encodeURIComponent(planId)}/subscribe`,
-      { method: 'POST' }
+      { method: 'POST', body: JSON.stringify(payload) }
     ),
   subscriptions: () => customerRequest<CustomerSubscription[]>('/customer/subscriptions'),
   loyalty: () => customerRequest<CustomerLoyaltyResponse>('/customer/loyalty'),

@@ -1,5 +1,6 @@
 import { prisma } from '../db';
 import { AuthenticatedCustomer } from '../types';
+import { PaymentService } from './payment.service';
 
 class CustomerPortalError extends Error {
   statusCode: number;
@@ -12,6 +13,8 @@ class CustomerPortalError extends Error {
 }
 
 export class CustomerPortalService {
+  private paymentService = new PaymentService();
+
   private normalizeAppointmentStatus(input?: string, fallback = 'pendente') {
     const raw = String(input || '')
       .trim()
@@ -38,6 +41,20 @@ export class CustomerPortalService {
   private toNumber(value: unknown) {
     const n = Number(value ?? 0);
     return Number.isFinite(n) ? n : 0;
+  }
+
+  private timeStringToMinutes(value: string) {
+    const [h, m] = String(value || '').split(':').map((v) => Number(v));
+    if (!Number.isInteger(h) || !Number.isInteger(m) || h < 0 || h > 23 || m < 0 || m > 59) {
+      throw new CustomerPortalError('Horario invalido. Use HH:mm', 400);
+    }
+    return h * 60 + m;
+  }
+
+  private minutesToTimeString(value: number) {
+    const h = Math.floor(value / 60);
+    const m = value % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   }
 
   private async getCustomerContext(auth: AuthenticatedCustomer) {
@@ -454,6 +471,73 @@ export class CustomerPortalService {
       throw new CustomerPortalError('Servico ou profissional invalido', 400);
     }
 
+    const weekday = scheduledAt.getDay();
+    const schedules = await (prisma as any).appointmentAvailability.findMany({
+      where: {
+        companyId: context.companyId,
+        professionalId: professional.userId,
+        weekday,
+        isActive: true,
+      },
+      orderBy: { startTime: 'asc' },
+    });
+    if (schedules.length === 0) {
+      throw new CustomerPortalError('Profissional sem disponibilidade para esta data', 409);
+    }
+
+    const slotStartMinutes = scheduledAt.getHours() * 60 + scheduledAt.getMinutes();
+    const slotEndMinutes = slotStartMinutes + Number(service.durationMinutes || 30);
+    const insideAnyWindow = schedules.some((item: any) => {
+      const wStart = this.timeStringToMinutes(item.startTime);
+      const wEnd = this.timeStringToMinutes(item.endTime);
+      return slotStartMinutes >= wStart && slotEndMinutes <= wEnd;
+    });
+    if (!insideAnyWindow) {
+      throw new CustomerPortalError('Horario fora da disponibilidade do profissional', 409);
+    }
+
+    const dayStart = new Date(scheduledAt);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(scheduledAt);
+    dayEnd.setHours(23, 59, 59, 999);
+    const booked = await (prisma as any).appointment.findMany({
+      where: {
+        companyId: context.companyId,
+        professionalId: professional.userId,
+        scheduledAt: { gte: dayStart, lte: dayEnd },
+        status: { notIn: ['cancelado', 'cancelled', 'no_show', 'no-show'] },
+      },
+      select: { id: true, scheduledAt: true, serviceId: true },
+    });
+    const bookedServiceIds = Array.from(
+      new Set(booked.map((item: any) => item.serviceId).filter((id: any) => typeof id === 'string'))
+    );
+    const bookedServices = bookedServiceIds.length
+      ? await (prisma as any).appointmentService.findMany({
+          where: { id: { in: bookedServiceIds } },
+          select: { id: true, durationMinutes: true },
+        })
+      : [];
+    const durationMap = new Map<string, number>(
+      bookedServices.map((item: any) => [item.id, Number(item.durationMinutes || 30)])
+    );
+    const overlaps = (aStart: number, aEnd: number, bStart: number, bEnd: number) =>
+      aStart < bEnd && bStart < aEnd;
+    const hasConflict = booked.some((item: any) => {
+      const bookedStart = new Date(item.scheduledAt).getTime();
+      const bookedDuration = Number(durationMap.get(item.serviceId || '') || service.durationMinutes || 30);
+      const bookedEnd = bookedStart + bookedDuration * 60 * 1000;
+      return overlaps(
+        scheduledAt.getTime(),
+        scheduledAt.getTime() + Number(service.durationMinutes || 30) * 60 * 1000,
+        bookedStart,
+        bookedEnd
+      );
+    });
+    if (hasConflict) {
+      throw new CustomerPortalError('Horario ja reservado. Escolha outro horario', 409);
+    }
+
     const conflict = await (prisma as any).appointment.findFirst({
       where: {
         companyId: context.companyId,
@@ -497,6 +581,117 @@ export class CustomerPortalService {
     };
   }
 
+  async listAvailableSlots(
+    auth: AuthenticatedCustomer,
+    params: { date?: string; service_id?: string; professional_id?: string }
+  ) {
+    const context = await this.getCustomerContext(auth);
+    const dateRaw = String(params.date || '').trim();
+    const serviceId = String(params.service_id || '').trim();
+    const professionalId = String(params.professional_id || '').trim();
+    if (!dateRaw || !serviceId || !professionalId) {
+      throw new CustomerPortalError('Parametros obrigatorios: date, service_id, professional_id', 400);
+    }
+
+    const [year, month, day] = dateRaw.split('-').map((v) => Number(v));
+    const date = new Date(year, (month || 1) - 1, day || 1, 0, 0, 0, 0);
+    if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day) || Number.isNaN(date.getTime())) {
+      throw new CustomerPortalError('Data invalida', 400);
+    }
+
+    const service = await (prisma as any).appointmentService.findFirst({
+      where: { id: serviceId, companyId: context.companyId, isActive: true },
+      select: { id: true, durationMinutes: true },
+    });
+    if (!service) throw new CustomerPortalError('Servico invalido', 400);
+
+    const professional = await prisma.userRole.findFirst({
+      where: {
+        companyId: context.companyId,
+        userId: professionalId,
+        role: { in: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+        user: { isActive: true },
+      },
+      select: { userId: true },
+    });
+    if (!professional) throw new CustomerPortalError('Profissional invalido', 400);
+
+    const weekday = date.getDay();
+    const schedules = await (prisma as any).appointmentAvailability.findMany({
+      where: {
+        companyId: context.companyId,
+        professionalId: professional.userId,
+        weekday,
+        isActive: true,
+      },
+      orderBy: { startTime: 'asc' },
+    });
+    if (schedules.length === 0) return { slots: [] as Array<{ time: string; scheduled_at: string }> };
+
+    const startDate = new Date(date);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(date);
+    endDate.setHours(23, 59, 59, 999);
+
+    const booked = await (prisma as any).appointment.findMany({
+      where: {
+        companyId: context.companyId,
+        professionalId: professional.userId,
+        scheduledAt: { gte: startDate, lte: endDate },
+        status: { notIn: ['cancelado', 'cancelled', 'no_show', 'no-show'] },
+      },
+      select: { scheduledAt: true, serviceId: true },
+      orderBy: { scheduledAt: 'asc' },
+    });
+
+    const bookedServiceIds = Array.from(
+      new Set(booked.map((item: any) => item.serviceId).filter((id: any) => typeof id === 'string'))
+    );
+    const bookedServices = bookedServiceIds.length
+      ? await (prisma as any).appointmentService.findMany({
+          where: { id: { in: bookedServiceIds } },
+          select: { id: true, durationMinutes: true },
+        })
+      : [];
+    const durationMap = new Map<string, number>(
+      bookedServices.map((item: any) => [item.id, Number(item.durationMinutes || 30)])
+    );
+
+    const now = new Date();
+    const slotDuration = Number(service.durationMinutes || 30);
+    const overlaps = (aStart: number, aEnd: number, bStart: number, bEnd: number) =>
+      aStart < bEnd && bStart < aEnd;
+    const slots: Array<{ time: string; scheduled_at: string }> = [];
+
+    for (const schedule of schedules) {
+      const windowStart = this.timeStringToMinutes(schedule.startTime);
+      const windowEnd = this.timeStringToMinutes(schedule.endTime);
+      for (let cursor = windowStart; cursor + slotDuration <= windowEnd; cursor += slotDuration) {
+        const slotStart = new Date(startDate);
+        slotStart.setHours(0, cursor, 0, 0);
+        const slotEnd = new Date(slotStart);
+        slotEnd.setMinutes(slotEnd.getMinutes() + slotDuration);
+        if (slotStart <= now) continue;
+
+        const blocked = booked.some((item: any) => {
+          const bookedStart = new Date(item.scheduledAt);
+          const bookedDuration = Number(durationMap.get(item.serviceId || '') || slotDuration);
+          const bookedEnd = new Date(bookedStart);
+          bookedEnd.setMinutes(bookedEnd.getMinutes() + bookedDuration);
+          return overlaps(slotStart.getTime(), slotEnd.getTime(), bookedStart.getTime(), bookedEnd.getTime());
+        });
+        if (!blocked) {
+          slots.push({
+            time: this.minutesToTimeString(cursor),
+            scheduled_at: slotStart.toISOString(),
+          });
+        }
+      }
+    }
+
+    return { slots };
+  }
+
   async listAvailablePlans(auth: AuthenticatedCustomer) {
     const context = await this.getCustomerContext(auth);
     const plans = await (prisma as any).subscriptionPlan.findMany({
@@ -514,10 +709,18 @@ export class CustomerPortalService {
     }));
   }
 
-  async subscribePlan(auth: AuthenticatedCustomer, planIdRaw: string) {
+  async subscribePlan(
+    auth: AuthenticatedCustomer,
+    planIdRaw: string,
+    payload: { payment_method?: string }
+  ) {
     const context = await this.getCustomerContext(auth);
     const planId = String(planIdRaw || '').trim();
+    const paymentMethod = String(payload?.payment_method || '').trim().toLowerCase();
     if (!planId) throw new CustomerPortalError('planId obrigatorio', 400);
+    if (!['pix', 'credito', 'debito', 'cartao'].includes(paymentMethod)) {
+      throw new CustomerPortalError('payment_method invalido. Use pix, credito, debito ou cartao', 400);
+    }
 
     const plan = await (prisma as any).subscriptionPlan.findFirst({
       where: { id: planId, companyId: context.companyId, isActive: true },
@@ -537,27 +740,132 @@ export class CustomerPortalService {
     else if (plan.interval === 'quarterly') endAt.setMonth(endAt.getMonth() + 3);
     else endAt.setMonth(endAt.getMonth() + 1);
 
-    const created = await (prisma as any).customerSubscription.create({
-      data: {
-        companyId: context.companyId,
-        customerId: context.customerId,
-        planId: plan.id,
-        status: 'active',
-        startAt,
-        endAt,
-        remainingServices: plan.isUnlimited ? null : Number(plan.includedServices || 0),
-        autoRenew: true,
-        amount: this.toNumber(plan.price),
-      },
-      select: { id: true, status: true, startAt: true, endAt: true },
-    });
+    const amount = this.toNumber(plan.price);
+    if (amount <= 0) throw new CustomerPortalError('Plano com valor invalido para cobranca', 400);
 
-    return {
-      id: created.id,
-      status: created.status,
-      start_at: created.startAt,
-      end_at: created.endAt,
-    };
+    return prisma.$transaction(async (tx) => {
+      const activeGateway = await this.paymentService.getCompanyActiveGateway(context.companyId);
+      if (!activeGateway) {
+        throw new CustomerPortalError(
+          'Pagamento indisponivel: o dono da empresa ainda nao configurou gateway de pagamento ativo',
+          400
+        );
+      }
+
+      const orderStatus = paymentMethod === 'pix' ? 'pending_pix' : 'pending_gateway';
+      const order = await tx.order.create({
+        data: {
+          companyId: context.companyId,
+          customerName: context.customer.name,
+          total: amount,
+          status: orderStatus,
+        },
+      });
+
+      const created = await (tx as any).customerSubscription.create({
+        data: {
+          companyId: context.companyId,
+          customerId: context.customerId,
+          planId: plan.id,
+          status: 'pending',
+          startAt,
+          endAt,
+          remainingServices: plan.isUnlimited ? null : Number(plan.includedServices || 0),
+          autoRenew: true,
+          amount,
+          notes: `order_id:${order.id}`,
+        },
+        select: { id: true, status: true, startAt: true, endAt: true },
+      });
+
+      let gatewayPayment: any = null;
+      if (paymentMethod === 'pix') {
+        if (activeGateway.provider === 'stripe') {
+          gatewayPayment = await this.paymentService.createStripePixPayment(tx, {
+            companyId: context.companyId,
+            orderId: order.id,
+            amount,
+            customerName: context.customer.name,
+          });
+        } else if (activeGateway.provider === 'mercadopago') {
+          gatewayPayment = await this.paymentService.createMercadoPagoPixPayment(tx, {
+            companyId: context.companyId,
+            orderId: order.id,
+            amount,
+            customerName: context.customer.name,
+            customerEmail: context.customer.email,
+          });
+        } else if (activeGateway.provider === 'pagbank') {
+          gatewayPayment = await this.paymentService.createPagBankPixPayment(tx, {
+            companyId: context.companyId,
+            orderId: order.id,
+            amount,
+            customerName: context.customer.name,
+          });
+        }
+      } else {
+        if (activeGateway.provider === 'stripe') {
+          gatewayPayment = await this.paymentService.createStripeCardPaymentLink(tx, {
+            companyId: context.companyId,
+            orderId: order.id,
+            amount,
+            customerName: context.customer.name,
+            paymentMethod: paymentMethod as 'credito' | 'debito' | 'cartao',
+          });
+        } else if (activeGateway.provider === 'mercadopago') {
+          gatewayPayment = await this.paymentService.createMercadoPagoPaymentLink(tx, {
+            companyId: context.companyId,
+            orderId: order.id,
+            amount,
+            customerName: context.customer.name,
+            paymentMethod: paymentMethod as 'credito' | 'debito' | 'cartao',
+          });
+        } else if (activeGateway.provider === 'pagbank') {
+          gatewayPayment = await this.paymentService.createPagBankPaymentLink(tx, {
+            companyId: context.companyId,
+            orderId: order.id,
+            amount,
+            customerName: context.customer.name,
+            paymentMethod: paymentMethod as 'credito' | 'debito' | 'cartao',
+          });
+        }
+      }
+
+      await tx.auditLog.create({
+        data: {
+          companyId: context.companyId,
+          action: 'CUSTOMER_PLAN_SUBSCRIPTION_STARTED',
+          resource: 'customer_subscriptions',
+          details: {
+            subscriptionId: created.id,
+            orderId: order.id,
+            paymentMethod,
+            provider: activeGateway.provider,
+            customerId: context.customerId,
+            planId: plan.id,
+            amount,
+          },
+        },
+      });
+
+      return {
+        id: created.id,
+        status: created.status,
+        start_at: created.startAt,
+        end_at: created.endAt,
+        order_id: order.id,
+        payment_gateway: gatewayPayment
+          ? {
+              provider: gatewayPayment.provider,
+              status: gatewayPayment.status,
+              externalPaymentId: gatewayPayment.externalPaymentId,
+              qrCodeText: gatewayPayment.qrCodeText,
+              qrCodeImageUrl: gatewayPayment.qrCodeImageUrl,
+              paymentUrl: gatewayPayment.paymentUrl || null,
+            }
+          : null,
+      };
+    }, { maxWait: 10000, timeout: 30000 });
   }
 
   async listAvailableCourses(auth: AuthenticatedCustomer) {

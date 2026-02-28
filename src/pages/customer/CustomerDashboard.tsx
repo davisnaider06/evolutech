@@ -5,6 +5,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
 import { customerPortalService } from '@/services/customer-portal';
 import {
@@ -14,6 +22,7 @@ import {
   CustomerCourseAccess,
   CustomerDashboardResponse,
   CustomerLoyaltyResponse,
+  CustomerPaymentGatewayResult,
   CustomerPlanCatalogItem,
   CustomerSubscription,
 } from '@/types/customer-portal';
@@ -38,12 +47,19 @@ const CustomerDashboard: React.FC = () => {
   const [appointmentForm, setAppointmentForm] = useState({
     service_id: '',
     professional_id: '',
+    date: '',
     scheduled_at: '',
   });
+  const [availableSlots, setAvailableSlots] = useState<Array<{ time: string; scheduled_at: string }>>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
   const [loading, setLoading] = useState(true);
   const [cancelingId, setCancelingId] = useState<string | null>(null);
   const [creatingAppointment, setCreatingAppointment] = useState(false);
   const [subscribingPlanId, setSubscribingPlanId] = useState<string | null>(null);
+  const [subscribePlanId, setSubscribePlanId] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'pix' | 'credito' | 'debito'>('pix');
+  const [subscriptionPaymentResult, setSubscriptionPaymentResult] =
+    useState<CustomerPaymentGatewayResult | null>(null);
   const [purchasingCourseId, setPurchasingCourseId] = useState<string | null>(null);
   const { customer, company, logout } = useCustomerAuth();
   const navigate = useNavigate();
@@ -81,19 +97,52 @@ const CustomerDashboard: React.FC = () => {
     loadData();
   }, []);
 
+  useEffect(() => {
+    const loadSlots = async () => {
+      if (!appointmentForm.service_id || !appointmentForm.professional_id || !appointmentForm.date) {
+        setAvailableSlots([]);
+        setAppointmentForm((old) => ({ ...old, scheduled_at: '' }));
+        return;
+      }
+      setLoadingSlots(true);
+      try {
+        const data = await customerPortalService.appointmentSlots({
+          date: appointmentForm.date,
+          service_id: appointmentForm.service_id,
+          professional_id: appointmentForm.professional_id,
+        });
+        setAvailableSlots(Array.isArray(data.slots) ? data.slots : []);
+        setAppointmentForm((old) => ({ ...old, scheduled_at: '' }));
+      } catch (error: any) {
+        setAvailableSlots([]);
+        setAppointmentForm((old) => ({ ...old, scheduled_at: '' }));
+        toast.error(error.message || 'Erro ao carregar horarios disponiveis');
+      } finally {
+        setLoadingSlots(false);
+      }
+    };
+
+    loadSlots();
+  }, [appointmentForm.service_id, appointmentForm.professional_id, appointmentForm.date]);
+
   const canCancelStatus = useMemo(() => new Set(['pendente', 'confirmado']), []);
 
   const handleCreateAppointment = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!appointmentForm.service_id || !appointmentForm.professional_id || !appointmentForm.scheduled_at) {
-      toast.error('Preencha servico, profissional e data/hora');
+    if (!appointmentForm.service_id || !appointmentForm.professional_id || !appointmentForm.date || !appointmentForm.scheduled_at) {
+      toast.error('Preencha servico, profissional, data e horario');
       return;
     }
     setCreatingAppointment(true);
     try {
-      await customerPortalService.createAppointment(appointmentForm);
+      await customerPortalService.createAppointment({
+        service_id: appointmentForm.service_id,
+        professional_id: appointmentForm.professional_id,
+        scheduled_at: appointmentForm.scheduled_at,
+      });
       toast.success('Agendamento criado com sucesso');
-      setAppointmentForm({ service_id: '', professional_id: '', scheduled_at: '' });
+      setAppointmentForm({ service_id: '', professional_id: '', date: '', scheduled_at: '' });
+      setAvailableSlots([]);
       await loadData();
     } catch (error: any) {
       toast.error(error.message || 'Nao foi possivel agendar');
@@ -121,11 +170,16 @@ const CustomerDashboard: React.FC = () => {
     navigate('/cliente/login', { replace: true });
   };
 
-  const handleSubscribePlan = async (planId: string) => {
-    setSubscribingPlanId(planId);
+  const handleSubscribePlan = async () => {
+    if (!subscribePlanId) return;
+    setSubscriptionPaymentResult(null);
+    setSubscribingPlanId(subscribePlanId);
     try {
-      await customerPortalService.subscribePlan(planId);
-      toast.success('Assinatura ativada');
+      const result = await customerPortalService.subscribePlan(subscribePlanId, {
+        payment_method: paymentMethod,
+      });
+      setSubscriptionPaymentResult(result.payment_gateway || null);
+      toast.success('Assinatura criada. Finalize o pagamento para ativacao.');
       await loadData();
     } catch (error: any) {
       toast.error(error.message || 'Falha ao assinar plano');
@@ -194,11 +248,17 @@ const CustomerDashboard: React.FC = () => {
                 <CardDescription>Visualize e cancele agendamentos pendentes.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                <form className="grid gap-2 rounded border p-3 md:grid-cols-4" onSubmit={handleCreateAppointment}>
+                <form className="grid gap-2 rounded border p-3 md:grid-cols-5" onSubmit={handleCreateAppointment}>
                   <select
-                    className="h-10 rounded border px-2 text-sm"
+                    className="h-10 rounded border border-input bg-background px-2 text-sm text-foreground"
                     value={appointmentForm.service_id}
-                    onChange={(event) => setAppointmentForm((old) => ({ ...old, service_id: event.target.value }))}
+                    onChange={(event) =>
+                      setAppointmentForm((old) => ({
+                        ...old,
+                        service_id: event.target.value,
+                        scheduled_at: '',
+                      }))
+                    }
                   >
                     <option value="">Servico</option>
                     {(bookingOptions?.services || []).map((item) => (
@@ -206,9 +266,15 @@ const CustomerDashboard: React.FC = () => {
                     ))}
                   </select>
                   <select
-                    className="h-10 rounded border px-2 text-sm"
+                    className="h-10 rounded border border-input bg-background px-2 text-sm text-foreground"
                     value={appointmentForm.professional_id}
-                    onChange={(event) => setAppointmentForm((old) => ({ ...old, professional_id: event.target.value }))}
+                    onChange={(event) =>
+                      setAppointmentForm((old) => ({
+                        ...old,
+                        professional_id: event.target.value,
+                        scheduled_at: '',
+                      }))
+                    }
                   >
                     <option value="">Profissional</option>
                     {(bookingOptions?.professionals || []).map((item) => (
@@ -216,12 +282,42 @@ const CustomerDashboard: React.FC = () => {
                     ))}
                   </select>
                   <input
-                    className="h-10 rounded border px-2 text-sm"
-                    type="datetime-local"
+                    className="h-10 rounded border border-input bg-background px-2 text-sm text-foreground"
+                    type="date"
+                    value={appointmentForm.date}
+                    onChange={(event) =>
+                      setAppointmentForm((old) => ({
+                        ...old,
+                        date: event.target.value,
+                        scheduled_at: '',
+                      }))
+                    }
+                  />
+                  <select
+                    className="h-10 rounded border border-input bg-background px-2 text-sm text-foreground"
                     value={appointmentForm.scheduled_at}
                     onChange={(event) => setAppointmentForm((old) => ({ ...old, scheduled_at: event.target.value }))}
-                  />
-                  <Button type="submit" disabled={creatingAppointment}>
+                    disabled={
+                      !appointmentForm.date ||
+                      !appointmentForm.service_id ||
+                      !appointmentForm.professional_id ||
+                      loadingSlots
+                    }
+                  >
+                    <option value="">
+                      {loadingSlots
+                        ? 'Carregando horarios...'
+                        : !appointmentForm.date
+                          ? 'Selecione a data'
+                          : 'Selecione um horario'}
+                    </option>
+                    {availableSlots.map((slot) => (
+                      <option key={slot.scheduled_at} value={slot.scheduled_at}>
+                        {slot.time}
+                      </option>
+                    ))}
+                  </select>
+                  <Button type="submit" disabled={creatingAppointment || !appointmentForm.scheduled_at}>
                     {creatingAppointment ? 'Agendando...' : 'Novo agendamento'}
                   </Button>
                 </form>
@@ -271,10 +367,13 @@ const CustomerDashboard: React.FC = () => {
                       <Button
                         size="sm"
                         className="mt-2"
-                        disabled={subscribingPlanId === plan.id}
-                        onClick={() => handleSubscribePlan(plan.id)}
+                        onClick={() => {
+                          setSubscribePlanId(plan.id);
+                          setPaymentMethod('pix');
+                          setSubscriptionPaymentResult(null);
+                        }}
                       >
-                        {subscribingPlanId === plan.id ? 'Processando...' : 'Assinar plano'}
+                        Assinar plano
                       </Button>
                     </div>
                   ))}
@@ -371,6 +470,85 @@ const CustomerDashboard: React.FC = () => {
           </TabsContent>
         </Tabs>
       </div>
+
+      <Dialog
+        open={!!subscribePlanId}
+        onOpenChange={(open) => {
+          if (!open && !subscribingPlanId) {
+            setSubscribePlanId(null);
+            setSubscriptionPaymentResult(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Assinar plano</DialogTitle>
+            <DialogDescription>Selecione a forma de pagamento para continuar.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <select
+              className="h-10 w-full rounded border border-input bg-background px-2 text-sm text-foreground"
+              value={paymentMethod}
+              onChange={(event) => setPaymentMethod(event.target.value as 'pix' | 'credito' | 'debito')}
+              disabled={!!subscribingPlanId}
+            >
+              <option value="pix">PIX</option>
+              <option value="credito">Credito</option>
+              <option value="debito">Debito</option>
+            </select>
+
+            {subscriptionPaymentResult?.qrCodeImageUrl ? (
+              <div className="rounded border p-3">
+                <p className="text-sm font-medium">Pagamento PIX gerado</p>
+                <img
+                  src={subscriptionPaymentResult.qrCodeImageUrl}
+                  alt="QR Code PIX"
+                  className="mt-2 h-48 w-48 rounded border object-contain"
+                />
+                {subscriptionPaymentResult.qrCodeText ? (
+                  <textarea
+                    readOnly
+                    value={subscriptionPaymentResult.qrCodeText}
+                    className="mt-2 h-24 w-full rounded border border-input bg-background p-2 text-xs text-foreground"
+                  />
+                ) : null}
+              </div>
+            ) : null}
+
+            {subscriptionPaymentResult?.paymentUrl ? (
+              <div className="rounded border p-3">
+                <p className="text-sm font-medium">Link de pagamento gerado</p>
+                <a
+                  href={subscriptionPaymentResult.paymentUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 inline-flex text-sm font-medium text-primary underline"
+                >
+                  Abrir link de pagamento
+                </a>
+              </div>
+            ) : null}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (subscribingPlanId) return;
+                setSubscribePlanId(null);
+                setSubscriptionPaymentResult(null);
+              }}
+              disabled={!!subscribingPlanId}
+            >
+              Fechar
+            </Button>
+            <Button onClick={handleSubscribePlan} disabled={!!subscribingPlanId || !subscribePlanId}>
+              {subscribingPlanId ? 'Processando...' : 'Gerar pagamento'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -139,6 +139,31 @@ export interface CustomerPlanCatalogItem {
   is_unlimited: boolean;
 }
 
+export interface CustomerPaymentGatewayResult {
+  provider: string;
+  status: string;
+  externalPaymentId?: string | null;
+  qrCodeText?: string | null;
+  qrCodeImageUrl?: string | null;
+  paymentUrl?: string | null;
+}
+
+export interface CustomerSubscriptionPurchaseResult {
+  id: string;
+  status: string;
+  start_at: string;
+  end_at?: string | null;
+  order_id: string;
+  payment_gateway: CustomerPaymentGatewayResult | null;
+}
+
+export interface CustomerAvailableSlotsResponse {
+  slots: Array<{
+    time: string;
+    scheduled_at: string;
+  }>;
+}
+
 export interface CustomerCourseCatalogItem {
   id: string;
   title: string;

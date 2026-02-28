@@ -10,6 +10,7 @@ router.use(authenticateCustomerToken);
 router.get('/dashboard', controller.getDashboard.bind(controller));
 router.get('/booking-options', controller.getBookingOptions.bind(controller));
 router.get('/appointments', controller.listMyAppointments.bind(controller));
+router.get('/appointments/slots', controller.listAvailableSlots.bind(controller));
 router.post('/appointments', controller.createMyAppointment.bind(controller));
 router.patch('/appointments/:appointmentId/cancel', controller.cancelMyAppointment.bind(controller));
 router.get('/plans', controller.listAvailablePlans.bind(controller));

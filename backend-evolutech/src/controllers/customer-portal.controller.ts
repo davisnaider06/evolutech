@@ -51,6 +51,15 @@ export class CustomerPortalController {
     }
   }
 
+  async listAvailableSlots(req: AuthedCustomerRequest, res: Response) {
+    try {
+      const result = await service.listAvailableSlots(req.customer!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   async cancelMyAppointment(req: AuthedCustomerRequest, res: Response) {
     try {
       const result = await service.cancelMyAppointment(req.customer!, req.params.appointmentId);
@@ -80,7 +89,7 @@ export class CustomerPortalController {
 
   async subscribePlan(req: AuthedCustomerRequest, res: Response) {
     try {
-      const result = await service.subscribePlan(req.customer!, req.params.planId);
+      const result = await service.subscribePlan(req.customer!, req.params.planId, req.body || {});
       return res.status(201).json(result);
     } catch (error: unknown) {
       return this.handleError(error, res);
