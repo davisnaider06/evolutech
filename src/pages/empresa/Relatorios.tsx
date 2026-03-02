@@ -1,18 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
-import { format, subDays, startOfMonth, endOfMonth } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import React, { useEffect, useMemo, useState } from 'react';
+import { subDays } from 'date-fns';
 import {
   BarChart,
   Bar,
@@ -27,316 +14,247 @@ import {
   LineChart,
   Line,
 } from 'recharts';
-import {
-  TrendingUp,
-  Users,
-  ShoppingCart,
-  DollarSign,
-  Calendar,
-  Package,
-} from 'lucide-react';
+import { Calendar, DollarSign, Package, ShoppingCart, Users } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { companyService } from '@/services/company';
+import { toast } from 'sonner';
 
-const COLORS = ['hsl(var(--primary))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))', 'hsl(var(--chart-4))', 'hsl(var(--chart-5))'];
+const COLORS = ['hsl(var(--primary))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))', 'hsl(var(--chart-4))'];
 
-interface DashboardStats {
-  totalCustomers: number;
-  totalProducts: number;
-  totalOrders: number;
-  totalRevenue: number;
-  pendingAppointments: number;
+interface ReportsResponse {
+  period: {
+    date_from: string;
+    date_to: string;
+  };
+  summary: {
+    customers_total: number;
+    products_total: number;
+    new_customers: number;
+    orders_total: number;
+    paid_orders: number;
+    appointments_total: number;
+    revenue_total: number;
+  };
+  charts: {
+    revenue_by_day: Array<{ date: string; revenue: number }>;
+    orders_by_status: Array<{ status: string; value: number }>;
+    appointments_by_status: Array<{ status: string; value: number }>;
+    top_items: Array<{ itemType: 'product' | 'service'; itemName: string; quantity: number; revenue: number }>;
+  };
 }
 
 const Relatorios: React.FC = () => {
-  const { user } = useAuth();
-  const [period, setPeriod] = useState('30');
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState<DashboardStats>({
-    totalCustomers: 0,
-    totalProducts: 0,
-    totalOrders: 0,
-    totalRevenue: 0,
-    pendingAppointments: 0,
-  });
-  const [ordersByStatus, setOrdersByStatus] = useState<any[]>([]);
-  const [revenueByDay, setRevenueByDay] = useState<any[]>([]);
-  const [topProducts, setTopProducts] = useState<any[]>([]);
+  const [dateFrom, setDateFrom] = useState(subDays(new Date(), 30).toISOString().slice(0, 10));
+  const [dateTo, setDateTo] = useState(new Date().toISOString().slice(0, 10));
+  const [data, setData] = useState<ReportsResponse | null>(null);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!user?.tenantId) return;
-
-      setLoading(true);
-      const companyId = user.tenantId;
-      const days = parseInt(period);
-      const startDate = subDays(new Date(), days).toISOString();
-
-      try {
-        // Fetch customers count
-        const { count: customersCount } = await (supabase
-          .from('customers') as any)
-          .select('*', { count: 'exact', head: true })
-          .eq('company_id', companyId);
-
-        // Fetch products count
-        const { count: productsCount } = await (supabase
-          .from('products') as any)
-          .select('*', { count: 'exact', head: true })
-          .eq('company_id', companyId)
-          .eq('is_active', true);
-
-        // Fetch orders
-        const { data: orders } = await (supabase
-          .from('orders') as any)
-          .select('status, total, created_at')
-          .eq('company_id', companyId)
-          .gte('created_at', startDate);
-
-        // Fetch pending appointments
-        const { count: pendingAppointments } = await (supabase
-          .from('appointments') as any)
-          .select('*', { count: 'exact', head: true })
-          .eq('company_id', companyId)
-          .eq('status', 'pendente');
-
-        // Calculate stats
-        const totalRevenue = orders?.reduce((sum: number, o: any) => sum + Number(o.total), 0) || 0;
-
-        setStats({
-          totalCustomers: customersCount || 0,
-          totalProducts: productsCount || 0,
-          totalOrders: orders?.length || 0,
-          totalRevenue,
-          pendingAppointments: pendingAppointments || 0,
-        });
-
-        // Orders by status
-        const statusCounts: Record<string, number> = {};
-        orders?.forEach((o: any) => {
-          statusCounts[o.status] = (statusCounts[o.status] || 0) + 1;
-        });
-        setOrdersByStatus(
-          Object.entries(statusCounts).map(([name, value]) => ({
-            name: name === 'pendente' ? 'Pendente' : 
-                  name === 'em_preparo' ? 'Em Preparo' :
-                  name === 'pronto' ? 'Pronto' :
-                  name === 'entregue' ? 'Entregue' :
-                  name === 'cancelado' ? 'Cancelado' : name,
-            value,
-          }))
-        );
-
-        // Revenue by day (last 7 days)
-        const revenueMap: Record<string, number> = {};
-        for (let i = 6; i >= 0; i--) {
-          const date = format(subDays(new Date(), i), 'yyyy-MM-dd');
-          revenueMap[date] = 0;
-        }
-        orders?.forEach((o: any) => {
-          const date = o.created_at.split('T')[0];
-          if (revenueMap[date] !== undefined) {
-            revenueMap[date] += Number(o.total);
-          }
-        });
-        setRevenueByDay(
-          Object.entries(revenueMap).map(([date, total]) => ({
-            date: format(new Date(date + 'T12:00:00'), 'dd/MM', { locale: ptBR }),
-            total,
-          }))
-        );
-
-        // Top products (mock for now since we don't have order_items relation loaded)
-        setTopProducts([
-          { name: 'Produto A', vendas: 45 },
-          { name: 'Produto B', vendas: 32 },
-          { name: 'Produto C', vendas: 28 },
-          { name: 'Produto D', vendas: 22 },
-          { name: 'Produto E', vendas: 18 },
-        ]);
-      } catch (error) {
-        console.error('Error fetching report data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [user?.tenantId, period]);
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-    }).format(value);
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const response = (await companyService.reportsOverview({
+        dateFrom,
+        dateTo,
+      })) as ReportsResponse;
+      setData(response);
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao carregar relatorios');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  if (loading) {
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const formatCurrency = useMemo(
+    () =>
+      new Intl.NumberFormat('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+      }),
+    []
+  );
+
+  const chartRevenueByDay = (data?.charts.revenue_by_day || []).map((item) => ({
+    ...item,
+    label: item.date.slice(5),
+  }));
+
+  if (!data && loading) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-10 w-48" />
-          <Skeleton className="h-10 w-32" />
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-32" />
-          ))}
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <Skeleton className="h-80" />
-          <Skeleton className="h-80" />
-        </div>
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold lg:text-3xl">Relatorios</h1>
+        <p className="text-muted-foreground">Carregando dados...</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold lg:text-3xl">Relatórios</h1>
-          <p className="text-muted-foreground">Visão geral do desempenho da empresa</p>
+          <h1 className="text-2xl font-bold lg:text-3xl">Relatorios</h1>
+          <p className="text-muted-foreground">Clientes, produtos, pedidos, agendamentos e faturamento por periodo</p>
         </div>
-        <Select value={period} onValueChange={setPeriod}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Período" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="7">Últimos 7 dias</SelectItem>
-            <SelectItem value="30">Últimos 30 dias</SelectItem>
-            <SelectItem value="90">Últimos 90 dias</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+          <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+          <Button onClick={fetchData} disabled={loading}>
+            {loading ? 'Atualizando...' : 'Aplicar filtro'}
+          </Button>
+        </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Clientes</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Clientes</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalCustomers}</div>
+            <div className="flex items-center justify-between">
+              <span className="text-2xl font-bold">{data?.summary.customers_total || 0}</span>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </div>
           </CardContent>
         </Card>
-
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Produtos</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Produtos</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalProducts}</div>
+            <div className="flex items-center justify-between">
+              <span className="text-2xl font-bold">{data?.summary.products_total || 0}</span>
+              <Package className="h-4 w-4 text-muted-foreground" />
+            </div>
           </CardContent>
         </Card>
-
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pedidos</CardTitle>
-            <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Pedidos</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalOrders}</div>
+            <div className="flex items-center justify-between">
+              <span className="text-2xl font-bold">{data?.summary.orders_total || 0}</span>
+              <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+            </div>
           </CardContent>
         </Card>
-
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Faturamento</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Pagos</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.totalRevenue)}</div>
+            <div className="text-2xl font-bold">{data?.summary.paid_orders || 0}</div>
           </CardContent>
         </Card>
-
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Agendamentos</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Agendamentos</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.pendingAppointments}</div>
-            <p className="text-xs text-muted-foreground">pendentes</p>
+            <div className="flex items-center justify-between">
+              <span className="text-2xl font-bold">{data?.summary.appointments_total || 0}</span>
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Faturamento</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <span className="text-lg font-bold">{formatCurrency.format(data?.summary.revenue_total || 0)}</span>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Charts */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Faturamento (Últimos 7 dias)</CardTitle>
+            <CardTitle>Faturamento por dia</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={revenueByDay}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis tickFormatter={(value) => `R$${value}`} />
-                <Tooltip 
-                  formatter={(value: number) => formatCurrency(value)}
-                  labelFormatter={(label) => `Data: ${label}`}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="total" 
-                  stroke="hsl(var(--primary))" 
-                  strokeWidth={2}
-                  name="Faturamento"
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            <div className="h-[320px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartRevenueByDay}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="label" />
+                  <YAxis tickFormatter={(value) => `R$${Math.round(Number(value))}`} />
+                  <Tooltip formatter={(value: number) => formatCurrency.format(value)} />
+                  <Line dataKey="revenue" name="Faturamento" stroke="hsl(var(--primary))" strokeWidth={2} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Pedidos por Status</CardTitle>
+            <CardTitle>Pedidos por status</CardTitle>
           </CardHeader>
           <CardContent>
-            {ordersByStatus.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
+            <div className="h-[320px]">
+              <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie
-                    data={ordersByStatus}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {ordersByStatus.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  <Pie data={data?.charts.orders_by_status || []} dataKey="value" nameKey="status" outerRadius={110}>
+                    {(data?.charts.orders_by_status || []).map((entry, index) => (
+                      <Cell key={`${entry.status}-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
                   <Tooltip />
                 </PieChart>
               </ResponsiveContainer>
-            ) : (
-              <div className="flex items-center justify-center h-[300px] text-muted-foreground">
-                Nenhum pedido no período
-              </div>
-            )}
+            </div>
           </CardContent>
         </Card>
 
-        <Card className="md:col-span-2">
+        <Card>
           <CardHeader>
-            <CardTitle>Produtos Mais Vendidos</CardTitle>
+            <CardTitle>Agendamentos por status</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={topProducts} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" />
-                <YAxis dataKey="name" type="category" width={100} />
-                <Tooltip />
-                <Bar dataKey="vendas" fill="hsl(var(--primary))" name="Vendas" />
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="h-[320px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data?.charts.appointments_by_status || []}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="status" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="value" fill="hsl(var(--primary))" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Itens mais vendidos (PDV)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[320px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data?.charts.top_items || []} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" />
+                  <YAxis type="category" dataKey="itemName" width={140} />
+                  <Tooltip
+                    formatter={(value: number, name: string) =>
+                      name === 'revenue' ? formatCurrency.format(value) : value
+                    }
+                  />
+                  <Bar dataKey="quantity" name="Quantidade" fill="hsl(var(--chart-2))" />
+                  <Bar dataKey="revenue" name="Receita" fill="hsl(var(--primary))" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
       </div>

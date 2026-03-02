@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Lock, Mail, ArrowRight, Loader2 } from 'lucide-react';
+import { API_URL } from '@/config/api';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -21,7 +22,7 @@ const Login: React.FC = () => {
 
     try {
       // Bate no nosso backend local na nova rota de auth
-      const response = await fetch('http://localhost:3001/api/auth/login', {
+      const response = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -37,16 +38,13 @@ const Login: React.FC = () => {
       login(data.token, data.user);
       toast.success(`Bem-vindo, ${data.user.name}!`);
 
-      // Pequeno delay para UX
-      setTimeout(() => {
-        if (data.user.role === 'SUPER_ADMIN_EVOLUTECH') {
-            navigate('/admin-evolutech', { replace: true });
-        } else if (data.user.role === 'DONO_EMPRESA') {
-            navigate('/empresa/dashboard', { replace: true });
-        } else {
-            navigate('/redirect', { replace: true });
-        }
-      }, 500);
+      if (data.user.role === 'SUPER_ADMIN_EVOLUTECH') {
+          navigate('/admin-evolutech', { replace: true });
+      } else if (data.user.role === 'DONO_EMPRESA') {
+          navigate('/empresa/dashboard', { replace: true });
+      } else {
+          navigate('/redirect', { replace: true });
+      }
 
     } catch (error: any) {
       toast.error(error.message || "Erro ao conectar com o servidor");
@@ -129,6 +127,11 @@ const Login: React.FC = () => {
             </Button>
 
           </form>
+          <p className="mt-4 w-full text-center text-sm text-muted-foreground">
+            <Link className="text-primary underline" to="/cliente/cadastro">
+              cliente se cadastre aqui
+            </Link>
+          </p>
 
         </div>
 

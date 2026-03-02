@@ -12,15 +12,14 @@ export class TenantController {
         empresaPlano,
         empresaStatus,
         sistemaBaseId,
-        donoNome,
-        donoEmail,
-        donoSenha,
-        donoRole
+        ownerFullName,
+        ownerEmail,
+        ownerPassword,
       } = req.body ?? {};
 
-      if (!empresaNome || !donoNome || !donoEmail || !sistemaBaseId) {
+      if (!empresaNome || !sistemaBaseId) {
         return res.status(400).json({
-          error: 'Campos obrigatórios: empresaNome, donoNome, donoEmail, sistemaBaseId'
+          error: 'Campos obrigatorios: empresaNome, sistemaBaseId',
         });
       }
 
@@ -30,25 +29,17 @@ export class TenantController {
         companyPlan: empresaPlano,
         companyStatus: empresaStatus,
         sistemaBaseId,
-        ownerFullName: donoNome,
-        ownerEmail: donoEmail,
-        ownerPassword: donoSenha,
-        ownerRole: donoRole
+        ownerFullName,
+        ownerEmail,
+        ownerPassword,
       });
 
       return res.status(201).json(result);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Erro inesperado ao criar tenant';
-
-      if (
-        message.includes('Campos obrigatórios') ||
-        message.includes('não encontrado') ||
-        message.includes('inativo') ||
-        message.includes('Já existe usuário')
-      ) {
+      if (message.toLowerCase().includes('obrigatorio') || message.toLowerCase().includes('nao encontrado') || message.toLowerCase().includes('inativo')) {
         return res.status(400).json({ error: message });
       }
-
       return res.status(500).json({ error: message });
     }
   }

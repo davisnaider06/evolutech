@@ -1,4 +1,6 @@
-const API_URL = 'http://localhost:3001/api/admin';
+import { API_URL } from '@/config/api';
+
+const API_ADMIN_URL = `${API_URL}/admin`;
 
 const getHeaders = () => {
   const token = localStorage.getItem('evolutech_token');
@@ -9,7 +11,7 @@ const getHeaders = () => {
 };
 
 const request = async (path: string, init?: RequestInit) => {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${API_ADMIN_URL}${path}`, {
     ...init,
     headers: {
       ...getHeaders(),
@@ -33,6 +35,10 @@ export const adminService = {
   financialOverview: async () => request('/financeiro/overview'),
   dashboardMetrics: async () => request('/dashboard/metrics'),
   dashboardActivities: async (limit = 10) => request(`/dashboard/activities?limit=${limit}`),
+  listGateways: async () => request('/gateways'),
+  createGateway: async (dados: any) => request('/gateways', { method: 'POST', body: JSON.stringify(dados) }),
+  updateGateway: async (id: string, dados: any) => request(`/gateways/${id}`, { method: 'PATCH', body: JSON.stringify(dados) }),
+  deleteGateway: async (id: string) => request(`/gateways/${id}`, { method: 'DELETE' }),
 
   listarModulos: async (onlyActive = false) => request(`/modulos?active=${onlyActive}`),
   criarModulo: async (dados: any) => request('/modulos', { method: 'POST', body: JSON.stringify(dados) }),

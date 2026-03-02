@@ -11,6 +11,10 @@ router.use(requireRoles(['SUPER_ADMIN_EVOLUTECH']));
 router.get('/financeiro/overview', controller.getFinancialOverview.bind(controller));
 router.get('/dashboard/metrics', controller.getDashboardMetrics.bind(controller));
 router.get('/dashboard/activities', controller.listRecentActivity.bind(controller));
+router.get('/gateways', controller.listPaymentGateways.bind(controller));
+router.post('/gateways', controller.createPaymentGateway.bind(controller));
+router.patch('/gateways/:gatewayId', controller.updatePaymentGateway.bind(controller));
+router.delete('/gateways/:gatewayId', controller.deletePaymentGateway.bind(controller));
 
 router.get('/modulos', controller.listModulos.bind(controller));
 router.post('/modulos', controller.createModulo.bind(controller));

@@ -52,7 +52,13 @@ async function ensureBaseCatalog() {
     { nome: 'PDV', codigo: 'pdv', descricao: 'Operacao de caixa e fechamento', isCore: false, preco: 79.9 },
     { nome: 'Produtos', codigo: 'produtos', descricao: 'Cadastro de produtos e estoque', isCore: false, preco: 39.9 },
     { nome: 'Financeiro', codigo: 'financeiro', descricao: 'Contas a pagar e receber', isCore: false, preco: 59.9 },
-    { nome: 'Relatorios', codigo: 'relatorios', descricao: 'Relatorios gerenciais e operacionais', isCore: false, preco: 29.9 }
+    { nome: 'Relatorios', codigo: 'relatorios', descricao: 'Relatorios gerenciais e operacionais', isCore: false, preco: 29.9 },
+    { nome: 'Fidelidade', codigo: 'fidelidade', descricao: 'Programa de fidelidade e cashback', isCore: false, preco: 29.9 },
+    { nome: 'Assinaturas', codigo: 'assinaturas', descricao: 'Planos e assinaturas de clientes', isCore: false, preco: 49.9 },
+    { nome: 'Comissoes Dono', codigo: 'comissoes_dono', descricao: 'Gestao de comissoes pelo dono', isCore: false, preco: 29.9 },
+    { nome: 'Comissoes Staff', codigo: 'commissions_staff', descricao: 'Consulta de comissoes pelo funcionario', isCore: false, preco: 0 },
+    { nome: 'Portal Cliente', codigo: 'customer_portal', descricao: 'Portal de login para cliente final', isCore: false, preco: 39.9 },
+    { nome: 'Cursos', codigo: 'courses', descricao: 'Gestao e venda de cursos', isCore: false, preco: 79.9 }
   ];
 
   for (const item of modules) {
@@ -93,7 +99,22 @@ async function ensureBaseCatalog() {
     }
   });
 
-  const moduleCodes = ['dashboard', 'clientes', 'agendamentos', 'vendas', 'pdv', 'produtos', 'financeiro', 'relatorios'];
+  const moduleCodes = [
+    'dashboard',
+    'clientes',
+    'agendamentos',
+    'vendas',
+    'pdv',
+    'produtos',
+    'financeiro',
+    'relatorios',
+    'fidelidade',
+    'assinaturas',
+    'comissoes_dono',
+    'commissions_staff',
+    'customer_portal',
+    'courses',
+  ];
   const moduloRecords = await prisma.modulo.findMany({ where: { codigo: { in: moduleCodes } } });
 
   await prisma.sistemaBaseModulo.deleteMany({ where: { sistemaBaseId: barbearia.id } });
@@ -102,8 +123,8 @@ async function ensureBaseCatalog() {
     data: moduloRecords.map((modulo) => ({
       sistemaBaseId: barbearia.id,
       moduloId: modulo.id,
-      isMandatory: ['dashboard', 'clientes', 'agendamentos'].includes(modulo.codigo)
-    })),
+          isMandatory: ['dashboard', 'clientes', 'agendamentos', 'customer_portal'].includes(modulo.codigo)
+        })),
     skipDuplicates: true
   });
 

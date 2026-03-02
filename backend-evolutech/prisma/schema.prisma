@@ -9,63 +9,63 @@ datasource db {
 }
 
 model User {
-  id                                                                         String                   @id @default(uuid())
-  email                                                                      String                   @unique
-  fullName                                                                   String                   @map("full_name")
-  passwordHash                                                               String?                  @map("password_hash")
-  isActive                                                                   Boolean                  @default(true) @map("is_active")
-  createdAt                                                                  DateTime                 @default(now()) @map("created_at")
-  updatedAt                                                                  DateTime                 @updatedAt @map("updated_at")
-  auditLogs                                                                  AuditLog[]
-  commission_adjustments_commission_adjustments_created_by_user_idToprofiles commission_adjustments[] @relation("commission_adjustments_created_by_user_idToprofiles")
-  commission_adjustments_commission_adjustments_professional_idToprofiles    commission_adjustments[] @relation("commission_adjustments_professional_idToprofiles")
-  commission_payouts_commission_payouts_created_by_user_idToprofiles         commission_payouts[]     @relation("commission_payouts_created_by_user_idToprofiles")
-  commission_payouts_commission_payouts_professional_idToprofiles            commission_payouts[]     @relation("commission_payouts_professional_idToprofiles")
-  commission_profiles                                                        commission_profiles[]
-  tasks                                                                      Task[]
-  roles                                                                      UserRole[]
+  id           String     @id @default(uuid())
+  email        String     @unique
+  fullName     String     @map("full_name")
+  passwordHash String?    @map("password_hash")
+  isActive     Boolean    @default(true) @map("is_active")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+  auditLogs    AuditLog[]
+  commissionProfiles   CommissionProfile[]
+  commissionAdjustmentsAsProfessional CommissionAdjustment[] @relation("CommissionAdjustmentProfessional")
+  commissionAdjustmentsCreated CommissionAdjustment[] @relation("CommissionAdjustmentCreatedBy")
+  commissionPayoutsAsProfessional CommissionPayout[] @relation("CommissionPayoutProfessional")
+  commissionPayoutsCreated CommissionPayout[] @relation("CommissionPayoutCreatedBy")
+  tasks        Task[]
+  roles        UserRole[]
 
   @@map("profiles")
 }
 
 model Company {
-  id                            String                          @id @default(uuid())
-  name                          String
-  slug                          String                          @unique
-  document                      String?
-  plan                          String                          @default("free")
-  status                        Status                          @default(active)
-  logoUrl                       String?                         @map("logo_url")
-  monthlyRevenue                Decimal?                        @default(0) @map("monthly_revenue") @db.Decimal(10, 2)
-  sistemaBaseId                 String?                         @map("sistema_base_id")
-  createdAt                     DateTime                        @default(now()) @map("created_at")
-  updatedAt                     DateTime                        @updatedAt @map("updated_at")
-  appointment_availability      appointment_availability[]
-  appointment_services          appointment_services[]
-  appointments                  Appointment[]
-  auditLogs                     AuditLog[]
-  billing_charges               billing_charges[]
-  commission_adjustments        commission_adjustments[]
-  commission_payouts            commission_payouts[]
-  commission_profiles           commission_profiles[]
-  sistemaBase                   SistemaBase?                    @relation(fields: [sistemaBaseId], references: [id])
-  company_loyalty_settings      company_loyalty_settings?
-  course_accesses               course_accesses[]
-  courses                       courses[]
-  customer_accounts             customer_accounts[]
-  customer_loyalty_profiles     customer_loyalty_profiles[]
-  customer_loyalty_transactions customer_loyalty_transactions[]
-  customer_subscriptions        customer_subscriptions[]
-  customers                     Customer[]
-  modules                       CompanyModule[]
-  orders                        Order[]
-  payment_gateways              payment_gateways[]
-  payment_transactions          payment_transactions[]
-  products                      Product[]
-  subscription_plans            subscription_plans[]
-  subscription_usages           subscription_usages[]
-  tasks                         Task[]
-  userRoles                     UserRole[]
+  id             String          @id @default(uuid())
+  name           String
+  slug           String          @unique
+  document       String?
+  plan           String          @default("free")
+  status         Status          @default(active)
+  logoUrl        String?         @map("logo_url")
+  monthlyRevenue Decimal?        @default(0) @map("monthly_revenue") @db.Decimal(10, 2)
+  sistemaBaseId  String?         @map("sistema_base_id")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  appointments   Appointment[]
+  appointmentServices AppointmentService[]
+  appointmentAvailability AppointmentAvailability[]
+  auditLogs      AuditLog[]
+  sistemaBase    SistemaBase?    @relation(fields: [sistemaBaseId], references: [id])
+  customers      Customer[]
+  customerAccounts CustomerAccount[]
+  modules        CompanyModule[]
+  orders         Order[]
+  products       Product[]
+  tasks          Task[]
+  userRoles      UserRole[]
+  paymentGateways PaymentGateway[]
+  paymentTransactions PaymentTransaction[]
+  billingCharges BillingCharge[]
+  commissionProfiles CommissionProfile[]
+  commissionAdjustments CommissionAdjustment[]
+  commissionPayouts CommissionPayout[]
+  loyaltySettings CompanyLoyaltySettings?
+  loyaltyProfiles CustomerLoyaltyProfile[]
+  loyaltyTransactions CustomerLoyaltyTransaction[]
+  subscriptionPlans SubscriptionPlan[]
+  customerSubscriptions CustomerSubscription[]
+  subscriptionUsages SubscriptionUsage[]
+  courses       Course[]
+  courseAccesses CourseAccess[]
 
   @@index([sistemaBaseId])
   @@map("companies")
@@ -87,20 +87,20 @@ model UserRole {
 }
 
 model Modulo {
-  id            String              @id @default(uuid())
-  nome          String
-  codigo        String              @unique
-  descricao     String?
-  icone         String?
-  precoMensal   Decimal             @default(0) @map("preco_mensal") @db.Decimal(10, 2)
-  isCore        Boolean             @default(false) @map("is_core")
-  status        Status              @default(active)
-  createdAt     DateTime            @default(now()) @map("created_at")
-  nicho         String?             @default("geral")
-  is_pro        Boolean             @default(false)
-  allowed_roles Role[]              @default([DONO_EMPRESA, FUNCIONARIO_EMPRESA])
-  empresas      CompanyModule[]
-  sistemasBase  SistemaBaseModulo[]
+  id           String              @id @default(uuid())
+  nome         String
+  codigo       String              @unique
+  descricao    String?
+  icone        String?
+  nicho        String?             @default("geral")
+  precoMensal  Decimal             @default(0) @map("preco_mensal") @db.Decimal(10, 2)
+  isCore       Boolean             @default(false) @map("is_core")
+  isPro        Boolean             @default(false) @map("is_pro")
+  allowedRoles Role[]              @default([DONO_EMPRESA, FUNCIONARIO_EMPRESA]) @map("allowed_roles")
+  status       Status              @default(active)
+  createdAt    DateTime            @default(now()) @map("created_at")
+  empresas     CompanyModule[]
+  sistemasBase SistemaBaseModulo[]
 
   @@map("modulos")
 }
@@ -147,22 +147,22 @@ model CompanyModule {
 }
 
 model Customer {
-  id                            String                          @id @default(uuid())
-  companyId                     String                          @map("empresa_id")
-  name                          String
-  email                         String?
-  phone                         String?
-  document                      String?
-  isActive                      Boolean                         @default(true) @map("is_active")
-  createdAt                     DateTime                        @default(now()) @map("created_at")
-  updatedAt                     DateTime                        @updatedAt @map("updated_at")
-  appointments                  Appointment[]
-  course_accesses               course_accesses[]
-  customer_accounts             customer_accounts?
-  customer_loyalty_profiles     customer_loyalty_profiles?
-  customer_loyalty_transactions customer_loyalty_transactions[]
-  customer_subscriptions        customer_subscriptions[]
-  company                       Company                         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  id        String   @id @default(uuid())
+  companyId String   @map("empresa_id")
+  name      String
+  email     String?
+  phone     String?
+  document  String?
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+  account   CustomerAccount?
+  loyaltyProfile CustomerLoyaltyProfile?
+  loyaltyTransactions CustomerLoyaltyTransaction[]
+  subscriptions CustomerSubscription[]
+  courseAccesses CourseAccess[]
 
   @@index([companyId])
   @@map("customers")
@@ -198,42 +198,95 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-model Appointment {
-  id                String    @id @default(uuid())
-  companyId         String    @map("empresa_id")
-  customerName      String    @map("customer_name")
-  serviceName       String    @map("service_name")
-  scheduledAt       DateTime  @map("scheduled_at")
-  status            String    @default("scheduled")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
-  barber_name       String?
-  service_id        String?
-  professional_id   String?
-  professional_name String?
-  customer_id       String?
-  customers         Customer? @relation(fields: [customer_id], references: [id])
-  company           Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  @@index([companyId, customer_id, scheduledAt])
-  @@index([companyId, professional_id, scheduledAt], map: "idx_appointments_company_prof_time")
-  @@index([companyId, service_id], map: "idx_appointments_company_service")
-  @@map("appointments")
-}
 
 model Order {
-  id                   String                 @id @default(uuid())
-  companyId            String                 @map("empresa_id")
-  customerName         String?                @map("customer_name")
-  total                Decimal                @default(0) @db.Decimal(10, 2)
-  status               String                 @default("pending")
-  createdAt            DateTime               @default(now()) @map("created_at")
-  updatedAt            DateTime               @updatedAt @map("updated_at")
-  billing_charges      billing_charges?
-  company              Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  payment_transactions payment_transactions[]
+  id           String   @id @default(uuid())
+  companyId    String   @map("empresa_id")
+  customerName String?  @map("customer_name")
+  total        Decimal  @default(0) @db.Decimal(10, 2)
+  status       String   @default("pending")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  paymentTransactions PaymentTransaction[]
+  billingCharge BillingCharge?
 
   @@map("orders")
+}
+
+model PaymentGateway {
+  id                String   @id @default(uuid())
+  companyId         String   @map("empresa_id")
+  provider          String   @map("provedor")
+  displayName       String   @map("nome_exibicao")
+  publicKey         String?  @map("public_key")
+  secretKeyEncrypted String? @map("secret_key_encrypted")
+  webhookSecretEncrypted String? @map("webhook_secret_encrypted")
+  environment       String   @default("sandbox") @map("ambiente")
+  isActive          Boolean  @default(false) @map("is_active")
+  webhookUrl        String?  @map("webhook_url")
+  settings          Json?    @map("configuracoes")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  transactions      PaymentTransaction[]
+
+  @@unique([companyId, provider])
+  @@index([companyId, isActive])
+  @@map("payment_gateways")
+}
+
+model PaymentTransaction {
+  id                String   @id @default(uuid())
+  companyId         String   @map("empresa_id")
+  orderId           String   @map("order_id")
+  gatewayId         String?  @map("gateway_id")
+  provider          String
+  paymentMethod     String   @map("payment_method")
+  externalPaymentId String?  @map("external_payment_id")
+  status            String   @default("pending")
+  amount            Decimal  @db.Decimal(10, 2)
+  currency          String   @default("brl")
+  qrCodeText        String?  @map("qr_code_text")
+  qrCodeImageUrl    String?  @map("qr_code_image_url")
+  paymentLinkUrl    String?  @map("payment_link_url")
+  gatewayResponse   Json?    @map("gateway_response")
+  paidAt            DateTime? @map("paid_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  order             Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  gateway           PaymentGateway? @relation(fields: [gatewayId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, status, createdAt])
+  @@index([externalPaymentId, provider])
+  @@map("payment_transactions")
+}
+
+model BillingCharge {
+  id            String   @id @default(uuid())
+  companyId     String   @map("empresa_id")
+  orderId       String   @unique @map("order_id")
+  title         String
+  description   String?
+  customerName  String   @map("customer_name")
+  customerEmail String?  @map("customer_email")
+  customerPhone String?  @map("customer_phone")
+  amount        Decimal  @db.Decimal(10, 2)
+  paymentMethod String   @default("pix") @map("payment_method")
+  status        String   @default("pending")
+  dueDate       DateTime? @map("due_date")
+  paidAt        DateTime? @map("paid_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, status, createdAt])
+  @@map("billing_charges")
 }
 
 model Task {
@@ -254,325 +307,314 @@ model Task {
   @@map("tasks")
 }
 
-model appointment_availability {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  empresa_id      String
-  professional_id String
-  weekday         Int
-  start_time      String
-  end_time        String
-  is_active       Boolean  @default(true)
-  created_at      DateTime @default(now()) @db.Timestamp(6)
-  updated_at      DateTime @default(now()) @db.Timestamp(6)
-  companies       Company  @relation(fields: [empresa_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+model Appointment {
+  id           String   @id @default(uuid())
+  companyId    String   @map("empresa_id")
+  customerId   String?  @map("customer_id")
+  serviceId    String?  @map("service_id")
+  professionalId String? @map("professional_id")
+  customerName String   @map("customer_name")
+  serviceName  String   @map("service_name")
+  professionalName String?  @map("professional_name")
+  scheduledAt  DateTime @map("scheduled_at")
+  status       String   @default("scheduled")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer     Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  service      AppointmentService? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, serviceId])
+  @@index([companyId, professionalId, scheduledAt])
+  @@index([companyId, customerId, scheduledAt])
+
+  @@map("appointments")
 }
 
-model appointment_services {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  empresa_id       String
-  name             String
-  description      String?
-  duration_minutes Int      @default(30)
-  price            Decimal? @db.Decimal(10, 2)
-  is_active        Boolean  @default(true)
-  created_at       DateTime @default(now()) @db.Timestamp(6)
-  updated_at       DateTime @default(now()) @db.Timestamp(6)
-  companies        Company  @relation(fields: [empresa_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@index([empresa_id, is_active], map: "idx_appointment_services_company_active")
-}
-
-model billing_charges {
-  id             String    @id
-  empresa_id     String
-  order_id       String    @unique
-  title          String
-  description    String?
-  customer_name  String
-  customer_email String?
-  customer_phone String?
-  amount         Decimal   @db.Decimal(10, 2)
-  payment_method String    @default("pix")
-  status         String    @default("pending")
-  due_date       DateTime?
-  paid_at        DateTime?
-  created_at     DateTime  @default(now())
-  updated_at     DateTime
-  companies      Company   @relation(fields: [empresa_id], references: [id], onDelete: Cascade)
-  orders         Order     @relation(fields: [order_id], references: [id], onDelete: Cascade)
-
-  @@index([empresa_id, status, created_at])
-}
-
-model commission_adjustments {
-  id                                                           String   @id @default(dbgenerated("(gen_random_uuid())::text"))
-  empresa_id                                                   String
-  professional_id                                              String
-  month_ref                                                    DateTime
-  amount                                                       Decimal  @db.Decimal(10, 2)
-  reason                                                       String?
-  created_by_user_id                                           String?
-  created_at                                                   DateTime @default(now())
-  profiles_commission_adjustments_created_by_user_idToprofiles User?    @relation("commission_adjustments_created_by_user_idToprofiles", fields: [created_by_user_id], references: [id])
-  companies                                                    Company  @relation(fields: [empresa_id], references: [id], onDelete: Cascade)
-  profiles_commission_adjustments_professional_idToprofiles    User     @relation("commission_adjustments_professional_idToprofiles", fields: [professional_id], references: [id], onDelete: Cascade)
-
-  @@index([empresa_id, month_ref])
-  @@index([empresa_id, professional_id, month_ref])
-}
-
-model commission_payouts {
-  id                                                       String    @id @default(dbgenerated("(gen_random_uuid())::text"))
-  empresa_id                                               String
-  professional_id                                          String
-  month_ref                                                DateTime
-  computed_commission                                      Decimal   @db.Decimal(10, 2)
-  amount_paid                                              Decimal   @default(0) @db.Decimal(10, 2)
-  status                                                   String    @default("pending")
-  paid_at                                                  DateTime?
-  note                                                     String?
-  created_by_user_id                                       String?
-  created_at                                               DateTime  @default(now())
-  updated_at                                               DateTime  @default(now())
-  profiles_commission_payouts_created_by_user_idToprofiles User?     @relation("commission_payouts_created_by_user_idToprofiles", fields: [created_by_user_id], references: [id])
-  companies                                                Company   @relation(fields: [empresa_id], references: [id], onDelete: Cascade)
-  profiles_commission_payouts_professional_idToprofiles    User      @relation("commission_payouts_professional_idToprofiles", fields: [professional_id], references: [id], onDelete: Cascade)
-
-  @@unique([empresa_id, professional_id, month_ref])
-  @@index([empresa_id, month_ref, status])
-  @@index([empresa_id, professional_id, month_ref])
-}
-
-model commission_profiles {
-  id                     String   @id @default(dbgenerated("(gen_random_uuid())::text"))
-  empresa_id             String
-  professional_id        String
-  service_commission_pct Decimal  @default(40) @db.Decimal(5, 2)
-  product_commission_pct Decimal  @default(10) @db.Decimal(5, 2)
-  monthly_fixed_amount   Decimal  @default(0) @db.Decimal(10, 2)
-  is_active              Boolean  @default(true)
-  created_at             DateTime @default(now())
-  updated_at             DateTime @default(now())
-  companies              Company  @relation(fields: [empresa_id], references: [id], onDelete: Cascade)
-  profiles               User     @relation(fields: [professional_id], references: [id], onDelete: Cascade)
-
-  @@unique([empresa_id, professional_id])
-  @@index([empresa_id, is_active])
-  @@index([empresa_id, professional_id])
-}
-
-model company_loyalty_settings {
-  id                 String   @id @default(dbgenerated("(gen_random_uuid())::text"))
-  empresa_id         String   @unique
-  points_per_service Int      @default(1)
-  cashback_percent   Decimal  @default(0) @db.Decimal(5, 2)
-  tenth_service_free Boolean  @default(true)
-  point_value        Decimal  @default(1) @db.Decimal(10, 2)
-  is_active          Boolean  @default(true)
-  created_at         DateTime @default(now())
-  updated_at         DateTime @default(now())
-  companies          Company  @relation(fields: [empresa_id], references: [id], onDelete: Cascade)
-}
-
-model course_accesses {
-  id          String             @id
-  empresa_id  String
-  customer_id String
-  course_id   String
-  status      CourseAccessStatus @default(active)
-  start_at    DateTime           @default(now())
-  end_at      DateTime?
-  amount_paid Decimal            @default(0) @db.Decimal(10, 2)
-  created_at  DateTime           @default(now())
-  updated_at  DateTime
-  courses     courses            @relation(fields: [course_id], references: [id], onDelete: Cascade)
-  customers   Customer           @relation(fields: [customer_id], references: [id], onDelete: Cascade)
-  companies   Company            @relation(fields: [empresa_id], references: [id], onDelete: Cascade)
-
-  @@unique([empresa_id, customer_id, course_id])
-  @@index([empresa_id, course_id, status])
-  @@index([empresa_id, customer_id, status])
-}
-
-model courses {
-  id              String            @id
-  empresa_id      String
-  title           String
-  description     String?
-  price           Decimal           @default(0) @db.Decimal(10, 2)
-  is_active       Boolean           @default(true)
-  created_at      DateTime          @default(now())
-  updated_at      DateTime
-  course_accesses course_accesses[]
-  companies       Company           @relation(fields: [empresa_id], references: [id], onDelete: Cascade)
-
-  @@index([empresa_id, is_active])
-}
-
-model customer_accounts {
-  id            String    @id
-  empresa_id    String
-  customer_id   String    @unique
+model CustomerAccount {
+  id           String   @id @default(uuid())
+  companyId     String   @map("empresa_id")
+  customerId    String   @unique @map("customer_id")
   email         String
-  password_hash String
-  is_active     Boolean   @default(true)
-  created_at    DateTime  @default(now())
-  updated_at    DateTime
-  last_login_at DateTime?
-  customers     Customer  @relation(fields: [customer_id], references: [id], onDelete: Cascade)
-  companies     Company   @relation(fields: [empresa_id], references: [id], onDelete: Cascade)
+  passwordHash  String   @map("password_hash")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  lastLoginAt   DateTime? @map("last_login_at")
 
-  @@unique([empresa_id, email])
-  @@index([empresa_id, is_active])
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer      Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, email])
+  @@index([companyId, isActive])
+  @@map("customer_accounts")
 }
 
-model customer_loyalty_profiles {
-  id                            String                          @id @default(dbgenerated("(gen_random_uuid())::text"))
-  empresa_id                    String
-  customer_id                   String                          @unique
-  points_balance                Decimal                         @default(0) @db.Decimal(14, 2)
-  cashback_balance              Decimal                         @default(0) @db.Decimal(14, 2)
-  total_points_earned           Decimal                         @default(0) @db.Decimal(14, 2)
-  total_points_redeemed         Decimal                         @default(0) @db.Decimal(14, 2)
-  total_cashback_earned         Decimal                         @default(0) @db.Decimal(14, 2)
-  total_cashback_used           Decimal                         @default(0) @db.Decimal(14, 2)
-  total_services_count          Int                             @default(0)
-  created_at                    DateTime                        @default(now())
-  updated_at                    DateTime                        @default(now())
-  customers                     Customer                        @relation(fields: [customer_id], references: [id], onDelete: Cascade)
-  companies                     Company                         @relation(fields: [empresa_id], references: [id], onDelete: Cascade)
-  customer_loyalty_transactions customer_loyalty_transactions[]
+model AppointmentService {
+  id              String   @id @default(uuid())
+  companyId       String   @map("empresa_id")
+  name            String
+  description     String?
+  durationMinutes Int      @default(30) @map("duration_minutes")
+  price           Decimal? @db.Decimal(10, 2)
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
-  @@unique([empresa_id, customer_id])
-  @@index([customer_id])
-  @@index([empresa_id])
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  appointments    Appointment[]
+
+  @@index([companyId, isActive])
+  @@map("appointment_services")
 }
 
-model customer_loyalty_transactions {
-  id                        String                    @id @default(dbgenerated("(gen_random_uuid())::text"))
-  empresa_id                String
-  customer_id               String
-  profile_id                String
-  order_id                  String?
-  transaction_type          LoyaltyTransactionType
-  points_delta              Decimal                   @default(0) @db.Decimal(14, 2)
-  cashback_delta            Decimal                   @default(0) @db.Decimal(14, 2)
-  amount_reference          Decimal?                  @db.Decimal(10, 2)
-  notes                     String?
-  created_by_user_id        String?
-  created_at                DateTime                  @default(now())
-  customers                 Customer                  @relation(fields: [customer_id], references: [id], onDelete: Cascade)
-  companies                 Company                   @relation(fields: [empresa_id], references: [id], onDelete: Cascade)
-  customer_loyalty_profiles customer_loyalty_profiles @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+model AppointmentAvailability {
+  id             String   @id @default(uuid())
+  companyId      String   @map("empresa_id")
+  professionalId String   @map("professional_id")
+  weekday        Int
+  startTime      String   @map("start_time")
+  endTime        String   @map("end_time")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
-  @@index([empresa_id, customer_id, created_at], map: "customer_loyalty_transactions_empresa_id_customer_id_created_at")
-  @@index([order_id])
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, professionalId, weekday, startTime, endTime])
+  @@index([companyId, professionalId, weekday, isActive])
+  @@map("appointment_availability")
 }
 
-model customer_subscriptions {
-  id                  String                @id @default(dbgenerated("(gen_random_uuid())::text"))
-  empresa_id          String
-  customer_id         String
-  plan_id             String
-  status              SubscriptionStatus    @default(active)
-  start_at            DateTime
-  end_at              DateTime
-  remaining_services  Int?
-  auto_renew          Boolean               @default(true)
-  amount              Decimal               @default(0) @db.Decimal(10, 2)
-  notes               String?
-  created_at          DateTime              @default(now())
-  updated_at          DateTime              @default(now())
-  customers           Customer              @relation(fields: [customer_id], references: [id], onDelete: Cascade)
-  companies           Company               @relation(fields: [empresa_id], references: [id], onDelete: Cascade)
-  subscription_plans  subscription_plans    @relation(fields: [plan_id], references: [id], onDelete: Cascade)
-  subscription_usages subscription_usages[]
+model CommissionProfile {
+  id                 String   @id @default(uuid())
+  companyId          String   @map("empresa_id")
+  professionalId     String   @map("professional_id")
+  serviceCommissionPct Decimal @default(40) @map("service_commission_pct") @db.Decimal(5, 2)
+  productCommissionPct Decimal @default(10) @map("product_commission_pct") @db.Decimal(5, 2)
+  monthlyFixedAmount Decimal  @default(0) @map("monthly_fixed_amount") @db.Decimal(10, 2)
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
-  @@index([empresa_id, customer_id, status, end_at])
-  @@index([empresa_id, plan_id, status])
+  company            Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  professional       User     @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, professionalId])
+  @@index([companyId, isActive])
+  @@index([companyId, professionalId])
+  @@map("commission_profiles")
 }
 
-model payment_gateways {
-  id                       String                 @id
-  empresa_id               String
-  provedor                 String
-  nome_exibicao            String
-  public_key               String?
-  secret_key_encrypted     String?
-  webhook_secret_encrypted String?
-  ambiente                 String                 @default("sandbox")
-  is_active                Boolean                @default(false)
-  webhook_url              String?
-  configuracoes            Json?
-  created_at               DateTime               @default(now())
-  updated_at               DateTime
-  companies                Company                @relation(fields: [empresa_id], references: [id], onDelete: Cascade)
-  payment_transactions     payment_transactions[]
+model CommissionAdjustment {
+  id                String   @id @default(uuid())
+  companyId         String   @map("empresa_id")
+  professionalId    String   @map("professional_id")
+  monthRef          DateTime @map("month_ref")
+  amount            Decimal  @db.Decimal(10, 2)
+  reason            String?
+  createdByUserId   String?  @map("created_by_user_id")
+  createdAt         DateTime @default(now()) @map("created_at")
 
-  @@unique([empresa_id, provedor])
-  @@index([empresa_id, is_active])
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  professional      User     @relation("CommissionAdjustmentProfessional", fields: [professionalId], references: [id], onDelete: Cascade)
+  createdByUser     User?    @relation("CommissionAdjustmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, professionalId, monthRef])
+  @@index([companyId, monthRef])
+  @@map("commission_adjustments")
 }
 
-model payment_transactions {
-  id                  String            @id
-  empresa_id          String
-  order_id            String
-  gateway_id          String?
-  provider            String
-  payment_method      String
-  external_payment_id String?
-  status              String            @default("pending")
-  amount              Decimal           @db.Decimal(10, 2)
-  currency            String            @default("brl")
-  qr_code_text        String?
-  qr_code_image_url   String?
-  gateway_response    Json?
-  paid_at             DateTime?
-  created_at          DateTime          @default(now())
-  updated_at          DateTime
-  payment_link_url    String?
-  companies           Company           @relation(fields: [empresa_id], references: [id], onDelete: Cascade)
-  payment_gateways    payment_gateways? @relation(fields: [gateway_id], references: [id])
-  orders              Order             @relation(fields: [order_id], references: [id], onDelete: Cascade)
+model CommissionPayout {
+  id                String   @id @default(uuid())
+  companyId         String   @map("empresa_id")
+  professionalId    String   @map("professional_id")
+  monthRef          DateTime @map("month_ref")
+  computedCommission Decimal @map("computed_commission") @db.Decimal(10, 2)
+  amountPaid        Decimal @default(0) @map("amount_paid") @db.Decimal(10, 2)
+  status            String   @default("pending")
+  paidAt            DateTime? @map("paid_at")
+  note              String?
+  createdByUserId   String?  @map("created_by_user_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
-  @@index([empresa_id, status, created_at])
-  @@index([external_payment_id, provider])
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  professional      User     @relation("CommissionPayoutProfessional", fields: [professionalId], references: [id], onDelete: Cascade)
+  createdByUser     User?    @relation("CommissionPayoutCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, professionalId, monthRef])
+  @@index([companyId, monthRef, status])
+  @@index([companyId, professionalId, monthRef])
+  @@map("commission_payouts")
 }
 
-model subscription_plans {
-  id                     String                   @id @default(dbgenerated("(gen_random_uuid())::text"))
-  empresa_id             String
-  name                   String
-  description            String?
-  interval               SubscriptionInterval     @default(monthly)
-  price                  Decimal                  @default(0) @db.Decimal(10, 2)
-  included_services      Int?
-  is_unlimited           Boolean                  @default(false)
-  is_active              Boolean                  @default(true)
-  created_at             DateTime                 @default(now())
-  updated_at             DateTime                 @default(now())
-  customer_subscriptions customer_subscriptions[]
-  companies              Company                  @relation(fields: [empresa_id], references: [id], onDelete: Cascade)
+model CompanyLoyaltySettings {
+  id                   String   @id @default(uuid())
+  companyId            String   @unique @map("empresa_id")
+  pointsPerService     Int      @default(1) @map("points_per_service")
+  cashbackPercent      Decimal  @default(0) @map("cashback_percent") @db.Decimal(5, 2)
+  tenthServiceFree     Boolean  @default(true) @map("tenth_service_free")
+  pointValue           Decimal  @default(1) @map("point_value") @db.Decimal(10, 2)
+  isActive             Boolean  @default(true) @map("is_active")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
 
-  @@index([empresa_id, is_active])
+  company              Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("company_loyalty_settings")
 }
 
-model subscription_usages {
-  id                     String                 @id @default(dbgenerated("(gen_random_uuid())::text"))
-  empresa_id             String
-  subscription_id        String
-  order_id               String?
-  service_id             String?
-  service_name           String?
-  quantity               Int                    @default(1)
-  amount_discounted      Decimal                @default(0) @db.Decimal(10, 2)
-  used_at                DateTime               @default(now())
-  created_by_user_id     String?
-  companies              Company                @relation(fields: [empresa_id], references: [id], onDelete: Cascade)
-  customer_subscriptions customer_subscriptions @relation(fields: [subscription_id], references: [id], onDelete: Cascade)
+model CustomerLoyaltyProfile {
+  id                   String   @id @default(uuid())
+  companyId            String   @map("empresa_id")
+  customerId           String   @unique @map("customer_id")
+  pointsBalance        Decimal  @default(0) @map("points_balance") @db.Decimal(14, 2)
+  cashbackBalance      Decimal  @default(0) @map("cashback_balance") @db.Decimal(14, 2)
+  totalPointsEarned    Decimal  @default(0) @map("total_points_earned") @db.Decimal(14, 2)
+  totalPointsRedeemed  Decimal  @default(0) @map("total_points_redeemed") @db.Decimal(14, 2)
+  totalCashbackEarned  Decimal  @default(0) @map("total_cashback_earned") @db.Decimal(14, 2)
+  totalCashbackUsed    Decimal  @default(0) @map("total_cashback_used") @db.Decimal(14, 2)
+  totalServicesCount   Int      @default(0) @map("total_services_count")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
 
-  @@index([empresa_id, subscription_id, used_at])
+  company              Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer             Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  transactions         CustomerLoyaltyTransaction[]
+
+  @@unique([companyId, customerId])
+  @@index([companyId])
+  @@index([customerId])
+  @@map("customer_loyalty_profiles")
 }
+
+model CustomerLoyaltyTransaction {
+  id                   String                @id @default(uuid())
+  companyId            String                @map("empresa_id")
+  customerId           String                @map("customer_id")
+  profileId            String                @map("profile_id")
+  orderId              String?               @map("order_id")
+  transactionType      LoyaltyTransactionType @map("transaction_type")
+  pointsDelta          Decimal               @default(0) @map("points_delta") @db.Decimal(14, 2)
+  cashbackDelta        Decimal               @default(0) @map("cashback_delta") @db.Decimal(14, 2)
+  amountReference      Decimal?              @map("amount_reference") @db.Decimal(10, 2)
+  notes                String?
+  createdByUserId      String?               @map("created_by_user_id")
+  createdAt            DateTime              @default(now()) @map("created_at")
+
+  company              Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer             Customer              @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  profile              CustomerLoyaltyProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, customerId, createdAt])
+  @@index([orderId])
+  @@map("customer_loyalty_transactions")
+}
+
+model SubscriptionPlan {
+  id                String                 @id @default(uuid())
+  companyId         String                 @map("empresa_id")
+  name              String
+  description       String?
+  interval          SubscriptionInterval   @default(monthly)
+  price             Decimal                @default(0) @db.Decimal(10, 2)
+  includedServices  Int?                   @map("included_services")
+  isUnlimited       Boolean                @default(false) @map("is_unlimited")
+  isActive          Boolean                @default(true) @map("is_active")
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+
+  company           Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  subscriptions     CustomerSubscription[]
+
+  @@index([companyId, isActive])
+  @@map("subscription_plans")
+}
+
+model CustomerSubscription {
+  id                String                 @id @default(uuid())
+  companyId         String                 @map("empresa_id")
+  customerId        String                 @map("customer_id")
+  planId            String                 @map("plan_id")
+  status            SubscriptionStatus     @default(active)
+  startAt           DateTime               @map("start_at")
+  endAt             DateTime               @map("end_at")
+  remainingServices Int?                   @map("remaining_services")
+  autoRenew         Boolean                @default(true) @map("auto_renew")
+  amount            Decimal                @default(0) @db.Decimal(10, 2)
+  notes             String?
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+
+  company           Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer          Customer               @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  plan              SubscriptionPlan       @relation(fields: [planId], references: [id], onDelete: Cascade)
+  usages            SubscriptionUsage[]
+
+  @@index([companyId, customerId, status, endAt])
+  @@index([companyId, planId, status])
+  @@map("customer_subscriptions")
+}
+
+model SubscriptionUsage {
+  id                String                 @id @default(uuid())
+  companyId         String                 @map("empresa_id")
+  subscriptionId    String                 @map("subscription_id")
+  orderId           String?                @map("order_id")
+  serviceId         String?                @map("service_id")
+  serviceName       String?                @map("service_name")
+  quantity          Int                    @default(1)
+  amountDiscounted  Decimal                @default(0) @map("amount_discounted") @db.Decimal(10, 2)
+  usedAt            DateTime               @default(now()) @map("used_at")
+  createdByUserId   String?                @map("created_by_user_id")
+
+  company           Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  subscription      CustomerSubscription   @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, subscriptionId, usedAt])
+  @@map("subscription_usages")
+}
+
+model Course {
+  id          String   @id @default(uuid())
+  companyId   String   @map("empresa_id")
+  title       String
+  description String?
+  price       Decimal  @default(0) @db.Decimal(10, 2)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  courseAccesses CourseAccess[]
+
+  @@index([companyId, isActive])
+  @@map("courses")
+}
+
+model CourseAccess {
+  id         String            @id @default(uuid())
+  companyId  String            @map("empresa_id")
+  customerId String            @map("customer_id")
+  courseId   String            @map("course_id")
+  status     CourseAccessStatus @default(active)
+  startAt    DateTime          @default(now()) @map("start_at")
+  endAt      DateTime?         @map("end_at")
+  amountPaid Decimal           @default(0) @map("amount_paid") @db.Decimal(10, 2)
+  createdAt  DateTime          @default(now()) @map("created_at")
+  updatedAt  DateTime          @updatedAt @map("updated_at")
+
+  company    Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer   Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  course     Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, customerId, courseId])
+  @@index([companyId, customerId, status])
+  @@index([companyId, courseId, status])
+  @@map("course_accesses")
+}
+
 
 enum Role {
   SUPER_ADMIN_EVOLUTECH
@@ -594,23 +636,6 @@ enum TaskStatus {
   done
 }
 
-enum CourseAccessStatus {
-  active
-  pending
-  canceled
-  expired
-}
-
-enum LoyaltyTransactionType {
-  earn_points
-  redeem_points
-  earn_cashback
-  redeem_cashback
-  bonus
-  adjustment
-  tenth_service_discount
-}
-
 enum SubscriptionInterval {
   monthly
   quarterly
@@ -623,4 +648,21 @@ enum SubscriptionStatus {
   expired
   canceled
   suspended
+}
+
+enum LoyaltyTransactionType {
+  earn_points
+  redeem_points
+  earn_cashback
+  redeem_cashback
+  bonus
+  adjustment
+  tenth_service_discount
+}
+
+enum CourseAccessStatus {
+  active
+  pending
+  canceled
+  expired
 }

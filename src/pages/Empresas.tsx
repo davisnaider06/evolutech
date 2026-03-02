@@ -56,7 +56,6 @@ const Empresas: React.FC = () => {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [updating, setUpdating] = useState(false);
-  const [credentials, setCredentials] = useState<{ email: string; password: string } | null>(null);
   const [selectedEmpresa, setSelectedEmpresa] = useState<Tenant | null>(null);
 
   const [formData, setFormData] = useState({
@@ -64,9 +63,6 @@ const Empresas: React.FC = () => {
     empresaDocumento: '',
     empresaPlano: 'professional',
     sistemaBaseId: '',
-    donoNome: '',
-    donoEmail: '',
-    donoSenha: '',
   });
   const [editFormData, setEditFormData] = useState({
     name: '',
@@ -102,31 +98,20 @@ const Empresas: React.FC = () => {
       empresaDocumento: '',
       empresaPlano: 'professional',
       sistemaBaseId: '',
-      donoNome: '',
-      donoEmail: '',
-      donoSenha: '',
     });
   };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.empresaNome || !formData.sistemaBaseId || !formData.donoNome || !formData.donoEmail) {
+    if (!formData.empresaNome || !formData.sistemaBaseId) {
       toast.error('Preencha os campos obrigatorios');
       return;
     }
 
     setCreating(true);
     try {
-      const result = await adminService.criarTenant({
-        ...formData,
-        donoRole: 'DONO_EMPRESA',
-      });
-
-      setCredentials({
-        email: result.credentials.email,
-        password: result.credentials.temporaryPassword,
-      });
+      await adminService.criarTenant({ ...formData });
 
       toast.success('Empresa criada com sucesso');
       setIsDialogOpen(false);
@@ -205,7 +190,7 @@ const Empresas: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold lg:text-3xl">Empresas</h1>
-          <p className="text-muted-foreground">Onboarding completo de clientes com dono e sistema base</p>
+          <p className="text-muted-foreground">Crie a empresa e vincule o sistema base. O dono e equipe sao cadastrados depois.</p>
         </div>
         <Button className="gap-2" onClick={() => setIsDialogOpen(true)}>
           <Plus className="h-4 w-4" />
@@ -287,8 +272,8 @@ const Empresas: React.FC = () => {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Novo Onboarding de Cliente</DialogTitle>
-            <DialogDescription>Cria empresa, dono e ativa os modulos do sistema base automaticamente.</DialogDescription>
+            <DialogTitle>Nova Empresa</DialogTitle>
+            <DialogDescription>Cria a empresa e ativa os modulos do sistema base automaticamente.</DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleCreate} className="space-y-4">
@@ -324,22 +309,6 @@ const Empresas: React.FC = () => {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Nome do dono *</Label>
-                <Input value={formData.donoNome} onChange={(e) => setFormData({ ...formData, donoNome: e.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <Label>Email do dono *</Label>
-                <Input type="email" value={formData.donoEmail} onChange={(e) => setFormData({ ...formData, donoEmail: e.target.value })} />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Senha inicial (opcional)</Label>
-              <Input type="text" value={formData.donoSenha} onChange={(e) => setFormData({ ...formData, donoSenha: e.target.value })} />
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
@@ -424,18 +393,6 @@ const Empresas: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!credentials} onOpenChange={() => setCredentials(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Credenciais do Cliente</DialogTitle>
-            <DialogDescription>Envie esses dados ao cliente para primeiro acesso.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 text-sm">
-            <p><strong>Email:</strong> {credentials?.email}</p>
-            <p><strong>Senha temporaria:</strong> {credentials?.password}</p>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

@@ -101,12 +101,12 @@ export class DashboardService {
         where: { companyId, scheduledAt: { gte: now } },
       }),
       prisma.order.aggregate({
-        where: { companyId, createdAt: { gte: startOfMonth } },
+        where: { companyId, status: 'paid', createdAt: { gte: startOfMonth } },
         _sum: { total: true },
         _count: { id: true },
       }),
       prisma.order.aggregate({
-        where: { companyId },
+        where: { companyId, status: 'paid' },
         _sum: { total: true },
         _count: { id: true },
       }),

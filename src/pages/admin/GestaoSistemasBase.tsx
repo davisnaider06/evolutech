@@ -24,6 +24,8 @@ interface Modulo {
   codigo: string;
   descricao: string | null;
   isCore: boolean;
+  isPro?: boolean;
+  allowedRoles?: string[];
   precoMensal: number;
   status: 'active' | 'inactive' | 'pending';
 }
@@ -55,6 +57,9 @@ export default function GestaoSistemasBase() {
     nicho: '',
     status: 'active' as 'active' | 'inactive' | 'pending',
   });
+  const highlightedModuleCodes = new Set(['customer_portal', 'courses']);
+  const roleLabel = (role: string) =>
+    role === 'DONO_EMPRESA' ? 'Dono' : role === 'FUNCIONARIO_EMPRESA' ? 'Funcionario' : role;
 
   const fetchAll = async () => {
     try {
@@ -63,7 +68,13 @@ export default function GestaoSistemasBase() {
         adminService.listarModulos(true),
       ]);
       setSistemas(systemsData || []);
-      setModulos(modulesData || []);
+      const sortedModules = [...(modulesData || [])].sort((a: Modulo, b: Modulo) => {
+        const aPriority = highlightedModuleCodes.has((a.codigo || '').toLowerCase()) ? 0 : 1;
+        const bPriority = highlightedModuleCodes.has((b.codigo || '').toLowerCase()) ? 0 : 1;
+        if (aPriority !== bPriority) return aPriority - bPriority;
+        return (a.nome || '').localeCompare(b.nome || '', 'pt-BR');
+      });
+      setModulos(sortedModules);
     } catch (error: any) {
       toast({ title: error.message || 'Erro ao carregar dados', variant: 'destructive' });
     } finally {
@@ -258,7 +269,18 @@ export default function GestaoSistemasBase() {
                   <div key={modulo.id} className="flex items-center justify-between rounded border p-3">
                     <div>
                       <p className="font-medium">{modulo.nome}</p>
-                      <p className="text-sm text-muted-foreground">{modulo.codigo}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm text-muted-foreground">{modulo.codigo}</p>
+                        {highlightedModuleCodes.has((modulo.codigo || '').toLowerCase()) && (
+                          <Badge variant="outline">Portal Cliente</Badge>
+                        )}
+                        {modulo.isPro && <Badge variant="outline">Pro</Badge>}
+                        {(modulo.allowedRoles || ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA']).map((role) => (
+                          <Badge key={`${modulo.id}-${role}`} variant="secondary">
+                            {roleLabel(role)}
+                          </Badge>
+                        ))}
+                      </div>
                     </div>
                     <Checkbox checked={isModuloSelected(modulo.id)} onCheckedChange={() => toggleModulo(modulo.id)} />
                   </div>
