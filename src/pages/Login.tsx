@@ -127,11 +127,19 @@ const Login: React.FC = () => {
             </Button>
 
           </form>
-          <p className="mt-4 w-full text-center text-sm text-muted-foreground">
-            <Link className="text-primary underline" to="/cliente/cadastro">
-              cliente se cadastre aqui
-            </Link>
-          </p>
+            <div className="mt-6 space-y-3 w-full">
+            <p className="text-center text-sm text-muted-foreground">
+              <Link className="text-primary hover:underline" to="/cliente/cadastro">
+              Cliente novo? Cadastre-se aqui
+              </Link>
+            </p>
+            <p className="text-center text-sm text-muted-foreground">
+              <Link className="text-primary hover:underline" to="/cliente/login">
+              Acessar portal do Cliente
+              </Link>
+            </p>
+            </div>
+
 
         </div>
 
