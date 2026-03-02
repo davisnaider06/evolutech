@@ -121,7 +121,7 @@ const CustomerLogin: React.FC = () => {
               className="text-primary underline"
               to={hasSlugFromRoute ? `/cliente/${form.company_slug}/cadastro` : '/cliente/cadastro'}
             >
-              cliente se cadastre aqui
+              Cliente novo? Cadastre-se aqui!
             </Link>
           </p>
         </CardContent>

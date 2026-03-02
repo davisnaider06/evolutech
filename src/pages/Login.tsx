@@ -128,11 +128,7 @@ const Login: React.FC = () => {
 
           </form>
             <div className="mt-6 space-y-3 w-full">
-            <p className="text-center text-sm text-muted-foreground">
-              <Link className="text-primary hover:underline" to="/cliente/cadastro">
-              Cliente novo? Cadastre-se aqui
-              </Link>
-            </p>
+            
             <p className="text-center text-sm text-muted-foreground">
               <Link className="text-primary hover:underline" to="/cliente/login">
               Acessar portal do Cliente
