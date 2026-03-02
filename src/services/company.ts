@@ -297,4 +297,11 @@ export const companyService = {
     request(`/gateways/${gatewayId}/activate`, { method: 'POST' }),
   deleteGateway: async (gatewayId: string) =>
     request(`/gateways/${gatewayId}`, { method: 'DELETE' }),
+  sendWhatsApp: async (data: {
+    phone: string;
+    message: string;
+    delayMessage?: number;
+    company_id?: string;
+    companyId?: string;
+  }) => request('/whatsapp/send', { method: 'POST', body: JSON.stringify(data) }),
 };

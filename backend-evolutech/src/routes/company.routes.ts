@@ -66,6 +66,7 @@ router.post('/gateways/connect', companyController.connectMyPaymentGateway.bind(
 router.post('/gateways/:gatewayId/activate', companyController.activateMyPaymentGateway.bind(companyController));
 router.delete('/gateways/:gatewayId', companyController.deleteMyPaymentGateway.bind(companyController));
 router.post('/products/import', companyController.importProducts.bind(companyController));
+router.post('/whatsapp/send', companyController.sendWhatsApp.bind(companyController));
 
 router.get('/:table', companyController.list.bind(companyController));
 router.post('/:table', companyController.create.bind(companyController));

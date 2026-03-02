@@ -564,6 +564,120 @@ export class CompanyService {
     return { success: true };
   }
 
+  // Módulo WhatsApp ////////////////////////////
+
+  private normalizePhone(phone: unknown) {
+    const digits = String(phone || '').replace(/\D/g, '');
+    if (!digits) {
+      throw new CompanyServiceError('Telefone obrigatorio', 400);
+    }
+    if (digits.length === 10 || digits.length === 11) {
+      return `55${digits}`;
+    }
+    if (digits.length === 12 || digits.length === 13) {
+      return digits;
+    }
+
+    throw new CompanyServiceError('Telefone invalido. Use DDD + numero com ou sem codigo do pais', 400);
+  }
+
+  async sendWhatsApp(
+    user: AuthenticatedUser,
+    data: {
+      phone?: string;
+      message?: string;
+      delayMessage?: number;
+      company_id?: string;
+      companyId?: string;
+    }
+  ) {
+    const requestedCompanyId = String(data?.company_id || data?.companyId || '').trim() || null;
+    const companyId = requestedCompanyId || user.companyId || null;
+
+    if (requestedCompanyId && !this.checkAccess(user, requestedCompanyId)) {
+      throw new CompanyServiceError('Acesso negado', 403);
+    }
+    const message = String(data?.message || '').trim();
+    if (!message) {
+      throw new CompanyServiceError('Mensagem obrigatoria', 400);
+    }
+
+    const phone = this.normalizePhone(data?.phone);
+    const rawDelay = Number(data?.delayMessage ?? 0);
+    const delayMessage = Number.isFinite(rawDelay) ? Math.max(0, rawDelay) : 0;
+
+    const baseUrl = String(process.env.ZAPI_BASE_URL || 'https://api.z-api.io/instances').replace(/\/+$/, '');
+    const instanceId = String(process.env.ZAPI_INSTANCE_ID || '').trim();
+    const instanceToken = String(process.env.ZAPI_INSTANCE_TOKEN || '').trim();
+    const clientToken = String(process.env.ZAPI_CLIENT_TOKEN || '').trim();
+
+    if (!instanceId || !instanceToken) {
+      throw new CompanyServiceError(
+        'Z-API nao configurada. Defina ZAPI_INSTANCE_ID e ZAPI_INSTANCE_TOKEN no .env',
+        500
+      );
+    }
+
+    const endpoint = `${baseUrl}/${instanceId}/token/${instanceToken}/send-text`;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (clientToken) {
+      headers['Client-Token'] = clientToken;
+    }
+
+    let responseBody: any = null;
+    let responseStatus = 0;
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          phone,
+          message,
+          delayMessage,
+        }),
+      });
+
+      responseStatus = response.status;
+      const raw = await response.text();
+      try {
+        responseBody = raw ? JSON.parse(raw) : null;
+      } catch {
+        responseBody = raw || null;
+      }
+
+      if (!response.ok) {
+        const providerMessage =
+          typeof responseBody === 'string'
+            ? responseBody
+            : responseBody?.message || responseBody?.error || responseBody?.msg || '';
+        throw new CompanyServiceError(
+          `Falha ao enviar mensagem pela Z-API (status ${response.status})${
+            providerMessage ? `: ${String(providerMessage).slice(0, 300)}` : ''
+          }`,
+          502
+        );
+      }
+    } catch (error) {
+      if (error instanceof CompanyServiceError) {
+        throw error;
+      }
+      throw new CompanyServiceError(
+        `Erro de comunicacao com a Z-API${error instanceof Error ? `: ${error.message}` : ''}`,
+        502
+      );
+    }
+
+    return {
+      success: true,
+      provider: 'z-api',
+      companyId,
+      phone,
+      responseStatus,
+      response: responseBody,
+    };
+  }
+
   async listAppointmentAvailability(
     user: AuthenticatedUser,
     queryParams: { professional_id?: string; company_id?: string }
