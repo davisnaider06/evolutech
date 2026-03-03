@@ -57,11 +57,15 @@ async function ensureBaseCatalog() {
     { nome: 'Assinaturas', codigo: 'assinaturas', descricao: 'Planos e assinaturas de clientes', isCore: false, preco: 49.9 },
     { nome: 'Comissoes Dono', codigo: 'comissoes_dono', descricao: 'Gestao de comissoes pelo dono', isCore: false, preco: 29.9 },
     { nome: 'Comissoes Staff', codigo: 'commissions_staff', descricao: 'Consulta de comissoes pelo funcionario', isCore: false, preco: 0 },
+    { nome: 'Permissoes de Equipe', codigo: 'permissions', descricao: 'Gestao de permissoes dos funcionarios por modulo', isCore: true, preco: 0 },
+    { nome: 'Cobranca e Inadimplencia', codigo: 'collections', descricao: 'Gestao de cobrancas, vencimentos e recuperacao', isCore: false, preco: 59.9 },
     { nome: 'Portal Cliente', codigo: 'customer_portal', descricao: 'Portal de login para cliente final', isCore: false, preco: 39.9 },
     { nome: 'Cursos', codigo: 'courses', descricao: 'Gestao e venda de cursos', isCore: false, preco: 79.9 }
   ];
 
   for (const item of modules) {
+    const isPermissionsModule = item.codigo === 'permissions';
+    const isCollectionsModule = item.codigo === 'collections';
     await prisma.modulo.upsert({
       where: { codigo: item.codigo },
       update: {
@@ -69,6 +73,8 @@ async function ensureBaseCatalog() {
         descricao: item.descricao,
         isCore: item.isCore,
         precoMensal: item.preco,
+        isPro: isCollectionsModule,
+        allowedRoles: isPermissionsModule ? ['DONO_EMPRESA'] : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
         status: 'active' as Status
       },
       create: {
@@ -77,6 +83,8 @@ async function ensureBaseCatalog() {
         descricao: item.descricao,
         isCore: item.isCore,
         precoMensal: item.preco,
+        isPro: isCollectionsModule,
+        allowedRoles: isPermissionsModule ? ['DONO_EMPRESA'] : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
         status: 'active' as Status
       }
     });
@@ -112,6 +120,8 @@ async function ensureBaseCatalog() {
     'assinaturas',
     'comissoes_dono',
     'commissions_staff',
+    'permissions',
+    'collections',
     'customer_portal',
     'courses',
   ];
@@ -123,7 +133,7 @@ async function ensureBaseCatalog() {
     data: moduloRecords.map((modulo) => ({
       sistemaBaseId: barbearia.id,
       moduloId: modulo.id,
-          isMandatory: ['dashboard', 'clientes', 'agendamentos', 'customer_portal'].includes(modulo.codigo)
+          isMandatory: ['dashboard', 'clientes', 'agendamentos', 'customer_portal', 'permissions'].includes(modulo.codigo)
         })),
     skipDuplicates: true
   });

@@ -53,6 +53,7 @@ import ChatbotPublic from "./pages/ChatbotPublic";
 import EmpresaDashboard from "./pages/empresa/EmpresaDashboard";
 import EmpresaApp from "./pages/empresa/EmpresaApp";
 import ConvitesEquipe from "./pages/empresa/ConvitesEquipe";
+import PermissoesEquipe from "./pages/empresa/PermissoesEquipe";
 import Clientes from "./pages/empresa/Clientes";
 import Produtos from "./pages/empresa/Produtos";
 import Agendamentos from "./pages/empresa/Agendamentos";
@@ -290,6 +291,16 @@ const App = () => (
                         <ConvitesEquipe />
                       </AuthGuard>
                     } 
+                  />
+                  <Route
+                    path="/empresa/permissoes"
+                    element={
+                      <AuthGuard allowedRoles={['DONO_EMPRESA']}>
+                        <ModuleGuard moduleCode="permissions">
+                          <PermissoesEquipe />
+                        </ModuleGuard>
+                      </AuthGuard>
+                    }
                   />
                   <Route 
                     path="/empresa/financeiro" 

@@ -29,6 +29,51 @@ export class AdminService {
         status: 'active',
       } as any,
     });
+
+    await prisma.modulo.upsert({
+      where: { codigo: 'permissions' },
+      update: {
+        nome: 'Permissoes de Equipe',
+        descricao: 'Controle de permissoes dos funcionarios por modulo',
+        nicho: 'geral',
+        status: 'active',
+        allowedRoles: ['DONO_EMPRESA'] as any,
+      },
+      create: {
+        nome: 'Permissoes de Equipe',
+        descricao: 'Controle de permissoes dos funcionarios por modulo',
+        codigo: 'permissions',
+        icone: 'shield',
+        nicho: 'geral',
+        precoMensal: 0,
+        isCore: true,
+        isPro: false,
+        allowedRoles: ['DONO_EMPRESA'] as any,
+        status: 'active',
+      } as any,
+    });
+
+    await prisma.modulo.upsert({
+      where: { codigo: 'collections' },
+      update: {
+        nome: 'Cobranca e Inadimplencia',
+        descricao: 'Gestao de cobrancas e recuperacao',
+        nicho: 'geral',
+        status: 'active',
+        isPro: true,
+      },
+      create: {
+        nome: 'Cobranca e Inadimplencia',
+        descricao: 'Gestao de cobrancas e recuperacao',
+        codigo: 'collections',
+        icone: 'wallet',
+        nicho: 'geral',
+        precoMensal: 59.9,
+        isCore: false,
+        isPro: true,
+        status: 'active',
+      } as any,
+    });
   }
 
   private toNumber(value: unknown): number {

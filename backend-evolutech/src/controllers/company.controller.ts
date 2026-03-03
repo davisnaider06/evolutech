@@ -160,6 +160,29 @@ export class CompanyController {
     }
   }
 
+  async listTeamMemberPermissions(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.listTeamMemberModulePermissions(req.user!);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async updateTeamMemberPermissions(req: AuthedRequest, res: Response) {
+    try {
+      const { memberId } = req.params;
+      const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions : [];
+      const result = await service.upsertTeamMemberModulePermissions(req.user!, {
+        member_id: memberId,
+        permissions,
+      });
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   async getCustomerHistory(req: AuthedRequest, res: Response) {
     try {
       const { customerId } = req.params;
@@ -471,6 +494,43 @@ export class CompanyController {
     try {
       const result = await service.createBillingCharge(req.user!, req.body || {});
       return res.status(201).json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async listCollectionsReceivables(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.listBillingCharges(req.user!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async createCollectionsReceivable(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.createBillingCharge(req.user!, req.body || {});
+      return res.status(201).json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async markCollectionsReceivablePaid(req: AuthedRequest, res: Response) {
+    try {
+      const { receivableId } = req.params;
+      const result = await service.markBillingChargeAsPaid(req.user!, receivableId, req.body || {});
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async getCollectionsMetrics(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.getCollectionsMetrics(req.user!, req.query as any);
+      return res.json(result);
     } catch (error: unknown) {
       return this.handleError(error, res);
     }

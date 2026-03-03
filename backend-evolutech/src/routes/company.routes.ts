@@ -42,6 +42,8 @@ router.delete('/tasks/my/:taskId', companyController.deleteMyTask.bind(companyCo
 router.post('/tasks/my/:taskId/move', companyController.moveMyTask.bind(companyController));
 router.get('/team/members', companyController.listTeamMembers.bind(companyController));
 router.post('/team/members', companyController.createTeamMember.bind(companyController));
+router.get('/team/permissions', companyController.listTeamMemberPermissions.bind(companyController));
+router.put('/team/permissions/:memberId', companyController.updateTeamMemberPermissions.bind(companyController));
 router.get('/customers/:customerId/history', companyController.getCustomerHistory.bind(companyController));
 router.get('/loyalty/settings', companyController.getLoyaltySettings.bind(companyController));
 router.put('/loyalty/settings', companyController.updateLoyaltySettings.bind(companyController));
@@ -61,6 +63,10 @@ router.post('/pdv/checkout', companyController.checkoutPdv.bind(companyControlle
 router.post('/pdv/orders/:orderId/confirm-pix', companyController.confirmPixPayment.bind(companyController));
 router.get('/billing/charges', companyController.listBillingCharges.bind(companyController));
 router.post('/billing/charges', companyController.createBillingCharge.bind(companyController));
+router.get('/collections/receivables', companyController.listCollectionsReceivables.bind(companyController));
+router.post('/collections/receivables', companyController.createCollectionsReceivable.bind(companyController));
+router.post('/collections/receivables/:receivableId/pay', companyController.markCollectionsReceivablePaid.bind(companyController));
+router.get('/collections/metrics', companyController.getCollectionsMetrics.bind(companyController));
 router.get('/gateways', companyController.listMyPaymentGateways.bind(companyController));
 router.post('/gateways/connect', companyController.connectMyPaymentGateway.bind(companyController));
 router.post('/gateways/:gatewayId/activate', companyController.activateMyPaymentGateway.bind(companyController));

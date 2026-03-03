@@ -67,6 +67,7 @@ const navItems: NavItem[] = [
   
   // Team management (core for owners)
   { icon: UserPlus, label: 'Equipe', path: '/empresa/equipe', moduleCode: 'users', ownerOnly: true },
+  { icon: Settings, label: 'Permissoes', path: '/empresa/permissoes', moduleCode: 'permissions', ownerOnly: true },
   
   // Support & Training
   { icon: HeadphonesIcon, label: 'Suporte', path: '/empresa/suporte', moduleCode: 'support' },

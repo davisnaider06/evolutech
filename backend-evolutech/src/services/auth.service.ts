@@ -10,6 +10,7 @@ const OWNER_DEFAULT_MODULES = [
   { codigo: 'reports', nome: 'Relatorios' },
   { codigo: 'finance', nome: 'Financeiro' },
   { codigo: 'users', nome: 'Equipe' },
+  { codigo: 'permissions', nome: 'Permissoes' },
   { codigo: 'gateways', nome: 'Gateways' },
   { codigo: 'commissions_owner', nome: 'Comissões' },
 ];
@@ -128,7 +129,7 @@ export class AuthService {
       return cached.payload;
     }
 
-    const [companyModules, sistemaBaseModules] = companyId
+    const [companyModules, sistemaBaseModules, employeePermissions] = companyId
       ? await Promise.all([
           prisma.companyModule.findMany({
             where: {
@@ -147,8 +148,29 @@ export class AuthService {
                 include: { modulo: true },
               })
             : Promise.resolve([]),
+          activeRole?.role === 'FUNCIONARIO_EMPRESA'
+            ? (prisma as any).employeeModulePermission.findMany({
+                where: {
+                  companyId,
+                  userId,
+                },
+                select: {
+                  moduloId: true,
+                  isAllowed: true,
+                },
+              })
+            : Promise.resolve([]),
         ])
-      : [[], []];
+      : [[], [], []];
+
+    const deniedModuleIds =
+      activeRole?.role === 'FUNCIONARIO_EMPRESA'
+        ? new Set(
+            employeePermissions
+              .filter((item: { moduloId: string; isAllowed: boolean }) => item.isAllowed === false)
+              .map((item: { moduloId: string; isAllowed: boolean }) => item.moduloId)
+          )
+        : new Set<string>();
 
     const moduleMap = new Map<
       string,
@@ -162,6 +184,7 @@ export class AuthService {
       }
     >();
     for (const item of companyModules) {
+      if (deniedModuleIds.has(item.modulo.id)) continue;
       moduleMap.set(item.modulo.id, {
         id: item.modulo.id,
         codigo: item.modulo.codigo,
@@ -174,6 +197,7 @@ export class AuthService {
       });
     }
     for (const item of sistemaBaseModules) {
+      if (deniedModuleIds.has(item.modulo.id)) continue;
       moduleMap.set(item.modulo.id, {
         id: item.modulo.id,
         codigo: item.modulo.codigo,

@@ -22,6 +22,7 @@ model User {
   commissionAdjustmentsCreated CommissionAdjustment[] @relation("CommissionAdjustmentCreatedBy")
   commissionPayoutsAsProfessional CommissionPayout[] @relation("CommissionPayoutProfessional")
   commissionPayoutsCreated CommissionPayout[] @relation("CommissionPayoutCreatedBy")
+  modulePermissions EmployeeModulePermission[]
   tasks        Task[]
   roles        UserRole[]
 
@@ -58,6 +59,7 @@ model Company {
   commissionProfiles CommissionProfile[]
   commissionAdjustments CommissionAdjustment[]
   commissionPayouts CommissionPayout[]
+  employeeModulePermissions EmployeeModulePermission[]
   loyaltySettings CompanyLoyaltySettings?
   loyaltyProfiles CustomerLoyaltyProfile[]
   loyaltyTransactions CustomerLoyaltyTransaction[]
@@ -100,9 +102,29 @@ model Modulo {
   status       Status              @default(active)
   createdAt    DateTime            @default(now()) @map("created_at")
   empresas     CompanyModule[]
+  employeePermissions EmployeeModulePermission[]
   sistemasBase SistemaBaseModulo[]
 
   @@map("modulos")
+}
+
+model EmployeeModulePermission {
+  id        String   @id @default(uuid())
+  companyId String   @map("empresa_id")
+  userId    String   @map("user_id")
+  moduloId  String   @map("modulo_id")
+  isAllowed Boolean  @default(true) @map("is_allowed")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  modulo  Modulo  @relation(fields: [moduloId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, userId, moduloId])
+  @@index([companyId, userId])
+  @@index([companyId, moduloId])
+  @@map("employee_module_permissions")
 }
 
 model SistemaBase {

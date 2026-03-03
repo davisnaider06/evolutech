@@ -11,7 +11,7 @@ export interface CompanyModule {
   is_pro?: boolean;
 }
 
-const OWNER_DEFAULT_CODES = ['dashboard', 'reports', 'users', 'finance', 'gateways', 'commissions_owner'];
+const OWNER_DEFAULT_CODES = ['dashboard', 'reports', 'users', 'permissions', 'finance', 'gateways', 'commissions_owner'];
 
 const MODULE_ALIASES: Record<string, string[]> = {
   customers: ['customers', 'clientes'],
@@ -21,6 +21,7 @@ const MODULE_ALIASES: Record<string, string[]> = {
   orders: ['orders', 'pedidos'],
   pdv: ['pdv', 'orders', 'pedidos'],
   billing: ['billing', 'cobrancas', 'cobranca'],
+  collections: ['collections', 'billing', 'cobrancas', 'cobranca'],
   cash: ['cash', 'caixa'],
   finance: ['finance', 'financeiro'],
   gateways: ['gateways', 'gateway'],
@@ -29,6 +30,7 @@ const MODULE_ALIASES: Record<string, string[]> = {
   subscriptions: ['subscriptions', 'assinaturas'],
   loyalty: ['loyalty', 'fidelidade'],
   users: ['users', 'equipe', 'funcionarios', 'team'],
+  permissions: ['permissions', 'permissoes', 'controle_permissoes'],
   support: ['support', 'suporte'],
   training: ['training', 'treinamentos'],
   customer_portal: ['customer_portal', 'portal_cliente'],

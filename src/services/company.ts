@@ -246,6 +246,42 @@ export const companyService = {
     due_date?: string;
     payment_method?: 'pix' | 'credito' | 'debito' | 'cartao';
   }) => request('/billing/charges', { method: 'POST', body: JSON.stringify(data) }),
+  listCollectionsReceivables: async (params?: {
+    status?: string;
+    page?: number;
+    pageSize?: number;
+    search?: string;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+    if (params?.search) searchParams.set('search', params.search);
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return request(`/collections/receivables${suffix}`);
+  },
+  createCollectionsReceivable: async (data: {
+    title: string;
+    description?: string;
+    customer_name: string;
+    customer_email?: string;
+    customer_phone?: string;
+    amount: number;
+    due_date?: string;
+    payment_method?: 'pix' | 'credito' | 'debito' | 'cartao';
+  }) => request('/collections/receivables', { method: 'POST', body: JSON.stringify(data) }),
+  markCollectionsReceivablePaid: async (receivableId: string, company_id?: string) =>
+    request(`/collections/receivables/${encodeURIComponent(receivableId)}/pay`, {
+      method: 'POST',
+      body: JSON.stringify(company_id ? { company_id } : {}),
+    }),
+  getCollectionsMetrics: async (params?: { dateFrom?: string; dateTo?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.dateFrom) searchParams.set('dateFrom', params.dateFrom);
+    if (params?.dateTo) searchParams.set('dateTo', params.dateTo);
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return request(`/collections/metrics${suffix}`);
+  },
   confirmPdvPixPayment: async (orderId: string, company_id?: string) =>
     request(`/pdv/orders/${orderId}/confirm-pix`, {
       method: 'POST',
@@ -263,6 +299,15 @@ export const companyService = {
     request(`/customers/${encodeURIComponent(customerId)}/history`),
   createTeamMember: async (data: { fullName: string; email: string; password?: string }) =>
     request('/team/members', { method: 'POST', body: JSON.stringify(data) }),
+  listTeamPermissions: async () => request('/team/permissions'),
+  updateTeamMemberPermissions: async (
+    memberId: string,
+    permissions: Array<{ modulo_id?: string; modulo_codigo?: string; is_allowed: boolean }>
+  ) =>
+    request(`/team/permissions/${encodeURIComponent(memberId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ permissions }),
+    }),
   listMyTasks: async () => request('/tasks/my'),
   createMyTask: async (data: { title: string; description?: string }) =>
     request('/tasks/my', { method: 'POST', body: JSON.stringify(data) }),

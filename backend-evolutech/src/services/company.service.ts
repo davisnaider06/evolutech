@@ -41,6 +41,8 @@ export class CompanyService {
     'equipe',
     'funcionarios',
     'team',
+    'permissions',
+    'permissoes',
     'gateway',
     'gateways',
     'commissions_owner',
@@ -61,21 +63,27 @@ export class CompanyService {
       .replace(/[\u0300-\u036f]/g, '');
   }
 
-  private getModuleCacheKey(companyId: string, moduleCodes: string[], role: AuthenticatedUser['role']) {
+  private getModuleCacheKey(
+    companyId: string,
+    moduleCodes: string[],
+    role: AuthenticatedUser['role'],
+    userId?: string
+  ) {
     const normalized = moduleCodes
       .map((code) => String(code || '').trim().toLowerCase())
       .filter(Boolean)
       .sort()
       .join('|');
-    return `${companyId}:${role}:${normalized}`;
+    return `${companyId}:${role}:${userId || 'anonymous'}:${normalized}`;
   }
 
   private getCachedModuleAccess(
     companyId: string,
     moduleCodes: string[],
-    role: AuthenticatedUser['role']
+    role: AuthenticatedUser['role'],
+    userId?: string
   ) {
-    const key = this.getModuleCacheKey(companyId, moduleCodes, role);
+    const key = this.getModuleCacheKey(companyId, moduleCodes, role, userId);
     const cached = this.moduleAccessCache.get(key);
     if (!cached) return null;
     if (cached.expiresAt < Date.now()) {
@@ -89,9 +97,10 @@ export class CompanyService {
     companyId: string,
     moduleCodes: string[],
     role: AuthenticatedUser['role'],
-    allowed: boolean
+    allowed: boolean,
+    userId?: string
   ) {
-    const key = this.getModuleCacheKey(companyId, moduleCodes, role);
+    const key = this.getModuleCacheKey(companyId, moduleCodes, role, userId);
     this.moduleAccessCache.set(key, {
       allowed,
       expiresAt: Date.now() + this.moduleAccessCacheTtlMs,
@@ -149,6 +158,34 @@ export class CompanyService {
         `Modulo "${requestedCodes[0] || 'modulo'}" nao permitido para o perfil atual`,
         403
       );
+    }
+  }
+
+  private async enforceEmployeePermissionOverride(
+    user: AuthenticatedUser,
+    companyId: string,
+    matchedModules: any[]
+  ) {
+    if (user.role !== 'FUNCIONARIO_EMPRESA') return;
+    if (!matchedModules.length) return;
+
+    const moduleIds = matchedModules
+      .map((item) => String(item?.modulo?.id || ''))
+      .filter(Boolean);
+    if (!moduleIds.length) return;
+
+    const denied = await (prisma as any).employeeModulePermission.findFirst({
+      where: {
+        companyId,
+        userId: user.id,
+        moduloId: { in: moduleIds },
+        isAllowed: false,
+      },
+      select: { moduloId: true },
+    });
+
+    if (denied) {
+      throw new CompanyServiceError('Seu acesso a este modulo foi desabilitado pelo dono da empresa', 403);
     }
   }
 
@@ -325,7 +362,7 @@ export class CompanyService {
     const companyPlan = await this.getCompanyPlan(companyId);
 
     if (this.hasOwnerDefaultAccess(user, moduleCodes)) return;
-    const cached = this.getCachedModuleAccess(companyId, moduleCodes, user.role);
+    const cached = this.getCachedModuleAccess(companyId, moduleCodes, user.role, user.id);
     if (cached === true) return;
 
     const hasModule = await (prisma as any).companyModule.findFirst({
@@ -341,6 +378,7 @@ export class CompanyService {
         id: true,
         modulo: {
           select: {
+            id: true,
             codigo: true,
             isPro: true,
             allowedRoles: true,
@@ -350,7 +388,7 @@ export class CompanyService {
     });
 
     if (!hasModule) {
-      this.setCachedModuleAccess(companyId, moduleCodes, user.role, false);
+      this.setCachedModuleAccess(companyId, moduleCodes, user.role, false, user.id);
       throw new CompanyServiceError(
         `M�dulo "${moduleCodes[0]}" n�o est� ativo para esta empresa`,
         403
@@ -358,7 +396,8 @@ export class CompanyService {
     }
     this.enforcePlanModuleAccess(companyPlan, moduleCodes, hasModule ? [hasModule] : []);
     this.enforceRoleModuleAccess(user.role, moduleCodes, hasModule ? [hasModule] : []);
-    this.setCachedModuleAccess(companyId, moduleCodes, user.role, true);
+    await this.enforceEmployeePermissionOverride(user, companyId, hasModule ? [hasModule] : []);
+    this.setCachedModuleAccess(companyId, moduleCodes, user.role, true, user.id);
   }
 
   async listTableData(table: string, user: AuthenticatedUser, queryParams: any) {
@@ -792,7 +831,7 @@ export class CompanyService {
     const companyPlan = await this.getCompanyPlan(companyId);
 
     if (this.hasOwnerDefaultAccess(user, moduleCodes)) return;
-    const cached = this.getCachedModuleAccess(companyId, moduleCodes, user.role);
+    const cached = this.getCachedModuleAccess(companyId, moduleCodes, user.role, user.id);
     if (cached === true) return;
 
     const hasModule = await (prisma as any).companyModule.findFirst({
@@ -808,6 +847,7 @@ export class CompanyService {
         id: true,
         modulo: {
           select: {
+            id: true,
             codigo: true,
             isPro: true,
             allowedRoles: true,
@@ -817,12 +857,13 @@ export class CompanyService {
     });
 
     if (!hasModule) {
-      this.setCachedModuleAccess(companyId, moduleCodes, user.role, false);
+      this.setCachedModuleAccess(companyId, moduleCodes, user.role, false, user.id);
       throw new CompanyServiceError(`Modulo "${moduleCodes[0]}" nao esta ativo para esta empresa`, 403);
     }
     this.enforcePlanModuleAccess(companyPlan, moduleCodes, hasModule ? [hasModule] : []);
     this.enforceRoleModuleAccess(user.role, moduleCodes, hasModule ? [hasModule] : []);
-    this.setCachedModuleAccess(companyId, moduleCodes, user.role, true);
+    await this.enforceEmployeePermissionOverride(user, companyId, hasModule ? [hasModule] : []);
+    this.setCachedModuleAccess(companyId, moduleCodes, user.role, true, user.id);
   }
 
   private hasOwnerDefaultAccess(user: AuthenticatedUser, moduleCodes: string[]) {
@@ -3007,7 +3048,7 @@ export class CompanyService {
     queryParams: { status?: string; page?: number; pageSize?: number; search?: string }
   ) {
     const companyId = this.resolveCompanyId(user, queryParams);
-    await this.ensureAnyModuleAccess(user, companyId, ['billing', 'cobrancas']);
+    await this.ensureAnyModuleAccess(user, companyId, ['collections', 'billing', 'cobrancas']);
 
     const status = String(queryParams.status || '').trim().toLowerCase();
     const search = String(queryParams.search || '').trim();
@@ -3100,7 +3141,7 @@ export class CompanyService {
     }
   ) {
     const companyId = this.resolveCompanyId(user, data);
-    await this.ensureAnyModuleAccess(user, companyId, ['billing', 'cobrancas']);
+    await this.ensureAnyModuleAccess(user, companyId, ['collections', 'billing', 'cobrancas']);
 
     const title = String(data.title || '').trim();
     const customerName = String(data.customer_name || '').trim();
@@ -3251,6 +3292,149 @@ export class CompanyService {
           : null,
       };
     }, { maxWait: 10000, timeout: 30000 });
+  }
+
+  async markBillingChargeAsPaid(
+    user: AuthenticatedUser,
+    billingChargeId: string,
+    payload?: { company_id?: string; companyId?: string }
+  ) {
+    const companyId = this.resolveCompanyId(user, payload || {});
+    await this.ensureAnyModuleAccess(user, companyId, ['collections', 'billing', 'cobrancas']);
+
+    const charge = await (prisma as any).billingCharge.findFirst({
+      where: { id: billingChargeId, companyId },
+      select: {
+        id: true,
+        orderId: true,
+        status: true,
+        amount: true,
+      },
+    });
+    if (!charge) throw new CompanyServiceError('Cobranca nao encontrada', 404);
+
+    if (charge.status === 'paid') {
+      return { id: charge.id, status: 'paid' };
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const now = new Date();
+      const nextCharge = await (tx as any).billingCharge.update({
+        where: { id: charge.id },
+        data: {
+          status: 'paid',
+          paidAt: now,
+        },
+      });
+
+      await tx.order.update({
+        where: { id: charge.orderId },
+        data: { status: 'paid' },
+      });
+
+      const order = await tx.order.findUnique({
+        where: { id: charge.orderId },
+        select: { createdAt: true },
+      });
+      if (order) {
+        await this.syncCompanyMonthlyRevenue(tx, companyId, order.createdAt);
+      }
+
+      await tx.auditLog.create({
+        data: {
+          userId: user.id,
+          companyId,
+          action: 'BILLING_CHARGE_MARKED_PAID',
+          resource: 'billing_charges',
+          details: {
+            billingChargeId: charge.id,
+            orderId: charge.orderId,
+            amount: Number(charge.amount || 0),
+          },
+        },
+      });
+
+      return nextCharge;
+    });
+
+    return {
+      id: updated.id,
+      status: updated.status,
+      paid_at: updated.paidAt,
+      updated_at: updated.updatedAt,
+    };
+  }
+
+  async getCollectionsMetrics(
+    user: AuthenticatedUser,
+    queryParams: { company_id?: string; companyId?: string; dateFrom?: string; dateTo?: string } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, ['collections', 'billing', 'cobrancas']);
+
+    const now = new Date();
+    const dateFrom = queryParams.dateFrom ? new Date(String(queryParams.dateFrom)) : null;
+    const dateTo = queryParams.dateTo ? new Date(String(queryParams.dateTo)) : null;
+
+    const where: any = { companyId };
+    if (dateFrom || dateTo) {
+      where.createdAt = {};
+      if (dateFrom && !Number.isNaN(dateFrom.getTime())) where.createdAt.gte = dateFrom;
+      if (dateTo && !Number.isNaN(dateTo.getTime())) where.createdAt.lte = dateTo;
+    }
+
+    const [totals, overdueCount, upcomingCount] = await Promise.all([
+      (prisma as any).billingCharge.groupBy({
+        by: ['status'],
+        where,
+        _sum: { amount: true },
+        _count: { _all: true },
+      }),
+      (prisma as any).billingCharge.count({
+        where: {
+          ...where,
+          status: 'pending',
+          dueDate: { lt: now },
+        },
+      }),
+      (prisma as any).billingCharge.count({
+        where: {
+          ...where,
+          status: 'pending',
+          dueDate: { gte: now },
+        },
+      }),
+    ]);
+
+    const summary = totals.reduce(
+      (acc: any, item: any) => {
+        const status = String(item.status || '').toLowerCase();
+        const amount = Number(item._sum?.amount || 0);
+        const count = Number(item._count?._all || 0);
+        if (status === 'paid') {
+          acc.paid_amount += amount;
+          acc.paid_count += count;
+        } else {
+          acc.pending_amount += amount;
+          acc.pending_count += count;
+        }
+        return acc;
+      },
+      {
+        paid_amount: 0,
+        paid_count: 0,
+        pending_amount: 0,
+        pending_count: 0,
+      }
+    );
+
+    return {
+      summary: {
+        ...summary,
+        overdue_count: overdueCount,
+        upcoming_count: upcomingCount,
+      },
+    };
   }
 
   async confirmPixPayment(user: AuthenticatedUser, orderId: string, payload?: any) {
@@ -4311,6 +4495,219 @@ export class CompanyService {
         requiresPasswordChange: true,
       },
     };
+  }
+
+  async listTeamMemberModulePermissions(user: AuthenticatedUser) {
+    this.ensureOwner(user);
+    const companyId = this.ensureOwnerCompanyId(user);
+    await this.ensureAnyModuleAccess(user, companyId, ['permissions', 'permissoes']);
+
+    const [members, companyModules, permissionRows] = await Promise.all([
+      prisma.userRole.findMany({
+        where: {
+          companyId,
+          role: 'FUNCIONARIO_EMPRESA',
+        },
+        select: {
+          userId: true,
+          user: {
+            select: {
+              fullName: true,
+              email: true,
+              isActive: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
+      (prisma as any).companyModule.findMany({
+        where: {
+          companyId,
+          isActive: true,
+          modulo: { status: 'active' },
+        },
+        select: {
+          moduloId: true,
+          modulo: {
+            select: {
+              id: true,
+              codigo: true,
+              nome: true,
+              allowedRoles: true,
+              isPro: true,
+            },
+          },
+        },
+        orderBy: { activatedAt: 'asc' },
+      }),
+      (prisma as any).employeeModulePermission.findMany({
+        where: { companyId },
+        select: {
+          userId: true,
+          moduloId: true,
+          isAllowed: true,
+        },
+      }),
+    ]);
+
+    const modulesForStaff = companyModules
+      .map((item: any) => ({
+        id: item.modulo.id,
+        codigo: item.modulo.codigo,
+        nome: item.modulo.nome,
+        allowed_roles: Array.isArray(item.modulo.allowedRoles) ? item.modulo.allowedRoles : [],
+        is_pro: Boolean(item.modulo.isPro),
+      }))
+      .filter((item: any) => {
+        const roles = Array.isArray(item.allowed_roles) && item.allowed_roles.length > 0
+          ? item.allowed_roles
+          : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'];
+        return roles.includes('FUNCIONARIO_EMPRESA');
+      });
+
+    const permissionMap = new Map<string, boolean>();
+    for (const row of permissionRows) {
+      permissionMap.set(`${row.userId}:${row.moduloId}`, row.isAllowed !== false);
+    }
+
+    return {
+      modules: modulesForStaff,
+      members: members.map((member) => ({
+        id: member.userId,
+        full_name: member.user.fullName,
+        email: member.user.email,
+        is_active: member.user.isActive,
+        permissions: modulesForStaff.map((modulo: any) => ({
+          modulo_id: modulo.id,
+          modulo_codigo: modulo.codigo,
+          modulo_nome: modulo.nome,
+          is_allowed: permissionMap.has(`${member.userId}:${modulo.id}`)
+            ? Boolean(permissionMap.get(`${member.userId}:${modulo.id}`))
+            : true,
+        })),
+      })),
+    };
+  }
+
+  async upsertTeamMemberModulePermissions(
+    user: AuthenticatedUser,
+    payload: {
+      member_id?: string;
+      permissions?: Array<{
+        modulo_id?: string;
+        modulo_codigo?: string;
+        is_allowed?: boolean;
+      }>;
+    }
+  ) {
+    this.ensureOwner(user);
+    const companyId = this.ensureOwnerCompanyId(user);
+    await this.ensureAnyModuleAccess(user, companyId, ['permissions', 'permissoes']);
+
+    const memberId = String(payload.member_id || '').trim();
+    if (!memberId) throw new CompanyServiceError('member_id obrigatorio', 400);
+
+    const role = await prisma.userRole.findFirst({
+      where: {
+        companyId,
+        userId: memberId,
+        role: 'FUNCIONARIO_EMPRESA',
+      },
+      select: { id: true },
+    });
+    if (!role) {
+      throw new CompanyServiceError('Funcionario nao encontrado para esta empresa', 404);
+    }
+
+    const permissions = Array.isArray(payload.permissions) ? payload.permissions : [];
+    if (!permissions.length) {
+      throw new CompanyServiceError('Envie ao menos uma permissao', 400);
+    }
+
+    const companyModules = await (prisma as any).companyModule.findMany({
+      where: {
+        companyId,
+        isActive: true,
+        modulo: { status: 'active' },
+      },
+      select: {
+        moduloId: true,
+        modulo: {
+          select: {
+            id: true,
+            codigo: true,
+            allowedRoles: true,
+          },
+        },
+      },
+    });
+
+    const moduleByCode = new Map<string, string>();
+    const moduleById = new Set<string>();
+    for (const item of companyModules) {
+      const roles = Array.isArray(item.modulo.allowedRoles) && item.modulo.allowedRoles.length > 0
+        ? item.modulo.allowedRoles
+        : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'];
+      if (!roles.includes('FUNCIONARIO_EMPRESA')) continue;
+      moduleByCode.set(String(item.modulo.codigo || '').toLowerCase(), item.modulo.id);
+      moduleById.add(item.modulo.id);
+    }
+
+    const normalized = permissions.map((entry) => {
+      const moduleIdFromPayload = String(entry.modulo_id || '').trim();
+      const moduleCodeFromPayload = String(entry.modulo_codigo || '').trim().toLowerCase();
+      const moduloId =
+        moduleIdFromPayload ||
+        (moduleCodeFromPayload ? moduleByCode.get(moduleCodeFromPayload) || '' : '');
+
+      if (!moduloId || !moduleById.has(moduloId)) {
+        throw new CompanyServiceError('Modulo invalido para permissao de funcionario', 400);
+      }
+
+      return {
+        moduloId,
+        isAllowed: entry.is_allowed !== false,
+      };
+    });
+
+    await prisma.$transaction(async (tx) => {
+      for (const entry of normalized) {
+        await (tx as any).employeeModulePermission.upsert({
+          where: {
+            companyId_userId_moduloId: {
+              companyId,
+              userId: memberId,
+              moduloId: entry.moduloId,
+            },
+          },
+          update: {
+            isAllowed: entry.isAllowed,
+          },
+          create: {
+            companyId,
+            userId: memberId,
+            moduloId: entry.moduloId,
+            isAllowed: entry.isAllowed,
+          },
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          userId: user.id,
+          companyId,
+          action: 'TEAM_MEMBER_PERMISSIONS_UPDATED',
+          resource: 'employee_module_permissions',
+          details: {
+            memberId,
+            changes: normalized.length,
+          },
+        },
+      });
+    });
+
+    this.moduleAccessCache.clear();
+    return this.listTeamMemberModulePermissions(user);
   }
 
   private parseTaskStatus(status?: string): TaskStatus {
