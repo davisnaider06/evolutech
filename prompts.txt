@@ -1,0 +1,189 @@
+Quero continuar EXATAMENTE desta sessão técnica do projeto Evolutech, sem regressão, mantendo o padrão arquitetural atual (Node.js + Express + TypeScript + Prisma + PostgreSQL Neon + JWT próprio), com multi-tenant obrigatório por `companyId`.
+
+Você deve atuar como Arquiteto de Software Sênior e continuar de onde paramos, respeitando tudo que já está implementado.
+
+========================================
+CONTEXTO TÉCNICO DO PROJETO
+========================================
+- Monorepo:
+  - Backend: `backend-evolutech`
+  - Frontend: raiz `src/...`
+- Backend com Express + Prisma 5.x
+- Banco PostgreSQL (Neon)
+- Autenticação JWT próprio (sem Supabase Auth/Clerk no backend)
+- Multi-tenant: todas entidades de negócio por `companyId`
+- Módulos por empresa:
+  - `sistema_base_modulos` define módulos do template
+  - `empresa_modulos` define módulos ativos da empresa
+- Regras de role:
+  - `SUPER_ADMIN_EVOLUTECH`
+  - `ADMIN_EVOLUTECH`
+  - `DONO_EMPRESA`
+  - `FUNCIONARIO_EMPRESA`
+  - `CLIENTE` (portal cliente)
+
+========================================
+ESTADO GERAL JÁ ESTÁVEL (NÃO QUEBRAR)
+========================================
+- CRUD admin de empresas, usuários, módulos e sistemas base
+- Sincronização automática de módulos sistema base -> empresa
+- Portal do cliente funcionando
+- Agendamentos internos e públicos funcionando
+- PDV + PIX + confirmação
+- Produtos/estoque com importação
+- Equipe: cadastro de funcionário + credenciais
+- Comissões, fidelidade, assinaturas e gateways já existentes
+- Guards por role + módulo já aplicados no frontend
+- Build backend e frontend já passando
+
+========================================
+ÚLTIMO BLOCO IMPLEMENTADO AGORA (RECENTE)
+========================================
+
+1) MÓDULO FIXO DO DONO: PERMISSIONS
+----------------------------------------
+Objetivo:
+- Dono da empresa gerencia permissões de módulos para cada funcionário.
+
+O que foi feito:
+- Módulo `permissions` incluído como default de `DONO_EMPRESA`.
+- Tela frontend criada para o dono controlar permissões por funcionário.
+- API backend criada para listar e atualizar permissões.
+- Regra de segurança aplicada no backend: se funcionário for bloqueado em módulo, o acesso real é negado (não é só UI).
+
+Arquivos alterados anteriormente nesse bloco:
+- `backend-evolutech/prisma/schema.prisma`
+- `backend-evolutech/prisma/migrations/20260302120000_employee_module_permissions/migration.sql`
+- `backend-evolutech/prisma/seed.ts`
+- `backend-evolutech/src/services/auth.service.ts`
+- `backend-evolutech/src/services/company.service.ts`
+- `backend-evolutech/src/controllers/company.controller.ts`
+- `backend-evolutech/src/routes/company.routes.ts`
+- `backend-evolutech/src/services/admin.service.ts`
+- `src/pages/empresa/PermissoesEquipe.tsx`
+- `src/services/company.ts`
+- `src/hooks/useCompanyModules.ts`
+- `src/components/layouts/EmpresaLayout.tsx`
+- `src/App.tsx`
+
+Endpoints já criados nesse fluxo:
+- `GET /api/company/team/permissions`
+- `PUT /api/company/team/permissions/:memberId`
+
+2) INÍCIO DO MÓDULO COLLECTIONS (COBRANÇA/INADIMPLÊNCIA)
+----------------------------------------
+Objetivo:
+- Evoluir cobrança para operação de inadimplência (régua + lembretes + overdue automático), sem quebrar `billing` atual.
+
+O que foi feito agora por último:
+- `collections` passou a reaproveitar e evoluir base de `billing`.
+- Cobranças `pending` vencidas passam para `overdue` automaticamente.
+- Criada régua de cobrança por etapas:
+  - `d0`, `d3`, `d7`, `d15`
+- Criado mecanismo de geração de lembretes e envio WhatsApp (quando `send_now=true`), com tracking de status:
+  - `scheduled`, `processing`, `sent`, `failed`, `canceled`
+- Ao marcar cobrança como paga:
+  - cancela lembretes pendentes/processing/failed dessa cobrança
+- Criada listagem de lembretes.
+- Criado endpoint para rodar automação sob demanda:
+  - suporte a `dry_run` (simulação sem persistir/envio)
+  - suporte a `send_now` (disparo real)
+- Métricas de cobrança ajustadas para incluir `overdue`.
+
+Banco (novo modelo):
+- `BillingReminder` com vínculo a `BillingCharge` e `Company`
+- Índices para performance de consulta por status/agendamento e dueDate
+
+Arquivos alterados no último passo:
+- `backend-evolutech/prisma/schema.prisma`
+- `backend-evolutech/prisma/migrations/20260303101500_billing_reminders_automation/migration.sql`
+- `backend-evolutech/src/services/company.service.ts`
+- `backend-evolutech/src/controllers/company.controller.ts`
+- `backend-evolutech/src/routes/company.routes.ts`
+- `src/services/company.ts`
+
+Endpoints novos desse último passo:
+- `GET /api/company/collections/reminders`
+- `POST /api/company/collections/automation/run`
+
+Endpoints de collections já existentes:
+- `GET /api/company/collections/receivables`
+- `POST /api/company/collections/receivables`
+- `POST /api/company/collections/receivables/:receivableId/pay`
+- `GET /api/company/collections/metrics`
+
+========================================
+MAPEAMENTO FUNCIONAL DO NOVO PROCESSO (EM EXECUÇÃO)
+========================================
+
+FASE A — Fundacional (já entregue parcialmente)
+1. Governança de módulos por funcionário (permissions)
+2. Collections operacional sobre billing
+3. Controle de overdue
+4. Registro de lembretes por etapa
+
+FASE B — Operação de cobrança (próximo alvo imediato)
+1. Interface de régua de cobrança no frontend:
+   - botão “Rodar automação”
+   - `dry_run` com preview
+   - `send_now` com feedback de sucesso/falha
+2. Tela/listagem de lembretes:
+   - filtros por status, período, cliente, etapa
+3. Ações operacionais:
+   - reprocessar lembretes falhos
+   - visualizar histórico por cobrança
+
+FASE C — Robustez e produção
+1. Job agendado (cron/worker) para automação sem execução manual
+2. Retry policy para falhas de envio (com backoff)
+3. Observabilidade:
+   - logs de execução por empresa
+   - auditoria detalhada no `audit_logs`
+4. Idempotência:
+   - evitar duplicidade de lembretes por etapa/cobrança
+
+FASE D — Expansão do roadmap (depois de estabilizar collections)
+1. Relatórios automáticos (`reports_auto`)
+2. Integrações ERP/CRM/financeiro (`integrations`)
+3. Contratos v1 (`contracts`)
+
+========================================
+REGRAS E RESTRIÇÕES (OBRIGATÓRIO)
+========================================
+- NÃO reintroduzir Supabase nas telas migradas.
+- NÃO quebrar sincronização de módulos sistema base -> empresa.
+- Manter isolamento por `companyId` em tudo.
+- Manter regras de acesso por role e module guard.
+- Não causar regressão em portal cliente, agendamentos, PDV, equipe, comissões.
+- Sempre preservar compatibilidade com o estado atual de produção.
+- Código com tipagem forte, tratamento de erro e validações mínimas de entrada.
+- Se alguma alteração for crítica, usar transação (`prisma.$transaction`) quando necessário.
+
+========================================
+COMO RETOMAR AGORA (PASSOS IMEDIATOS)
+========================================
+1. Validar estado atual dos arquivos alterados acima.
+2. Confirmar que backend/frontend build continuam OK.
+3. Continuar pela FASE B:
+   - implementar frontend de automação e lembretes de collections
+   - integrar com endpoints já criados
+4. Entregar checklist de teste manual completo (dono e funcionário).
+5. Só depois avançar para novos módulos do roadmap.
+
+========================================
+CHECKLIST DE TESTE ESPERADO (MÍNIMO)
+========================================
+- Dono acessa `/empresa/permissoes` e altera módulo de funcionário.
+- Funcionário perde acesso real ao módulo bloqueado (backend retorna 403).
+- Criar cobrança com vencimento passado -> status vira `overdue`.
+- Rodar `POST /collections/automation/run` com `dry_run=true` -> simula sem enviar.
+- Rodar com `send_now=true`:
+  - com telefone válido -> reminder `sent`
+  - sem telefone -> reminder `failed`
+- Pagar cobrança -> lembretes pendentes/falhos/processando viram `canceled`.
+- Métricas refletem `pending`, `paid`, `overdue`.
+
+========================================
+INSTRUÇÃO FINAL
+========================================
+Continue exatamente desse ponto, sem regressão, com foco em concluir a Sprint 1 de Collections (automação + UI + estabilidade de produção), e só depois seguir para os próximos módulos do roadmap.
