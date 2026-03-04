@@ -31,7 +31,7 @@ app.use(
   })
 );
 app.use('/api/public/payments/webhook', paymentWebhookRoutes);
-app.use(express.json());
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '8mb' }));
 
 // Logger de Requisições
 if (requestLogEnabled) {
@@ -53,6 +53,13 @@ app.use('/api/company', companyRoutes); // Dados Operacionais (Clientes, Produto
 app.use('/api/public', publicRoutes);   // Agendamento público por link
 app.use('/api/customer-auth', customerAuthRoutes); // Cadastro/Login do cliente final
 app.use('/api/customer', customerRoutes); // Portal autenticado do cliente final
+
+app.use((error: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (error?.type === 'entity.too.large' || error?.status === 413) {
+    return res.status(413).json({ error: 'Payload muito grande. Reduza o tamanho da imagem.' });
+  }
+  return next(error);
+});
 
 // Rota Raiz
 app.get('/', (req, res) => {
