@@ -3049,6 +3049,7 @@ export class CompanyService {
   ) {
     const companyId = this.resolveCompanyId(user, queryParams);
     await this.ensureAnyModuleAccess(user, companyId, ['collections', 'billing', 'cobrancas']);
+    await this.autoMarkOverdueCharges(companyId);
 
     const status = String(queryParams.status || '').trim().toLowerCase();
     const search = String(queryParams.search || '').trim();
@@ -3294,6 +3295,254 @@ export class CompanyService {
     }, { maxWait: 10000, timeout: 30000 });
   }
 
+  private getCollectionReminderSteps() {
+    return [
+      { code: 'd0', daysAfterDue: 0 },
+      { code: 'd3', daysAfterDue: 3 },
+      { code: 'd7', daysAfterDue: 7 },
+      { code: 'd15', daysAfterDue: 15 },
+    ];
+  }
+
+  private addDays(baseDate: Date, days: number) {
+    const date = new Date(baseDate);
+    date.setDate(date.getDate() + days);
+    return date;
+  }
+
+  private async autoMarkOverdueCharges(companyId: string) {
+    await (prisma as any).billingCharge.updateMany({
+      where: {
+        companyId,
+        status: 'pending',
+        dueDate: { lt: new Date() },
+      },
+      data: { status: 'overdue' },
+    });
+  }
+
+  private buildReminderMessage(
+    charge: { title: string; amount: unknown; dueDate: Date | null; customerName: string },
+    stepCode: string
+  ) {
+    const amount = Number(charge.amount || 0).toFixed(2).replace('.', ',');
+    const dueDate = charge.dueDate ? charge.dueDate.toLocaleDateString('pt-BR') : 'sem vencimento';
+    return `Olá ${charge.customerName}, sua cobrança "${charge.title}" no valor de R$ ${amount} venceu em ${dueDate}. Etapa ${stepCode}.`;
+  }
+
+  async listCollectionReminders(
+    user: AuthenticatedUser,
+    queryParams: { status?: string; page?: number; pageSize?: number; company_id?: string; companyId?: string } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, ['collections', 'billing', 'cobrancas']);
+
+    const status = String(queryParams.status || '').trim().toLowerCase();
+    const page = Math.max(1, Number(queryParams.page || 1));
+    const pageSize = Math.min(100, Math.max(1, Number(queryParams.pageSize || 20)));
+
+    const where: any = {
+      companyId,
+      ...(status ? { status } : {}),
+    };
+
+    const [items, total] = await Promise.all([
+      (prisma as any).billingReminder.findMany({
+        where,
+        include: {
+          billingCharge: {
+            select: {
+              id: true,
+              title: true,
+              customerName: true,
+              customerPhone: true,
+              amount: true,
+              dueDate: true,
+              status: true,
+            },
+          },
+        },
+        orderBy: [{ scheduledAt: 'desc' }, { createdAt: 'desc' }],
+        take: pageSize,
+        skip: (page - 1) * pageSize,
+      }),
+      (prisma as any).billingReminder.count({ where }),
+    ]);
+
+    return {
+      data: items.map((item: any) => ({
+        id: item.id,
+        company_id: item.companyId,
+        billing_charge_id: item.billingChargeId,
+        step_code: item.stepCode,
+        channel: item.channel,
+        scheduled_at: item.scheduledAt,
+        sent_at: item.sentAt,
+        status: item.status,
+        error_message: item.errorMessage,
+        billing_charge: item.billingCharge
+          ? {
+              id: item.billingCharge.id,
+              title: item.billingCharge.title,
+              customer_name: item.billingCharge.customerName,
+              customer_phone: item.billingCharge.customerPhone,
+              amount: Number(item.billingCharge.amount || 0),
+              due_date: item.billingCharge.dueDate,
+              status: item.billingCharge.status,
+            }
+          : null,
+      })),
+      total,
+      page,
+      pageSize,
+    };
+  }
+
+  async runCollectionsAutomation(
+    user: AuthenticatedUser,
+    payload: { company_id?: string; companyId?: string; dry_run?: boolean; send_now?: boolean } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, payload);
+    await this.ensureAnyModuleAccess(user, companyId, ['collections', 'billing', 'cobrancas']);
+    if (user.role === 'FUNCIONARIO_EMPRESA') {
+      throw new CompanyServiceError('Apenas dono da empresa pode executar automacao de cobrancas', 403);
+    }
+
+    const dryRun = payload.dry_run === true;
+    const sendNow = payload.send_now !== false;
+    await this.autoMarkOverdueCharges(companyId);
+
+    const now = new Date();
+    const steps = this.getCollectionReminderSteps();
+    const charges = await (prisma as any).billingCharge.findMany({
+      where: {
+        companyId,
+        status: { in: ['pending', 'overdue'] },
+        dueDate: { not: null },
+      },
+      select: {
+        id: true,
+        title: true,
+        customerName: true,
+        customerPhone: true,
+        amount: true,
+        dueDate: true,
+      },
+      orderBy: { dueDate: 'asc' },
+    });
+
+    const createdReminderIds: string[] = [];
+    let scheduledCount = 0;
+    let sentCount = 0;
+    let failedCount = 0;
+
+    for (const charge of charges) {
+      if (!charge.dueDate) continue;
+      for (const step of steps) {
+        const scheduleAt = this.addDays(charge.dueDate, step.daysAfterDue);
+        if (scheduleAt > now) continue;
+
+        const existing = await (prisma as any).billingReminder.findFirst({
+          where: {
+            companyId,
+            billingChargeId: charge.id,
+            stepCode: step.code,
+          },
+          select: { id: true },
+        });
+        if (existing) continue;
+
+        if (dryRun) {
+          scheduledCount += 1;
+          continue;
+        }
+
+        const created = await (prisma as any).billingReminder.create({
+          data: {
+            companyId,
+            billingChargeId: charge.id,
+            stepCode: step.code,
+            channel: 'whatsapp',
+            scheduledAt: scheduleAt,
+            status: sendNow ? 'processing' : 'scheduled',
+          },
+          select: { id: true },
+        });
+        createdReminderIds.push(created.id);
+        scheduledCount += 1;
+
+        if (!sendNow) continue;
+
+        const hasPhone = String(charge.customerPhone || '').trim().length > 0;
+        if (!hasPhone) {
+          await (prisma as any).billingReminder.update({
+            where: { id: created.id },
+            data: {
+              status: 'failed',
+              errorMessage: 'Cliente sem telefone para WhatsApp',
+            },
+          });
+          failedCount += 1;
+          continue;
+        }
+
+        try {
+          await this.sendWhatsApp(user, {
+            company_id: companyId,
+            phone: String(charge.customerPhone || ''),
+            message: this.buildReminderMessage(charge, step.code),
+          });
+          await (prisma as any).billingReminder.update({
+            where: { id: created.id },
+            data: {
+              status: 'sent',
+              sentAt: new Date(),
+              errorMessage: null,
+            },
+          });
+          sentCount += 1;
+        } catch (error: any) {
+          await (prisma as any).billingReminder.update({
+            where: { id: created.id },
+            data: {
+              status: 'failed',
+              errorMessage: String(error?.message || 'Falha ao enviar WhatsApp').slice(0, 500),
+            },
+          });
+          failedCount += 1;
+        }
+      }
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        companyId,
+        action: 'COLLECTIONS_AUTOMATION_RUN',
+        resource: 'billing_reminders',
+        details: {
+          dryRun,
+          sendNow,
+          chargesAnalyzed: charges.length,
+          scheduledCount,
+          sentCount,
+          failedCount,
+        },
+      },
+    });
+
+    return {
+      company_id: companyId,
+      dry_run: dryRun,
+      send_now: sendNow,
+      charges_analyzed: charges.length,
+      reminders_created: scheduledCount,
+      reminders_sent: sentCount,
+      reminders_failed: failedCount,
+      reminder_ids: createdReminderIds,
+    };
+  }
+
   async markBillingChargeAsPaid(
     user: AuthenticatedUser,
     billingChargeId: string,
@@ -3324,6 +3573,18 @@ export class CompanyService {
         data: {
           status: 'paid',
           paidAt: now,
+        },
+      });
+
+      await (tx as any).billingReminder.updateMany({
+        where: {
+          companyId,
+          billingChargeId: charge.id,
+          status: { in: ['scheduled', 'processing', 'failed'] },
+        },
+        data: {
+          status: 'canceled',
+          errorMessage: null,
         },
       });
 
@@ -3371,6 +3632,7 @@ export class CompanyService {
   ) {
     const companyId = this.resolveCompanyId(user, queryParams);
     await this.ensureAnyModuleAccess(user, companyId, ['collections', 'billing', 'cobrancas']);
+    await this.autoMarkOverdueCharges(companyId);
 
     const now = new Date();
     const dateFrom = queryParams.dateFrom ? new Date(String(queryParams.dateFrom)) : null;
@@ -3414,6 +3676,9 @@ export class CompanyService {
         if (status === 'paid') {
           acc.paid_amount += amount;
           acc.paid_count += count;
+        } else if (status === 'overdue') {
+          acc.overdue_amount += amount;
+          acc.overdue_total_count += count;
         } else {
           acc.pending_amount += amount;
           acc.pending_count += count;
@@ -3423,6 +3688,8 @@ export class CompanyService {
       {
         paid_amount: 0,
         paid_count: 0,
+        overdue_amount: 0,
+        overdue_total_count: 0,
         pending_amount: 0,
         pending_count: 0,
       }

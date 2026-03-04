@@ -56,6 +56,7 @@ model Company {
   paymentGateways PaymentGateway[]
   paymentTransactions PaymentTransaction[]
   billingCharges BillingCharge[]
+  billingReminders BillingReminder[]
   commissionProfiles CommissionProfile[]
   commissionAdjustments CommissionAdjustment[]
   commissionPayouts CommissionPayout[]
@@ -306,9 +307,32 @@ model BillingCharge {
 
   company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  reminders     BillingReminder[]
 
   @@index([companyId, status, createdAt])
+  @@index([companyId, dueDate, status])
   @@map("billing_charges")
+}
+
+model BillingReminder {
+  id             String    @id @default(uuid())
+  companyId      String    @map("empresa_id")
+  billingChargeId String   @map("billing_charge_id")
+  stepCode       String    @map("step_code")
+  channel        String    @default("whatsapp")
+  scheduledAt    DateTime  @map("scheduled_at")
+  sentAt         DateTime? @map("sent_at")
+  status         String    @default("scheduled")
+  errorMessage   String?   @map("error_message")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  billingCharge  BillingCharge @relation(fields: [billingChargeId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, billingChargeId, stepCode])
+  @@index([companyId, status, scheduledAt])
+  @@map("billing_reminders")
 }
 
 model Task {

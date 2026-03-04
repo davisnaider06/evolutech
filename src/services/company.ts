@@ -282,6 +282,19 @@ export const companyService = {
     const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
     return request(`/collections/metrics${suffix}`);
   },
+  listCollectionReminders: async (params?: { status?: string; page?: number; pageSize?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return request(`/collections/reminders${suffix}`);
+  },
+  runCollectionsAutomation: async (data?: { dry_run?: boolean; send_now?: boolean; company_id?: string }) =>
+    request('/collections/automation/run', {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    }),
   confirmPdvPixPayment: async (orderId: string, company_id?: string) =>
     request(`/pdv/orders/${orderId}/confirm-pix`, {
       method: 'POST',

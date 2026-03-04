@@ -536,6 +536,24 @@ export class CompanyController {
     }
   }
 
+  async listCollectionReminders(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.listCollectionReminders(req.user!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async runCollectionsAutomation(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.runCollectionsAutomation(req.user!, req.body || {});
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   async listMyPaymentGateways(req: AuthedRequest, res: Response) {
     try {
       const result = await service.listMyPaymentGateways(req.user!);
