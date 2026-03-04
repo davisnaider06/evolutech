@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { adminService } from '@/services/admin';
-import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -60,8 +59,8 @@ const Empresas: React.FC = () => {
   const [updating, setUpdating] = useState(false);
   const [selectedEmpresa, setSelectedEmpresa] = useState<Tenant | null>(null);
   const createLogoInputRef = useRef<HTMLInputElement>(null);
-  const [createLogoFile, setCreateLogoFile] = useState<File | null>(null);
   const [createLogoPreview, setCreateLogoPreview] = useState<string | null>(null);
+  const [createLogoDataUrl, setCreateLogoDataUrl] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     empresaNome: '',
@@ -104,8 +103,8 @@ const Empresas: React.FC = () => {
       empresaPlano: 'professional',
       sistemaBaseId: '',
     });
-    setCreateLogoFile(null);
     setCreateLogoPreview(null);
+    setCreateLogoDataUrl(null);
     if (createLogoInputRef.current) {
       createLogoInputRef.current.value = '';
     }
@@ -119,25 +118,13 @@ const Empresas: React.FC = () => {
       return;
     }
 
-    setCreateLogoFile(file);
     const reader = new FileReader();
-    reader.onload = () => setCreateLogoPreview(String(reader.result || ''));
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '');
+      setCreateLogoPreview(dataUrl);
+      setCreateLogoDataUrl(dataUrl || null);
+    };
     reader.readAsDataURL(file);
-  };
-
-  const uploadCompanyLogo = async (companyId: string, file: File) => {
-    const ext = String(file.name.split('.').pop() || 'png').toLowerCase();
-    const safeExt = ['png', 'jpg', 'jpeg', 'webp', 'svg'].includes(ext) ? ext : 'png';
-    const path = `${companyId}/logo.${safeExt}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from('company-logos')
-      .upload(path, file, { upsert: true });
-
-    if (uploadError) throw uploadError;
-
-    const { data } = supabase.storage.from('company-logos').getPublicUrl(path);
-    return data.publicUrl;
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -150,13 +137,10 @@ const Empresas: React.FC = () => {
 
     setCreating(true);
     try {
-      const created = await adminService.criarTenant({ ...formData });
-      const createdCompanyId = created?.company?.id;
-
-      if (createLogoFile && createdCompanyId) {
-        const logoUrl = await uploadCompanyLogo(createdCompanyId, createLogoFile);
-        await adminService.atualizarTenant(createdCompanyId, { logo_url: logoUrl });
-      }
+      await adminService.criarTenant({
+        ...formData,
+        logo_url: createLogoDataUrl || null,
+      });
 
       toast.success('Empresa criada com sucesso');
       setIsDialogOpen(false);
@@ -323,7 +307,7 @@ const Empresas: React.FC = () => {
       </div>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>Nova Empresa</DialogTitle>
             <DialogDescription>Cria a empresa e ativa os modulos do sistema base automaticamente.</DialogDescription>
@@ -401,7 +385,7 @@ const Empresas: React.FC = () => {
       </Dialog>
 
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>Editar Empresa</DialogTitle>
             <DialogDescription>Atualize dados da empresa e sistema base vinculado.</DialogDescription>
