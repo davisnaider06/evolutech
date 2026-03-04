@@ -72,4 +72,26 @@ export class AuthController {
       res.status(500).json({ error: error.message });
     }
   }
+
+  async changeMyPassword(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.changeMyPassword(req.user!.id, req.body || {});
+      return res.json(result);
+    } catch (error: any) {
+      const message = String(error?.message || 'Erro ao alterar senha');
+      const lower = message.toLowerCase();
+      if (
+        lower.includes('obrigatorios') ||
+        lower.includes('pelo menos') ||
+        lower.includes('incorreta') ||
+        lower.includes('apenas dono_empresa')
+      ) {
+        return res.status(400).json({ error: message });
+      }
+      if (lower.includes('nao encontrado')) {
+        return res.status(404).json({ error: message });
+      }
+      return res.status(500).json({ error: message });
+    }
+  }
 }

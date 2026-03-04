@@ -76,24 +76,31 @@ const Empresas: React.FC = () => {
     sistema_base_id: '',
   });
 
-  const fetchData = async () => {
+  const fetchTenants = async () => {
     try {
-      const [tenantsData, sistemasData] = await Promise.all([
-        adminService.listarTenants(),
-        adminService.listarSistemasBase(true),
-      ]);
-
+      const tenantsData = await adminService.listarTenants();
       setEmpresas(tenantsData || []);
-      setSistemas((sistemasData || []).map((s: any) => ({ id: s.id, nome: s.nome })));
     } catch (error: any) {
       toast.error(error.message || 'Erro ao carregar empresas');
-    } finally {
-      setIsLoading(false);
+    }
+  };
+
+  const fetchSistemas = async () => {
+    try {
+      const sistemasData = await adminService.listarSistemasBase(true);
+      setSistemas((sistemasData || []).map((s: any) => ({ id: s.id, nome: s.nome })));
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao carregar sistemas base');
     }
   };
 
   useEffect(() => {
-    fetchData();
+    const load = async () => {
+      setIsLoading(true);
+      await Promise.all([fetchTenants(), fetchSistemas()]);
+      setIsLoading(false);
+    };
+    load();
   }, []);
 
   const resetForm = () => {
@@ -137,15 +144,30 @@ const Empresas: React.FC = () => {
 
     setCreating(true);
     try {
-      await adminService.criarTenant({
+      const created = await adminService.criarTenant({
         ...formData,
         logo_url: createLogoDataUrl || null,
       });
 
+      const nowIso = new Date().toISOString();
+      const createdTenant: Tenant = {
+        id: created?.company?.id || `tmp-${Date.now()}`,
+        name: created?.company?.name || formData.empresaNome,
+        slug: created?.company?.slug || '',
+        logo_url: createLogoDataUrl || null,
+        plan: formData.empresaPlano,
+        status: 'active',
+        monthly_revenue: 0,
+        created_at: nowIso,
+        document: formData.empresaDocumento || null,
+        sistema_base_id: formData.sistemaBaseId || null,
+        owner: null,
+      };
+      setEmpresas((prev) => [createdTenant, ...prev]);
+
       toast.success('Empresa criada com sucesso');
       setIsDialogOpen(false);
       resetForm();
-      fetchData();
     } catch (error: any) {
       toast.error(error.message || 'Erro ao criar empresa');
     } finally {
@@ -157,8 +179,10 @@ const Empresas: React.FC = () => {
     try {
       const newStatus = empresa.status === 'active' ? 'inactive' : 'active';
       await adminService.atualizarTenant(empresa.id, { status: newStatus });
+      setEmpresas((prev) =>
+        prev.map((item) => (item.id === empresa.id ? { ...item, status: newStatus } : item))
+      );
       toast.success(`Empresa ${newStatus === 'active' ? 'ativada' : 'desativada'}`);
-      fetchData();
     } catch (error: any) {
       toast.error(error.message || 'Erro ao alterar status');
     }
@@ -193,10 +217,23 @@ const Empresas: React.FC = () => {
         status: editFormData.status,
         sistema_base_id: editFormData.sistema_base_id || null,
       });
+      setEmpresas((prev) =>
+        prev.map((item) =>
+          item.id === selectedEmpresa.id
+            ? {
+                ...item,
+                name: editFormData.name.trim(),
+                document: editFormData.document.trim() || null,
+                plan: editFormData.plan,
+                status: editFormData.status,
+                sistema_base_id: editFormData.sistema_base_id || null,
+              }
+            : item
+        )
+      );
       toast.success('Empresa atualizada com sucesso');
       setIsEditDialogOpen(false);
       setSelectedEmpresa(null);
-      fetchData();
     } catch (error: any) {
       toast.error(error.message || 'Erro ao atualizar empresa');
     } finally {
@@ -207,8 +244,8 @@ const Empresas: React.FC = () => {
   const removeTenant = async (empresa: Tenant) => {
     try {
       await adminService.excluirTenant(empresa.id);
+      setEmpresas((prev) => prev.filter((item) => item.id !== empresa.id));
       toast.success('Empresa excluida');
-      fetchData();
     } catch (error: any) {
       toast.error(error.message || 'Erro ao excluir empresa');
     }

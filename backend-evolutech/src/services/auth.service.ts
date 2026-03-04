@@ -284,4 +284,53 @@ export class AuthService {
 
     return payload;
   }
+
+  async changeMyPassword(
+    userId: string,
+    data: { current_password?: string; new_password?: string }
+  ) {
+    const currentPassword = String(data.current_password || '');
+    const newPassword = String(data.new_password || '');
+
+    if (!currentPassword || !newPassword) {
+      throw new Error('Campos obrigatorios: current_password, new_password');
+    }
+    if (newPassword.length < 6) {
+      throw new Error('A nova senha deve ter pelo menos 6 caracteres');
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        passwordHash: true,
+        roles: {
+          select: { role: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+    });
+
+    if (!user) throw new Error('Usuario nao encontrado');
+    if (!user.passwordHash) throw new Error('Usuario sem senha definida');
+
+    const activeRole = user.roles[0]?.role;
+    if (activeRole !== 'DONO_EMPRESA') {
+      throw new Error('Apenas DONO_EMPRESA pode alterar a propria senha nesta tela');
+    }
+
+    const isValid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!isValid) {
+      throw new Error('Senha atual incorreta');
+    }
+
+    const nextHash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: nextHash },
+    });
+
+    return { ok: true };
+  }
 }

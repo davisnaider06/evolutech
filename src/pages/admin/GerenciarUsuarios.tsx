@@ -99,6 +99,21 @@ const GerenciarUsuarios: React.FC = () => {
     fetchUsers();
     fetchCompanies();
   }, []);
+  const normalizeUser = (raw: any): UserWithRole => ({
+    id: String(raw?.id || ''),
+    email: String(raw?.email || ''),
+    name: String(raw?.name || raw?.fullName || ''),
+    is_active: Boolean(raw?.is_active ?? raw?.isActive),
+    created_at: String(raw?.created_at || raw?.createdAt || new Date().toISOString()),
+    updated_at: String(raw?.updated_at || raw?.updatedAt || new Date().toISOString()),
+    roles: Array.isArray(raw?.roles)
+      ? raw.roles.map((role: any) => ({
+          role: role.role as UserRole,
+          company_id: role.company_id ?? role.companyId ?? null,
+          company_name: role.company_name ?? role.company?.name ?? null,
+        }))
+      : [],
+  });
 
   const fetchUsers = async () => {
     try {
@@ -144,13 +159,15 @@ const GerenciarUsuarios: React.FC = () => {
     setCreating(true);
 
     try {
-      await adminService.criarUsuario({
+      const created = await adminService.criarUsuario({
         email: trimmedEmail,
         password: trimmedPassword,
         name: trimmedName,
         role: formData.role,
         company_id: selectedRoleConfig?.requiresCompany ? formData.company_id : null,
       });
+      const normalized = normalizeUser(created);
+      setUsers((prev) => [normalized, ...prev]);
 
       toast.success('Usuário criado com sucesso');
       setIsCreateDialogOpen(false);
@@ -161,7 +178,6 @@ const GerenciarUsuarios: React.FC = () => {
         role: 'FUNCIONARIO_EMPRESA',
         company_id: '',
       });
-      fetchUsers();
     } catch (error: any) {
       toast.error(error.message || 'Erro ao criar usuário');
     } finally {
@@ -172,8 +188,10 @@ const GerenciarUsuarios: React.FC = () => {
   const handleToggleActive = async (user: UserWithRole) => {
     try {
       await adminService.alternarStatusUsuario(user.id);
+      setUsers((prev) =>
+        prev.map((item) => (item.id === user.id ? { ...item, is_active: !item.is_active } : item))
+      );
       toast.success(user.is_active ? 'Usuário desativado' : 'Usuário ativado');
-      fetchUsers();
     } catch (error: any) {
       toast.error(error.message || 'Erro ao alterar status do usuário');
     }
@@ -193,8 +211,25 @@ const GerenciarUsuarios: React.FC = () => {
         role: newRole,
         company_id: selectedRoleConfig?.requiresCompany ? currentCompanyId : null,
       });
+      setUsers((prev) =>
+        prev.map((item) =>
+          item.id === user.id
+            ? {
+                ...item,
+                roles: [
+                  {
+                    role: newRole,
+                    company_id: selectedRoleConfig?.requiresCompany ? currentCompanyId : null,
+                    company_name: selectedRoleConfig?.requiresCompany
+                      ? (companies.find((c) => c.id === currentCompanyId)?.name || item.roles[0]?.company_name || null)
+                      : null,
+                  },
+                ],
+              }
+            : item
+        )
+      );
       toast.success('Perfil alterado com sucesso');
-      fetchUsers();
     } catch (error: any) {
       toast.error(error.message || 'Erro ao alterar perfil');
     }

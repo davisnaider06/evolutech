@@ -7,5 +7,6 @@ const controller = new AuthController();
 
 router.post('/login', controller.login.bind(controller));
 router.get('/me', authenticateToken, controller.me.bind(controller)); // Rota protegida
+router.post('/change-password', authenticateToken, controller.changeMyPassword.bind(controller));
 
 export default router;
