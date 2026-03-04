@@ -59,7 +59,13 @@ export class AuthController {
           modules: user.modules,
         },
         company: user.company_id
-          ? { id: user.company_id, name: user.company_name, slug: user.company_slug, modules: user.modules }
+          ? {
+              id: user.company_id,
+              name: user.company_name,
+              slug: user.company_slug,
+              logo_url: user.company_logo_url,
+              modules: user.modules,
+            }
           : null,
       });
     } catch (error: any) {

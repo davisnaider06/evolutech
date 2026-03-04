@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { companyService } from '@/services/company';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,15 +7,17 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Copy, ExternalLink, QrCode, ReceiptText } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Copy, ExternalLink, QrCode, ReceiptText, RefreshCcw } from 'lucide-react';
 
 type ChargeItem = {
   id: string;
   order_id: string;
   title: string;
   customer_name: string;
+  customer_phone?: string | null;
   amount: number;
   status: string;
+  due_date?: string | null;
   created_at: string;
   transaction?: {
     provider?: string;
@@ -26,35 +28,161 @@ type ChargeItem = {
   } | null;
 };
 
+type MetricsResponse = {
+  summary?: {
+    paid_amount?: number;
+    paid_count?: number;
+    overdue_amount?: number;
+    overdue_total_count?: number;
+    pending_amount?: number;
+    pending_count?: number;
+    overdue_count?: number;
+    upcoming_count?: number;
+  };
+};
+
+type ReminderItem = {
+  id: string;
+  billing_charge_id: string;
+  step_code: string;
+  channel: string;
+  scheduled_at: string;
+  sent_at?: string | null;
+  status: 'scheduled' | 'processing' | 'sent' | 'failed' | 'canceled' | string;
+  error_message?: string | null;
+  billing_charge?: {
+    id: string;
+    title: string;
+    customer_name: string;
+    customer_phone?: string | null;
+    amount: number;
+    due_date?: string | null;
+    status?: string;
+  } | null;
+};
+
+type AutomationResult = {
+  dry_run: boolean;
+  send_now: boolean;
+  charges_analyzed: number;
+  reminders_created: number;
+  reminders_sent: number;
+  reminders_failed: number;
+};
+
+const currency = (value: number) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0));
+
+const datetime = (value?: string | null) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString('pt-BR');
+};
+
+const dateOnly = (value?: string | null) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('pt-BR');
+};
+
+const statusVariant = (status: string): 'default' | 'secondary' | 'destructive' | 'outline' => {
+  const normalized = String(status || '').toLowerCase();
+  if (normalized === 'paid' || normalized === 'sent') return 'default';
+  if (normalized === 'failed' || normalized === 'overdue') return 'destructive';
+  if (normalized === 'processing') return 'secondary';
+  return 'outline';
+};
+
 const Cobrancas: React.FC = () => {
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [loadingCharges, setLoadingCharges] = useState(true);
+  const [loadingMetrics, setLoadingMetrics] = useState(true);
+  const [loadingReminders, setLoadingReminders] = useState(true);
+  const [savingCharge, setSavingCharge] = useState(false);
+  const [runningAutomation, setRunningAutomation] = useState(false);
+  const [reprocessingId, setReprocessingId] = useState<string | null>(null);
   const [charges, setCharges] = useState<ChargeItem[]>([]);
+  const [metrics, setMetrics] = useState<MetricsResponse['summary'] | null>(null);
+  const [reminders, setReminders] = useState<ReminderItem[]>([]);
+  const [lastAutomationResult, setLastAutomationResult] = useState<AutomationResult | null>(null);
   const [form, setForm] = useState({
     title: '',
     customer_name: '',
     customer_email: '',
     customer_phone: '',
     amount: '',
+    due_date: '',
     description: '',
     payment_method: 'pix' as 'pix' | 'credito' | 'debito',
   });
+  const [reminderFilters, setReminderFilters] = useState({
+    status: '',
+    step_code: '',
+    customer: '',
+    date_from: '',
+    date_to: '',
+    billing_charge_id: '',
+  });
 
-  const load = async () => {
-    setLoading(true);
+  const activeFilterCount = useMemo(() => {
+    return Object.values(reminderFilters).filter(Boolean).length;
+  }, [reminderFilters]);
+
+  const loadCharges = async () => {
+    setLoadingCharges(true);
     try {
-      const payload = await companyService.listBillingCharges({ page: 1, pageSize: 30 });
+      const payload = await companyService.listCollectionsReceivables({ page: 1, pageSize: 30 });
       setCharges(Array.isArray(payload?.data) ? payload.data : []);
     } catch (error: any) {
-      toast.error(error?.message || 'Erro ao carregar cobrancas');
+      toast.error(error?.message || 'Erro ao carregar recebiveis');
       setCharges([]);
     } finally {
-      setLoading(false);
+      setLoadingCharges(false);
     }
   };
 
+  const loadMetrics = async () => {
+    setLoadingMetrics(true);
+    try {
+      const payload = await companyService.getCollectionsMetrics();
+      setMetrics(payload?.summary || null);
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao carregar metricas');
+      setMetrics(null);
+    } finally {
+      setLoadingMetrics(false);
+    }
+  };
+
+  const loadReminders = async () => {
+    setLoadingReminders(true);
+    try {
+      const payload = await companyService.listCollectionReminders({
+        status: reminderFilters.status || undefined,
+        step_code: reminderFilters.step_code || undefined,
+        customer: reminderFilters.customer || undefined,
+        date_from: reminderFilters.date_from || undefined,
+        date_to: reminderFilters.date_to || undefined,
+        billing_charge_id: reminderFilters.billing_charge_id || undefined,
+        page: 1,
+        pageSize: 50,
+      });
+      setReminders(Array.isArray(payload?.data) ? payload.data : []);
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao carregar lembretes');
+      setReminders([]);
+    } finally {
+      setLoadingReminders(false);
+    }
+  };
+
+  const loadAll = async () => {
+    await Promise.all([loadCharges(), loadMetrics(), loadReminders()]);
+  };
+
   useEffect(() => {
-    load();
+    loadAll();
   }, []);
 
   const submit = async () => {
@@ -64,14 +192,15 @@ const Cobrancas: React.FC = () => {
       return;
     }
 
-    setSaving(true);
+    setSavingCharge(true);
     try {
-      const created = await companyService.createBillingCharge({
+      const created = await companyService.createCollectionsReceivable({
         title: form.title.trim(),
         customer_name: form.customer_name.trim(),
         customer_email: form.customer_email.trim() || undefined,
         customer_phone: form.customer_phone.trim() || undefined,
         amount,
+        due_date: form.due_date || undefined,
         description: form.description.trim() || undefined,
         payment_method: form.payment_method,
       });
@@ -83,11 +212,12 @@ const Cobrancas: React.FC = () => {
         customer_email: '',
         customer_phone: '',
         amount: '',
+        due_date: '',
         description: '',
         payment_method: 'pix',
       });
 
-      await load();
+      await Promise.all([loadCharges(), loadMetrics()]);
 
       const qr = created?.payment_gateway?.qrCodeText;
       if (qr) {
@@ -97,7 +227,7 @@ const Cobrancas: React.FC = () => {
     } catch (error: any) {
       toast.error(error?.message || 'Erro ao criar cobranca');
     } finally {
-      setSaving(false);
+      setSavingCharge(false);
     }
   };
 
@@ -111,14 +241,183 @@ const Cobrancas: React.FC = () => {
     }
   };
 
+  const markAsPaid = async (chargeId: string) => {
+    try {
+      await companyService.markCollectionsReceivablePaid(chargeId);
+      toast.success('Cobranca marcada como paga');
+      await Promise.all([loadCharges(), loadMetrics(), loadReminders()]);
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao marcar cobranca como paga');
+    }
+  };
+
+  const runAutomation = async (dryRun: boolean) => {
+    setRunningAutomation(true);
+    try {
+      const payload = await companyService.runCollectionsAutomation({
+        dry_run: dryRun,
+        send_now: dryRun ? false : true,
+      });
+      setLastAutomationResult(payload);
+      if (dryRun) {
+        toast.success('Simulacao concluida');
+      } else {
+        toast.success('Automacao executada com envio');
+      }
+      await Promise.all([loadMetrics(), loadReminders(), loadCharges()]);
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao rodar automacao');
+    } finally {
+      setRunningAutomation(false);
+    }
+  };
+
+  const reprocessReminder = async (reminderId: string) => {
+    setReprocessingId(reminderId);
+    try {
+      await companyService.reprocessCollectionReminder(reminderId, { send_now: true });
+      toast.success('Lembrete reprocessado');
+      await loadReminders();
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao reprocessar lembrete');
+    } finally {
+      setReprocessingId(null);
+    }
+  };
+
+  const applyHistoryFilter = async (chargeId: string) => {
+    setReminderFilters((prev) => ({ ...prev, billing_charge_id: chargeId }));
+    setLoadingReminders(true);
+    try {
+      const payload = await companyService.listCollectionReminders({
+        status: reminderFilters.status || undefined,
+        step_code: reminderFilters.step_code || undefined,
+        customer: reminderFilters.customer || undefined,
+        date_from: reminderFilters.date_from || undefined,
+        date_to: reminderFilters.date_to || undefined,
+        billing_charge_id: chargeId,
+        page: 1,
+        pageSize: 50,
+      });
+      setReminders(Array.isArray(payload?.data) ? payload.data : []);
+      toast.success('Historico filtrado pela cobranca selecionada');
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao filtrar historico');
+    } finally {
+      setLoadingReminders(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold lg:text-3xl">Cobrancas</h1>
+        <h1 className="text-2xl font-bold lg:text-3xl">Collections e Cobrancas</h1>
         <p className="text-muted-foreground">
-          Gere cobrancas com PIX ou link para cartao no gateway ativo da empresa.
+          Operacao de cobranca com recebiveis, automacao de lembretes e acompanhamento de inadimplencia.
         </p>
       </div>
+
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card className="glass">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Pendente</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loadingMetrics ? (
+              <p className="text-sm text-muted-foreground">Carregando...</p>
+            ) : (
+              <>
+                <p className="text-xl font-semibold">{currency(Number(metrics?.pending_amount || 0))}</p>
+                <p className="text-xs text-muted-foreground">{Number(metrics?.pending_count || 0)} cobrancas</p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="glass">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Pago</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loadingMetrics ? (
+              <p className="text-sm text-muted-foreground">Carregando...</p>
+            ) : (
+              <>
+                <p className="text-xl font-semibold">{currency(Number(metrics?.paid_amount || 0))}</p>
+                <p className="text-xs text-muted-foreground">{Number(metrics?.paid_count || 0)} cobrancas</p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="glass">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Overdue</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loadingMetrics ? (
+              <p className="text-sm text-muted-foreground">Carregando...</p>
+            ) : (
+              <>
+                <p className="text-xl font-semibold">{currency(Number(metrics?.overdue_amount || 0))}</p>
+                <p className="text-xs text-muted-foreground">{Number(metrics?.overdue_total_count || 0)} cobrancas</p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="glass">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">A vencer</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loadingMetrics ? (
+              <p className="text-sm text-muted-foreground">Carregando...</p>
+            ) : (
+              <>
+                <p className="text-xl font-semibold">{Number(metrics?.upcoming_count || 0)}</p>
+                <p className="text-xs text-muted-foreground">cobrancas pendentes futuras</p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="glass">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <RefreshCcw className="h-5 w-5" />
+            Automacao da regua
+          </CardTitle>
+          <CardDescription>
+            Executa as etapas d0, d3, d7 e d15 nas cobrancas pendentes/overdue. Use simulacao antes do envio real.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" disabled={runningAutomation} onClick={() => runAutomation(true)}>
+              {runningAutomation ? 'Executando...' : 'Rodar simulacao (dry run)'}
+            </Button>
+            <Button disabled={runningAutomation} onClick={() => runAutomation(false)}>
+              {runningAutomation ? 'Executando...' : 'Rodar automacao com envio'}
+            </Button>
+            <Button variant="ghost" disabled={runningAutomation} onClick={loadReminders}>
+              Atualizar lembretes
+            </Button>
+          </div>
+
+          {lastAutomationResult && (
+            <div className="rounded-lg border border-border p-4 text-sm">
+              <p className="font-medium mb-2">
+                Ultima execucao {lastAutomationResult.dry_run ? '(simulacao)' : '(real)'}
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <span>Cobrancas analisadas: {lastAutomationResult.charges_analyzed}</span>
+                <span>Lembretes gerados: {lastAutomationResult.reminders_created}</span>
+                <span>Lembretes enviados: {lastAutomationResult.reminders_sent}</span>
+                <span>Lembretes com falha: {lastAutomationResult.reminders_failed}</span>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="glass">
         <CardHeader>
@@ -127,7 +426,7 @@ const Cobrancas: React.FC = () => {
             Nova cobranca
           </CardTitle>
           <CardDescription>
-            A cobranca ja nasce integrada ao gateway e entra no financeiro/relatorios.
+            Cobranca integrada ao gateway para PIX ou link de pagamento.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
@@ -136,7 +435,7 @@ const Cobrancas: React.FC = () => {
             <Input
               value={form.title}
               onChange={(e) => setForm((old) => ({ ...old, title: e.target.value }))}
-              placeholder="Ex: Consulta de retorno"
+              placeholder="Ex: Mensalidade de servicos"
             />
           </div>
           <div className="space-y-2">
@@ -160,7 +459,7 @@ const Cobrancas: React.FC = () => {
             <Input
               value={form.customer_phone}
               onChange={(e) => setForm((old) => ({ ...old, customer_phone: e.target.value }))}
-              placeholder="(00) 00000-0000"
+              placeholder="5511999999999"
             />
           </div>
           <div className="space-y-2">
@@ -172,6 +471,14 @@ const Cobrancas: React.FC = () => {
               value={form.amount}
               onChange={(e) => setForm((old) => ({ ...old, amount: e.target.value }))}
               placeholder="0,00"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Vencimento (opcional)</Label>
+            <Input
+              type="date"
+              value={form.due_date}
+              onChange={(e) => setForm((old) => ({ ...old, due_date: e.target.value }))}
             />
           </div>
           <div className="space-y-2">
@@ -192,7 +499,7 @@ const Cobrancas: React.FC = () => {
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2 md:col-span-2">
+          <div className="space-y-2">
             <Label>Descricao (opcional)</Label>
             <Input
               value={form.description}
@@ -201,8 +508,8 @@ const Cobrancas: React.FC = () => {
             />
           </div>
           <div className="md:col-span-2">
-            <Button onClick={submit} disabled={saving} className="w-full sm:w-auto">
-              {saving ? 'Gerando cobranca...' : 'Gerar cobranca'}
+            <Button onClick={submit} disabled={savingCharge} className="w-full sm:w-auto">
+              {savingCharge ? 'Gerando cobranca...' : 'Gerar cobranca'}
             </Button>
           </div>
         </CardContent>
@@ -210,36 +517,29 @@ const Cobrancas: React.FC = () => {
 
       <Card className="glass">
         <CardHeader>
-          <CardTitle>Cobrancas geradas</CardTitle>
+          <CardTitle>Recebiveis</CardTitle>
+          <CardDescription>
+            Clique em "Historico" para ver lembretes daquela cobranca na lista abaixo.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {loading && <p className="text-muted-foreground">Carregando...</p>}
-          {!loading && charges.length === 0 && (
+          {loadingCharges && <p className="text-muted-foreground">Carregando...</p>}
+          {!loadingCharges && charges.length === 0 && (
             <p className="text-muted-foreground">Nenhuma cobranca criada.</p>
           )}
-          {!loading &&
+          {!loadingCharges &&
             charges.map((item) => (
-              <div
-                key={item.id}
-                className="rounded-lg border border-border p-4 flex flex-col gap-3"
-              >
+              <div key={item.id} className="rounded-lg border border-border p-4 flex flex-col gap-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="font-medium">{item.title}</p>
                     <p className="text-sm text-muted-foreground">
-                      {item.customer_name} • Pedido {item.order_id.slice(0, 8)}
+                      {item.customer_name} • Pedido {item.order_id.slice(0, 8)} • Venc.: {dateOnly(item.due_date)}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant={item.status === 'paid' ? 'default' : 'secondary'}>
-                      {item.status}
-                    </Badge>
-                    <span className="font-semibold">
-                      {new Intl.NumberFormat('pt-BR', {
-                        style: 'currency',
-                        currency: 'BRL',
-                      }).format(Number(item.amount || 0))}
-                    </span>
+                    <Badge variant={statusVariant(item.status)}>{item.status}</Badge>
+                    <span className="font-semibold">{currency(item.amount)}</span>
                   </div>
                 </div>
 
@@ -247,12 +547,7 @@ const Cobrancas: React.FC = () => {
                   <Badge variant="outline">{item.transaction?.provider || 'gateway'}</Badge>
                   <Badge variant="outline">{item.transaction?.status || 'pending'}</Badge>
                   {item.transaction?.qrCodeText && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="gap-2"
-                      onClick={() => copyPix(item.transaction?.qrCodeText)}
-                    >
+                    <Button size="sm" variant="outline" className="gap-2" onClick={() => copyPix(item.transaction?.qrCodeText)}>
                       <Copy className="h-4 w-4" />
                       Copiar PIX
                     </Button>
@@ -265,7 +560,15 @@ const Cobrancas: React.FC = () => {
                       onClick={() => window.open(item.transaction?.paymentLinkUrl || '#', '_blank')}
                     >
                       <ExternalLink className="h-4 w-4" />
-                      Abrir link de pagamento
+                      Abrir link
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" onClick={() => applyHistoryFilter(item.id)}>
+                    Historico
+                  </Button>
+                  {item.status !== 'paid' && (
+                    <Button size="sm" onClick={() => markAsPaid(item.id)}>
+                      Marcar como pago
                     </Button>
                   )}
                 </div>
@@ -276,13 +579,184 @@ const Cobrancas: React.FC = () => {
                       <QrCode className="h-3 w-3" />
                       QR Code da cobranca
                     </p>
-                    <img
-                      src={item.transaction.qrCodeImageUrl}
-                      alt="QR Code cobranca"
-                      className="h-44 w-44 object-contain"
-                    />
+                    <img src={item.transaction.qrCodeImageUrl} alt="QR Code cobranca" className="h-44 w-44 object-contain" />
                   </div>
                 )}
+              </div>
+            ))}
+        </CardContent>
+      </Card>
+
+      <Card className="glass">
+        <CardHeader>
+          <CardTitle>Lembretes de cobranca</CardTitle>
+          <CardDescription>
+            Filtros por status, etapa, periodo, cliente e cobranca. Falhas podem ser reprocessadas.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select
+                value={reminderFilters.status || 'all'}
+                onValueChange={(value) =>
+                  setReminderFilters((old) => ({ ...old, status: value === 'all' ? '' : value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="scheduled">scheduled</SelectItem>
+                  <SelectItem value="processing">processing</SelectItem>
+                  <SelectItem value="sent">sent</SelectItem>
+                  <SelectItem value="failed">failed</SelectItem>
+                  <SelectItem value="canceled">canceled</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Etapa</Label>
+              <Select
+                value={reminderFilters.step_code || 'all'}
+                onValueChange={(value) =>
+                  setReminderFilters((old) => ({ ...old, step_code: value === 'all' ? '' : value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  <SelectItem value="d0">d0</SelectItem>
+                  <SelectItem value="d3">d3</SelectItem>
+                  <SelectItem value="d7">d7</SelectItem>
+                  <SelectItem value="d15">d15</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Cliente</Label>
+              <Input
+                value={reminderFilters.customer}
+                onChange={(e) => setReminderFilters((old) => ({ ...old, customer: e.target.value }))}
+                placeholder="Nome ou titulo"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Data inicial</Label>
+              <Input
+                type="date"
+                value={reminderFilters.date_from}
+                onChange={(e) => setReminderFilters((old) => ({ ...old, date_from: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Data final</Label>
+              <Input
+                type="date"
+                value={reminderFilters.date_to}
+                onChange={(e) => setReminderFilters((old) => ({ ...old, date_to: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Cobranca ID</Label>
+              <Input
+                value={reminderFilters.billing_charge_id}
+                onChange={(e) =>
+                  setReminderFilters((old) => ({ ...old, billing_charge_id: e.target.value }))
+                }
+                placeholder="UUID da cobranca"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={loadReminders} disabled={loadingReminders}>
+              Aplicar filtros
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setReminderFilters({
+                  status: '',
+                  step_code: '',
+                  customer: '',
+                  date_from: '',
+                  date_to: '',
+                  billing_charge_id: '',
+                });
+                setTimeout(() => {
+                  loadReminders();
+                }, 0);
+              }}
+              disabled={loadingReminders}
+            >
+              Limpar filtros
+            </Button>
+            <Badge variant="outline">{activeFilterCount} filtros ativos</Badge>
+          </div>
+
+          {loadingReminders && <p className="text-muted-foreground">Carregando lembretes...</p>}
+          {!loadingReminders && reminders.length === 0 && (
+            <p className="text-muted-foreground">Nenhum lembrete encontrado para os filtros atuais.</p>
+          )}
+          {!loadingReminders &&
+            reminders.map((item) => (
+              <div key={item.id} className="rounded-lg border border-border p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="font-medium">{item.billing_charge?.title || 'Cobranca sem titulo'}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {item.billing_charge?.customer_name || '-'} • Etapa {item.step_code} • Agendado {datetime(item.scheduled_at)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={statusVariant(item.status)}>{item.status}</Badge>
+                    <Badge variant="outline">{item.channel}</Badge>
+                  </div>
+                </div>
+
+                <div className="grid gap-2 text-sm md:grid-cols-3">
+                  <p>
+                    <span className="text-muted-foreground">Cobranca:</span> {item.billing_charge_id.slice(0, 8)}...
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground">Valor:</span> {currency(Number(item.billing_charge?.amount || 0))}
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground">Enviado em:</span> {datetime(item.sent_at)}
+                  </p>
+                </div>
+
+                {item.error_message && (
+                  <div className="rounded-md border border-border px-3 py-2 text-sm flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 mt-0.5 text-amber-500" />
+                    <span>{item.error_message}</span>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  {item.status === 'failed' && (
+                    <Button
+                      size="sm"
+                      onClick={() => reprocessReminder(item.id)}
+                      disabled={reprocessingId === item.id}
+                      className="gap-2"
+                    >
+                      <RefreshCcw className="h-4 w-4" />
+                      {reprocessingId === item.id ? 'Reprocessando...' : 'Reprocessar'}
+                    </Button>
+                  )}
+                  {item.status === 'sent' && (
+                    <span className="inline-flex items-center text-sm text-emerald-500 gap-1">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Envio confirmado
+                    </span>
+                  )}
+                </div>
               </div>
             ))}
         </CardContent>
@@ -292,4 +766,3 @@ const Cobrancas: React.FC = () => {
 };
 
 export default Cobrancas;
-

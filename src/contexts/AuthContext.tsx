@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { API_URL } from '@/config/api';
 
 interface AuthContextType extends AuthState {
-  login: (token: string, userData: any) => void;
+  login: (token: string, userData: any, companyData?: any) => void;
   logout: () => void;
   hasPermission: (requiredRoles: UserRole[]) => boolean;
   company: Company | null;
@@ -22,6 +22,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isLoading: true,
   });
   const [company, setCompany] = useState<Company | null>(null);
+
+  const normalizeCompany = useCallback((raw: any): Company | null => {
+    if (!raw || !raw.id) return null;
+    return {
+      id: String(raw.id),
+      name: String(raw.name || ''),
+      slug: String(raw.slug || ''),
+      logo_url: raw.logo_url || null,
+      plan: (raw.plan || 'starter') as Company['plan'],
+      status: (raw.status || 'active') as Company['status'],
+      monthly_revenue: Number(raw.monthly_revenue || 0),
+      sistema_base_id: raw.sistema_base_id || undefined,
+      created_at: raw.created_at || new Date().toISOString(),
+      updated_at: raw.updated_at || new Date().toISOString(),
+      employee_count: raw.employee_count !== undefined ? Number(raw.employee_count) : undefined,
+    };
+  }, []);
 
   const decodeTokenPayload = (token: string): any | null => {
     try {
@@ -97,7 +114,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
         if (data.company) {
-          setCompany(data.company);
+          setCompany(normalizeCompany(data.company));
         }
       } else {
         throw new Error('Sessão expirada');
@@ -108,13 +125,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setAuthState({ user: null, isAuthenticated: false, isLoading: false });
       setCompany(null);
     }
-  }, []);
+  }, [normalizeCompany]);
 
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
 
-  const login = (token: string, userData: any) => {
+  const login = (token: string, userData: any, companyData?: any) => {
     localStorage.setItem('evolutech_token', token);
 
     const normalizedUser = {
@@ -130,6 +147,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isAuthenticated: true,
       isLoading: false,
     });
+
+    const resolvedCompany = normalizeCompany(companyData || userData?.company);
+    if (resolvedCompany) {
+      setCompany(resolvedCompany);
+    }
   };
 
   const logout = () => {

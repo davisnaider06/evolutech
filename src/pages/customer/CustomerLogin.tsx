@@ -22,6 +22,10 @@ const CustomerLogin: React.FC = () => {
   const navigate = useNavigate();
   const { login } = useCustomerAuth();
   const hasSlugFromRoute = useMemo(() => Boolean((slug || '').trim()), [slug]);
+  const selectedCompany = useMemo(
+    () => companies.find((item) => item.slug === form.company_slug) || null,
+    [companies, form.company_slug]
+  );
 
   useEffect(() => {
     const loadCompanies = async () => {
@@ -63,8 +67,17 @@ const CustomerLogin: React.FC = () => {
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader>
+          {selectedCompany?.logo_url ? (
+            <div className="mb-2">
+              <img
+                src={selectedCompany.logo_url}
+                alt={selectedCompany.name}
+                className="h-12 w-auto max-w-[180px] object-contain"
+              />
+            </div>
+          ) : null}
           <CardTitle>Portal do Cliente</CardTitle>
-          <CardDescription>Entre para acompanhar seus agendamentos e benefícios.</CardDescription>
+          <CardDescription>Entre para acompanhar seus agendamentos e beneficios.</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit}>

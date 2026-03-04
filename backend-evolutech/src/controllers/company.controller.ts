@@ -554,6 +554,16 @@ export class CompanyController {
     }
   }
 
+  async reprocessCollectionReminder(req: AuthedRequest, res: Response) {
+    try {
+      const { reminderId } = req.params;
+      const result = await service.reprocessCollectionReminder(req.user!, reminderId, req.body || {});
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   async listMyPaymentGateways(req: AuthedRequest, res: Response) {
     try {
       const result = await service.listMyPaymentGateways(req.user!);

@@ -11,12 +11,14 @@ export interface CustomerAuthCompany {
   id: string;
   name: string;
   slug: string;
+  logo_url?: string | null;
 }
 
 export interface CustomerPortalCompanyOption {
   id: string;
   name: string;
   slug: string;
+  logo_url?: string | null;
 }
 
 export interface CustomerAuthResponse {

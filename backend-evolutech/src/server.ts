@@ -11,6 +11,7 @@ import publicRoutes from './routes/public.routes';
 import paymentWebhookRoutes from './routes/payment-webhook.routes';
 import customerAuthRoutes from './routes/customer-auth.routes';
 import customerRoutes from './routes/customer.routes';
+import { prisma } from './db';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -19,6 +20,8 @@ const corsOrigins = String(process.env.CORS_ORIGIN || '*')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
+const DB_KEEPALIVE_ENABLED = process.env.DB_KEEPALIVE_ENABLED !== 'false';
+const DB_KEEPALIVE_MS = Math.max(60000, Number(process.env.DB_KEEPALIVE_MS || 240000));
 
 // Middlewares Globais
 app.use(
@@ -56,7 +59,27 @@ app.get('/', (req, res) => {
   res.json({ status: 'Backend Evolutech Modular 🚀' });
 });
 
-// Inicialização
-app.listen(PORT, () => {
-  console.log(`✅ Server rodando na porta ${PORT}`);
-});
+const startServer = async () => {
+  try {
+    await prisma.$connect();
+    console.log('Database connected');
+  } catch (error) {
+    console.error('Database connection failed during startup', error);
+  }
+
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+
+  if (DB_KEEPALIVE_ENABLED) {
+    setInterval(async () => {
+      try {
+        await prisma.$queryRaw`SELECT 1`;
+      } catch (error) {
+        console.warn('Database keepalive failed', error);
+      }
+    }, DB_KEEPALIVE_MS).unref();
+  }
+};
+
+startServer();

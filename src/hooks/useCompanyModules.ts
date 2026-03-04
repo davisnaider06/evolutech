@@ -77,7 +77,7 @@ export const useCompanyModules = () => {
   );
 
   const fetchModules = useCallback(async () => {
-    const contextModules = ((company as any)?.modules || []) as CompanyModule[];
+    const contextModules = (((company as any)?.modules || (user as any)?.modules || []) as CompanyModule[]);
     if (contextModules.length > 0) {
       const mapped = contextModules.map((item) => ({
         id: item.id,
@@ -134,7 +134,7 @@ export const useCompanyModules = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [company, resolveOwnerDefaults]);
+  }, [company, user, resolveOwnerDefaults]);
 
   useEffect(() => {
     if (isAuthLoading) return;

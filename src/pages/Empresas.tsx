@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { adminService } from '@/services/admin';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,7 +20,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Plus, Building2, MoreVertical, Trash2, Power, PowerOff, Pencil } from 'lucide-react';
+import { Plus, Building2, MoreVertical, Trash2, Power, PowerOff, Pencil, Upload } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,6 +37,7 @@ interface Tenant {
   id: string;
   name: string;
   slug: string;
+  logo_url?: string | null;
   plan: string;
   status: 'active' | 'inactive' | 'pending';
   monthly_revenue: number;
@@ -57,6 +59,9 @@ const Empresas: React.FC = () => {
   const [creating, setCreating] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [selectedEmpresa, setSelectedEmpresa] = useState<Tenant | null>(null);
+  const createLogoInputRef = useRef<HTMLInputElement>(null);
+  const [createLogoFile, setCreateLogoFile] = useState<File | null>(null);
+  const [createLogoPreview, setCreateLogoPreview] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     empresaNome: '',
@@ -99,6 +104,40 @@ const Empresas: React.FC = () => {
       empresaPlano: 'professional',
       sistemaBaseId: '',
     });
+    setCreateLogoFile(null);
+    setCreateLogoPreview(null);
+    if (createLogoInputRef.current) {
+      createLogoInputRef.current.value = '';
+    }
+  };
+
+  const handleCreateLogoSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('A logo deve ter no maximo 2MB');
+      return;
+    }
+
+    setCreateLogoFile(file);
+    const reader = new FileReader();
+    reader.onload = () => setCreateLogoPreview(String(reader.result || ''));
+    reader.readAsDataURL(file);
+  };
+
+  const uploadCompanyLogo = async (companyId: string, file: File) => {
+    const ext = String(file.name.split('.').pop() || 'png').toLowerCase();
+    const safeExt = ['png', 'jpg', 'jpeg', 'webp', 'svg'].includes(ext) ? ext : 'png';
+    const path = `${companyId}/logo.${safeExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('company-logos')
+      .upload(path, file, { upsert: true });
+
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage.from('company-logos').getPublicUrl(path);
+    return data.publicUrl;
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -111,7 +150,13 @@ const Empresas: React.FC = () => {
 
     setCreating(true);
     try {
-      await adminService.criarTenant({ ...formData });
+      const created = await adminService.criarTenant({ ...formData });
+      const createdCompanyId = created?.company?.id;
+
+      if (createLogoFile && createdCompanyId) {
+        const logoUrl = await uploadCompanyLogo(createdCompanyId, createLogoFile);
+        await adminService.atualizarTenant(createdCompanyId, { logo_url: logoUrl });
+      }
 
       toast.success('Empresa criada com sucesso');
       setIsDialogOpen(false);
@@ -221,9 +266,17 @@ const Empresas: React.FC = () => {
                   <tr key={empresa.id} className="border-b border-border/50 hover:bg-secondary/20">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                          <Building2 className="h-5 w-5" />
-                        </div>
+                        {empresa.logo_url ? (
+                          <img
+                            src={empresa.logo_url}
+                            alt={empresa.name}
+                            className="h-10 w-10 rounded-lg object-cover border border-border"
+                          />
+                        ) : (
+                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                            <Building2 className="h-5 w-5" />
+                          </div>
+                        )}
                         <div>
                           <p className="font-medium">{empresa.name}</p>
                           <p className="text-sm text-muted-foreground">{empresa.slug}</p>
@@ -309,6 +362,34 @@ const Empresas: React.FC = () => {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Logo da empresa</Label>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  className="h-16 w-16 rounded-lg border border-dashed border-border bg-secondary/20 flex items-center justify-center overflow-hidden"
+                  onClick={() => createLogoInputRef.current?.click()}
+                >
+                  {createLogoPreview ? (
+                    <img src={createLogoPreview} alt="Preview da logo" className="h-full w-full object-cover" />
+                  ) : (
+                    <Upload className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </button>
+                <div className="text-sm text-muted-foreground">
+                  <p>Selecione a logo da empresa (opcional).</p>
+                  <p>Formatos: PNG/JPG/WEBP/SVG ate 2MB.</p>
+                </div>
+              </div>
+              <input
+                ref={createLogoInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml"
+                className="hidden"
+                onChange={handleCreateLogoSelected}
+              />
             </div>
 
             <div className="flex justify-end gap-2 pt-2">

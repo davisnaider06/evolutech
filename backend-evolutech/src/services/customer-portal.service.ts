@@ -80,6 +80,7 @@ export class CustomerPortalService {
             id: true,
             name: true,
             slug: true,
+            logoUrl: true,
             status: true,
           },
         },
@@ -145,7 +146,12 @@ export class CustomerPortalService {
         email: context.customer.email,
         phone: context.customer.phone,
       },
-      company: context.company,
+      company: {
+        id: context.company.id,
+        name: context.company.name,
+        slug: context.company.slug,
+        logo_url: context.company.logoUrl || null,
+      },
       summary: {
         appointments_total: appointmentsTotal,
         upcoming_appointments: upcomingAppointments,

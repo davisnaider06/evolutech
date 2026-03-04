@@ -7,6 +7,7 @@ export interface CreateTenantInput {
   companyDocument?: string;
   companyPlan?: string;
   companyStatus?: 'active' | 'inactive' | 'pending';
+  companyLogoUrl?: string | null;
   sistemaBaseId: string;
   ownerFullName?: string;
   ownerEmail?: string;
@@ -18,6 +19,7 @@ interface TenantOnboardingResult {
     id: string;
     name: string;
     slug: string;
+    logoUrl?: string | null;
     sistemaBaseId: string;
   };
   owner: {
@@ -70,6 +72,7 @@ export class TenantService {
     const companyName = input.companyName?.trim();
     const sistemaBaseId = input.sistemaBaseId?.trim();
     const companyDocument = input.companyDocument?.trim();
+    const companyLogoUrl = String(input.companyLogoUrl || '').trim() || null;
     const companyStatus = resolveCompanyStatus(input.companyStatus);
 
     if (!companyName || !sistemaBaseId) {
@@ -121,6 +124,7 @@ export class TenantService {
           name: companyName,
           slug: slugCandidate,
           document: companyDocument || null,
+          logoUrl: companyLogoUrl,
           plan: input.companyPlan?.trim() || 'starter',
           status: companyStatus,
           sistemaBaseId,
@@ -218,6 +222,7 @@ export class TenantService {
         id: created.company.id,
         name: created.company.name,
         slug: created.company.slug,
+        logoUrl: created.company.logoUrl,
         sistemaBaseId: created.company.sistemaBaseId as string,
       },
       owner: {

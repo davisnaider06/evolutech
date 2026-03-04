@@ -695,6 +695,7 @@ export class AdminService {
     plan?: string;
     status?: Status;
     document?: string | null;
+    logo_url?: string | null;
     sistema_base_id?: string | null;
   }) {
     return prisma.$transaction(async (tx) => {
@@ -720,6 +721,9 @@ export class AdminService {
           plan: data.plan,
           status: data.status,
           document: data.document,
+          logoUrl: Object.prototype.hasOwnProperty.call(data, 'logo_url')
+            ? (data.logo_url || null)
+            : undefined,
           sistemaBaseId: data.sistema_base_id
         }
       });

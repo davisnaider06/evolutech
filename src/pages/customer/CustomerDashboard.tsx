@@ -213,11 +213,20 @@ const CustomerDashboard: React.FC = () => {
     <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-6xl space-y-6 p-4 md:p-8">
         <div className="flex flex-col gap-4 rounded-xl border bg-card p-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">Portal do Cliente</h1>
-            <p className="text-sm text-muted-foreground">
-              {customer?.name} • {company?.name}
-            </p>
+          <div className="flex items-center gap-3">
+            {company?.logo_url ? (
+              <img
+                src={company.logo_url}
+                alt={company.name}
+                className="h-10 w-10 rounded-md object-contain border border-border bg-background p-1"
+              />
+            ) : null}
+            <div>
+              <h1 className="text-2xl font-bold">Portal do Cliente</h1>
+              <p className="text-sm text-muted-foreground">
+                {customer?.name} - {company?.name}
+              </p>
+            </div>
           </div>
           <Button variant="outline" onClick={handleLogout}>
             Sair

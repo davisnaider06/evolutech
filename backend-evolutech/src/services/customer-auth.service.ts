@@ -69,7 +69,7 @@ export class CustomerAuthService {
       },
       select: {
         company: {
-          select: { id: true, name: true, slug: true },
+          select: { id: true, name: true, slug: true, logoUrl: true },
         },
       },
       orderBy: {
@@ -79,12 +79,23 @@ export class CustomerAuthService {
 
     const mapped = rows
       .map((row) => row.company)
-      .filter((company): company is { id: string; name: string; slug: string } => Boolean(company));
+      .filter(
+        (company): company is { id: string; name: string; slug: string; logoUrl: string | null } =>
+          Boolean(company)
+      );
 
-    const uniqueBySlug = new Map<string, { id: string; name: string; slug: string }>();
+    const uniqueBySlug = new Map<
+      string,
+      { id: string; name: string; slug: string; logo_url: string | null }
+    >();
     for (const company of mapped) {
       if (!uniqueBySlug.has(company.slug)) {
-        uniqueBySlug.set(company.slug, company);
+        uniqueBySlug.set(company.slug, {
+          id: company.id,
+          name: company.name,
+          slug: company.slug,
+          logo_url: company.logoUrl || null,
+        });
       }
     }
 
@@ -121,7 +132,7 @@ export class CustomerAuthService {
 
     const company = await prisma.company.findFirst({
       where: { slug, status: 'active' },
-      select: { id: true, name: true, slug: true },
+      select: { id: true, name: true, slug: true, logoUrl: true },
     });
     if (!company) throw new CustomerAuthError('Empresa nao encontrada', 404);
 
@@ -203,6 +214,7 @@ export class CustomerAuthService {
         id: company.id,
         name: company.name,
         slug: company.slug,
+        logo_url: company.logoUrl || null,
       },
     };
   }
@@ -218,7 +230,7 @@ export class CustomerAuthService {
 
     const company = await prisma.company.findFirst({
       where: { slug, status: 'active' },
-      select: { id: true, name: true, slug: true },
+      select: { id: true, name: true, slug: true, logoUrl: true },
     });
     if (!company) throw new CustomerAuthError('Empresa nao encontrada', 404);
 
@@ -270,6 +282,7 @@ export class CustomerAuthService {
         id: company.id,
         name: company.name,
         slug: company.slug,
+        logo_url: company.logoUrl || null,
       },
     };
   }
@@ -292,7 +305,7 @@ export class CustomerAuthService {
           },
         },
         company: {
-          select: { id: true, name: true, slug: true },
+          select: { id: true, name: true, slug: true, logoUrl: true },
         },
       },
     });
@@ -308,7 +321,12 @@ export class CustomerAuthService {
         document: account.customer?.document || null,
         role: 'CLIENTE',
       },
-      company: account.company,
+      company: {
+        id: account.company.id,
+        name: account.company.name,
+        slug: account.company.slug,
+        logo_url: account.company.logoUrl || null,
+      },
     };
   }
 }

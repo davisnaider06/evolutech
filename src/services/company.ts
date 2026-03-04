@@ -282,14 +282,36 @@ export const companyService = {
     const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
     return request(`/collections/metrics${suffix}`);
   },
-  listCollectionReminders: async (params?: { status?: string; page?: number; pageSize?: number }) => {
+  listCollectionReminders: async (params?: {
+    status?: string;
+    step_code?: string;
+    customer?: string;
+    billing_charge_id?: string;
+    date_from?: string;
+    date_to?: string;
+    page?: number;
+    pageSize?: number;
+  }) => {
     const searchParams = new URLSearchParams();
     if (params?.status) searchParams.set('status', params.status);
+    if (params?.step_code) searchParams.set('step_code', params.step_code);
+    if (params?.customer) searchParams.set('customer', params.customer);
+    if (params?.billing_charge_id) searchParams.set('billing_charge_id', params.billing_charge_id);
+    if (params?.date_from) searchParams.set('date_from', params.date_from);
+    if (params?.date_to) searchParams.set('date_to', params.date_to);
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
     const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
     return request(`/collections/reminders${suffix}`);
   },
+  reprocessCollectionReminder: async (
+    reminderId: string,
+    data?: { company_id?: string; send_now?: boolean }
+  ) =>
+    request(`/collections/reminders/${encodeURIComponent(reminderId)}/reprocess`, {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    }),
   runCollectionsAutomation: async (data?: { dry_run?: boolean; send_now?: boolean; company_id?: string }) =>
     request('/collections/automation/run', {
       method: 'POST',

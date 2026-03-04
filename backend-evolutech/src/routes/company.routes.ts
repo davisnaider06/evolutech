@@ -68,6 +68,7 @@ router.post('/collections/receivables', companyController.createCollectionsRecei
 router.post('/collections/receivables/:receivableId/pay', companyController.markCollectionsReceivablePaid.bind(companyController));
 router.get('/collections/metrics', companyController.getCollectionsMetrics.bind(companyController));
 router.get('/collections/reminders', companyController.listCollectionReminders.bind(companyController));
+router.post('/collections/reminders/:reminderId/reprocess', companyController.reprocessCollectionReminder.bind(companyController));
 router.post('/collections/automation/run', companyController.runCollectionsAutomation.bind(companyController));
 router.get('/gateways', companyController.listMyPaymentGateways.bind(companyController));
 router.post('/gateways/connect', companyController.connectMyPaymentGateway.bind(companyController));

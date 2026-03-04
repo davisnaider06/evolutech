@@ -25,6 +25,10 @@ const CustomerRegister: React.FC = () => {
   const { login } = useCustomerAuth();
   const navigate = useNavigate();
   const hasSlugFromRoute = useMemo(() => Boolean((slug || '').trim()), [slug]);
+  const selectedCompany = useMemo(
+    () => companies.find((item) => item.slug === form.company_slug) || null,
+    [companies, form.company_slug]
+  );
 
   useEffect(() => {
     const loadCompanies = async () => {
@@ -77,6 +81,15 @@ const CustomerRegister: React.FC = () => {
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-lg">
         <CardHeader>
+          {selectedCompany?.logo_url ? (
+            <div className="mb-2">
+              <img
+                src={selectedCompany.logo_url}
+                alt={selectedCompany.name}
+                className="h-12 w-auto max-w-[200px] object-contain"
+              />
+            </div>
+          ) : null}
           <CardTitle>Criar conta no Portal do Cliente</CardTitle>
           <CardDescription>Selecione sua empresa e conclua seu cadastro.</CardDescription>
         </CardHeader>

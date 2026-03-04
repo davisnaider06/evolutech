@@ -3332,18 +3332,57 @@ export class CompanyService {
 
   async listCollectionReminders(
     user: AuthenticatedUser,
-    queryParams: { status?: string; page?: number; pageSize?: number; company_id?: string; companyId?: string } = {}
+    queryParams: {
+      status?: string;
+      step_code?: string;
+      page?: number;
+      pageSize?: number;
+      customer?: string;
+      billing_charge_id?: string;
+      date_from?: string;
+      date_to?: string;
+      company_id?: string;
+      companyId?: string;
+    } = {}
   ) {
     const companyId = this.resolveCompanyId(user, queryParams);
     await this.ensureAnyModuleAccess(user, companyId, ['collections', 'billing', 'cobrancas']);
 
     const status = String(queryParams.status || '').trim().toLowerCase();
+    const stepCode = String(queryParams.step_code || '').trim().toLowerCase();
+    const customer = String(queryParams.customer || '').trim();
+    const billingChargeId = String(queryParams.billing_charge_id || '').trim();
+    const dateFrom = queryParams.date_from ? new Date(String(queryParams.date_from)) : null;
+    const dateTo = queryParams.date_to ? new Date(String(queryParams.date_to)) : null;
     const page = Math.max(1, Number(queryParams.page || 1));
     const pageSize = Math.min(100, Math.max(1, Number(queryParams.pageSize || 20)));
+
+    const scheduledAt: any = {};
+    if (dateFrom && !Number.isNaN(dateFrom.getTime())) {
+      scheduledAt.gte = dateFrom;
+    }
+    if (dateTo && !Number.isNaN(dateTo.getTime())) {
+      const end = new Date(dateTo);
+      end.setHours(23, 59, 59, 999);
+      scheduledAt.lte = end;
+    }
 
     const where: any = {
       companyId,
       ...(status ? { status } : {}),
+      ...(stepCode ? { stepCode } : {}),
+      ...(billingChargeId ? { billingChargeId } : {}),
+      ...(Object.keys(scheduledAt).length > 0 ? { scheduledAt } : {}),
+      ...(customer
+        ? {
+            billingCharge: {
+              OR: [
+                { customerName: { contains: customer, mode: 'insensitive' as const } },
+                { title: { contains: customer, mode: 'insensitive' as const } },
+              ],
+            },
+          }
+        : {}),
     };
 
     const [items, total] = await Promise.all([
@@ -3541,6 +3580,161 @@ export class CompanyService {
       reminders_failed: failedCount,
       reminder_ids: createdReminderIds,
     };
+  }
+
+  async reprocessCollectionReminder(
+    user: AuthenticatedUser,
+    reminderId: string,
+    payload?: { company_id?: string; companyId?: string; send_now?: boolean }
+  ) {
+    const companyId = this.resolveCompanyId(user, payload || {});
+    await this.ensureAnyModuleAccess(user, companyId, ['collections', 'billing', 'cobrancas']);
+    if (user.role === 'FUNCIONARIO_EMPRESA') {
+      throw new CompanyServiceError('Apenas dono da empresa pode reprocessar lembretes', 403);
+    }
+
+    const sendNow = payload?.send_now !== false;
+    const reminder = await (prisma as any).billingReminder.findFirst({
+      where: { id: reminderId, companyId },
+      include: {
+        billingCharge: {
+          select: {
+            id: true,
+            title: true,
+            customerName: true,
+            customerPhone: true,
+            amount: true,
+            dueDate: true,
+            status: true,
+          },
+        },
+      },
+    });
+    if (!reminder) {
+      throw new CompanyServiceError('Lembrete nao encontrado', 404);
+    }
+    if (reminder.status === 'canceled') {
+      throw new CompanyServiceError('Lembrete cancelado nao pode ser reprocessado', 400);
+    }
+    if (reminder.billingCharge?.status === 'paid') {
+      throw new CompanyServiceError('Cobranca paga nao pode ter lembrete reprocessado', 400);
+    }
+
+    const now = new Date();
+    if (!sendNow) {
+      const scheduled = await (prisma as any).billingReminder.update({
+        where: { id: reminder.id },
+        data: {
+          status: 'scheduled',
+          errorMessage: null,
+          scheduledAt: now,
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          userId: user.id,
+          companyId,
+          action: 'COLLECTIONS_REMINDER_REPROCESSED',
+          resource: 'billing_reminders',
+          details: {
+            reminderId: scheduled.id,
+            billingChargeId: scheduled.billingChargeId,
+            mode: 'scheduled',
+          },
+        },
+      });
+
+      return {
+        id: scheduled.id,
+        billing_charge_id: scheduled.billingChargeId,
+        status: scheduled.status,
+        sent_at: scheduled.sentAt,
+        error_message: scheduled.errorMessage,
+      };
+    }
+
+    await (prisma as any).billingReminder.update({
+      where: { id: reminder.id },
+      data: {
+        status: 'processing',
+        errorMessage: null,
+      },
+    });
+
+    const phone = String(reminder.billingCharge?.customerPhone || '').trim();
+    if (!phone) {
+      const failed = await (prisma as any).billingReminder.update({
+        where: { id: reminder.id },
+        data: {
+          status: 'failed',
+          errorMessage: 'Cliente sem telefone para WhatsApp',
+        },
+      });
+      return {
+        id: failed.id,
+        billing_charge_id: failed.billingChargeId,
+        status: failed.status,
+        sent_at: failed.sentAt,
+        error_message: failed.errorMessage,
+      };
+    }
+
+    try {
+      await this.sendWhatsApp(user, {
+        company_id: companyId,
+        phone,
+        message: this.buildReminderMessage(reminder.billingCharge, reminder.stepCode),
+      });
+
+      const sent = await (prisma as any).billingReminder.update({
+        where: { id: reminder.id },
+        data: {
+          status: 'sent',
+          sentAt: new Date(),
+          errorMessage: null,
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          userId: user.id,
+          companyId,
+          action: 'COLLECTIONS_REMINDER_REPROCESSED',
+          resource: 'billing_reminders',
+          details: {
+            reminderId: sent.id,
+            billingChargeId: sent.billingChargeId,
+            mode: 'send_now',
+            result: 'sent',
+          },
+        },
+      });
+
+      return {
+        id: sent.id,
+        billing_charge_id: sent.billingChargeId,
+        status: sent.status,
+        sent_at: sent.sentAt,
+        error_message: sent.errorMessage,
+      };
+    } catch (error: any) {
+      const failed = await (prisma as any).billingReminder.update({
+        where: { id: reminder.id },
+        data: {
+          status: 'failed',
+          errorMessage: String(error?.message || 'Falha ao enviar WhatsApp').slice(0, 500),
+        },
+      });
+
+      return {
+        id: failed.id,
+        billing_charge_id: failed.billingChargeId,
+        status: failed.status,
+        sent_at: failed.sentAt,
+        error_message: failed.errorMessage,
+      };
+    }
   }
 
   async markBillingChargeAsPaid(

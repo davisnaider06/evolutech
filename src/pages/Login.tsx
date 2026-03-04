@@ -35,7 +35,7 @@ const Login: React.FC = () => {
       }
 
       // Sucesso! Salva no contexto e redireciona
-      login(data.token, data.user);
+      login(data.token, data.user, data.company);
       toast.success(`Bem-vindo, ${data.user.name}!`);
 
       if (data.user.role === 'SUPER_ADMIN_EVOLUTECH') {

@@ -1,4 +1,4 @@
-﻿import { prisma } from '../db';
+import { prisma } from '../db';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { AppRole } from '../types';
@@ -12,7 +12,7 @@ const OWNER_DEFAULT_MODULES = [
   { codigo: 'users', nome: 'Equipe' },
   { codigo: 'permissions', nome: 'Permissoes' },
   { codigo: 'gateways', nome: 'Gateways' },
-  { codigo: 'commissions_owner', nome: 'Comissões' },
+  { codigo: 'commissions_owner', nome: 'Comissoes' },
 ];
 
 type JwtAuthPayload = {
@@ -30,6 +30,116 @@ export class AuthService {
 
   private buildMeCacheKey(userId: string, role?: AppRole, companyId?: string | null) {
     return `${userId}:${role || 'unknown'}:${companyId || 'none'}`;
+  }
+
+  private async resolveModulesForRole(
+    role: AppRole | undefined,
+    companyId: string | null | undefined,
+    sistemaBaseId: string | null | undefined,
+    userId: string
+  ) {
+    if (!companyId) return [];
+
+    const [companyModules, sistemaBaseModules, employeePermissions] = await Promise.all([
+      prisma.companyModule.findMany({
+        where: {
+          companyId,
+          isActive: true,
+          modulo: { status: 'active' },
+        },
+        include: { modulo: true },
+      }),
+      sistemaBaseId
+        ? prisma.sistemaBaseModulo.findMany({
+            where: {
+              sistemaBaseId,
+              modulo: { status: 'active' },
+            },
+            include: { modulo: true },
+          })
+        : Promise.resolve([]),
+      role === 'FUNCIONARIO_EMPRESA'
+        ? (prisma as any).employeeModulePermission.findMany({
+            where: {
+              companyId,
+              userId,
+            },
+            select: {
+              moduloId: true,
+              isAllowed: true,
+            },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const deniedModuleIds =
+      role === 'FUNCIONARIO_EMPRESA'
+        ? new Set(
+            employeePermissions
+              .filter((item: { moduloId: string; isAllowed: boolean }) => item.isAllowed === false)
+              .map((item: { moduloId: string; isAllowed: boolean }) => item.moduloId)
+          )
+        : new Set<string>();
+
+    const moduleMap = new Map<
+      string,
+      {
+        id: string;
+        codigo: string;
+        nome: string;
+        icone: string | null;
+        is_pro: boolean;
+        allowed_roles: string[];
+      }
+    >();
+
+    for (const item of companyModules) {
+      if (deniedModuleIds.has(item.modulo.id)) continue;
+      moduleMap.set(item.modulo.id, {
+        id: item.modulo.id,
+        codigo: item.modulo.codigo,
+        nome: item.modulo.nome,
+        icone: item.modulo.icone,
+        is_pro: Boolean((item.modulo as any).isPro),
+        allowed_roles: Array.isArray((item.modulo as any).allowedRoles)
+          ? (item.modulo as any).allowedRoles
+          : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
+      });
+    }
+
+    for (const item of sistemaBaseModules) {
+      if (deniedModuleIds.has(item.modulo.id)) continue;
+      moduleMap.set(item.modulo.id, {
+        id: item.modulo.id,
+        codigo: item.modulo.codigo,
+        nome: item.modulo.nome,
+        icone: item.modulo.icone,
+        is_pro: Boolean((item.modulo as any).isPro),
+        allowed_roles: Array.isArray((item.modulo as any).allowedRoles)
+          ? (item.modulo as any).allowedRoles
+          : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
+      });
+    }
+
+    if (role === 'DONO_EMPRESA') {
+      for (const moduleItem of OWNER_DEFAULT_MODULES) {
+        const hasCode = Array.from(moduleMap.values()).some(
+          (item) => String(item.codigo || '').toLowerCase() === moduleItem.codigo
+        );
+        if (!hasCode) {
+          moduleMap.set(`owner-default-${moduleItem.codigo}`, {
+            id: `owner-default-${moduleItem.codigo}`,
+            codigo: moduleItem.codigo,
+            nome: moduleItem.nome,
+            icone: null,
+            is_pro: false,
+            allowed_roles: ['DONO_EMPRESA'],
+          });
+        }
+      }
+    }
+
+    return Array.from(moduleMap.values());
   }
 
   async login(email: string, passwordPlain: string) {
@@ -51,6 +161,7 @@ export class AuthService {
                 name: true,
                 slug: true,
                 sistemaBaseId: true,
+                logoUrl: true,
               },
             },
           },
@@ -60,20 +171,26 @@ export class AuthService {
       },
     });
 
-    if (!user) throw new Error('Credenciais inválidas');
+    if (!user) throw new Error('Credenciais invalidas');
     if (!user.isActive) throw new Error('Usuario inativo');
-    if (!user.passwordHash) throw new Error('Usuário sem senha definida');
+    if (!user.passwordHash) throw new Error('Usuario sem senha definida');
 
     const isValid = await bcrypt.compare(passwordPlain, user.passwordHash);
-    if (!isValid) throw new Error('Credenciais inválidas');
+    if (!isValid) throw new Error('Credenciais invalidas');
 
     const activeRole = user.roles[0];
+    const modules = await this.resolveModulesForRole(
+      activeRole?.role as AppRole | undefined,
+      activeRole?.companyId,
+      activeRole?.company?.sistemaBaseId,
+      user.id
+    );
 
     const tokenPayload: JwtAuthPayload = {
       userId: user.id,
       email: user.email,
       fullName: user.fullName,
-      role: activeRole?.role,
+      role: activeRole?.role as AppRole | undefined,
       companyId: activeRole?.companyId || null,
       companyName: activeRole?.company?.name || null,
     };
@@ -90,7 +207,17 @@ export class AuthService {
         tenantId: activeRole?.companyId,
         tenantName: activeRole?.company?.name,
         tenantSlug: activeRole?.company?.slug,
-      }
+        modules,
+      },
+      company: activeRole?.companyId
+        ? {
+            id: activeRole.companyId,
+            name: activeRole?.company?.name,
+            slug: activeRole?.company?.slug,
+            logo_url: activeRole?.company?.logoUrl || null,
+            modules,
+          }
+        : null,
     };
   }
 
@@ -110,123 +237,33 @@ export class AuthService {
                 name: true,
                 slug: true,
                 sistemaBaseId: true,
+                logoUrl: true,
               },
             },
           },
           orderBy: { createdAt: 'desc' },
           take: 1,
-        }
-      }
+        },
+      },
     });
 
     if (!user) return null;
+
     const activeRole = user.roles[0];
     const companyId = activeRole?.companyId;
-    const meCacheKey = this.buildMeCacheKey(userId, activeRole?.role, companyId);
+    const meCacheKey = this.buildMeCacheKey(userId, activeRole?.role as AppRole | undefined, companyId);
     const now = Date.now();
     const cached = this.meCache.get(meCacheKey);
     if (cached && cached.expiresAt > now) {
       return cached.payload;
     }
 
-    const [companyModules, sistemaBaseModules, employeePermissions] = companyId
-      ? await Promise.all([
-          prisma.companyModule.findMany({
-            where: {
-              companyId,
-              isActive: true,
-              modulo: { status: 'active' },
-            },
-            include: { modulo: true },
-          }),
-          activeRole?.company?.sistemaBaseId
-            ? prisma.sistemaBaseModulo.findMany({
-                where: {
-                  sistemaBaseId: activeRole.company.sistemaBaseId,
-                  modulo: { status: 'active' },
-                },
-                include: { modulo: true },
-              })
-            : Promise.resolve([]),
-          activeRole?.role === 'FUNCIONARIO_EMPRESA'
-            ? (prisma as any).employeeModulePermission.findMany({
-                where: {
-                  companyId,
-                  userId,
-                },
-                select: {
-                  moduloId: true,
-                  isAllowed: true,
-                },
-              })
-            : Promise.resolve([]),
-        ])
-      : [[], [], []];
-
-    const deniedModuleIds =
-      activeRole?.role === 'FUNCIONARIO_EMPRESA'
-        ? new Set(
-            employeePermissions
-              .filter((item: { moduloId: string; isAllowed: boolean }) => item.isAllowed === false)
-              .map((item: { moduloId: string; isAllowed: boolean }) => item.moduloId)
-          )
-        : new Set<string>();
-
-    const moduleMap = new Map<
-      string,
-      {
-        id: string;
-        codigo: string;
-        nome: string;
-        icone: string | null;
-        is_pro: boolean;
-        allowed_roles: string[];
-      }
-    >();
-    for (const item of companyModules) {
-      if (deniedModuleIds.has(item.modulo.id)) continue;
-      moduleMap.set(item.modulo.id, {
-        id: item.modulo.id,
-        codigo: item.modulo.codigo,
-        nome: item.modulo.nome,
-        icone: item.modulo.icone,
-        is_pro: Boolean((item.modulo as any).isPro),
-        allowed_roles: Array.isArray((item.modulo as any).allowedRoles)
-          ? (item.modulo as any).allowedRoles
-          : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
-      });
-    }
-    for (const item of sistemaBaseModules) {
-      if (deniedModuleIds.has(item.modulo.id)) continue;
-      moduleMap.set(item.modulo.id, {
-        id: item.modulo.id,
-        codigo: item.modulo.codigo,
-        nome: item.modulo.nome,
-        icone: item.modulo.icone,
-        is_pro: Boolean((item.modulo as any).isPro),
-        allowed_roles: Array.isArray((item.modulo as any).allowedRoles)
-          ? (item.modulo as any).allowedRoles
-          : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
-      });
-    }
-
-    if (activeRole?.role === 'DONO_EMPRESA') {
-      for (const moduleItem of OWNER_DEFAULT_MODULES) {
-        const hasCode = Array.from(moduleMap.values()).some(
-          (item) => String(item.codigo || '').toLowerCase() === moduleItem.codigo
-        );
-        if (!hasCode) {
-          moduleMap.set(`owner-default-${moduleItem.codigo}`, {
-            id: `owner-default-${moduleItem.codigo}`,
-            codigo: moduleItem.codigo,
-            nome: moduleItem.nome,
-            icone: null,
-            is_pro: false,
-            allowed_roles: ['DONO_EMPRESA'],
-          });
-        }
-      }
-    }
+    const modules = await this.resolveModulesForRole(
+      activeRole?.role as AppRole | undefined,
+      companyId,
+      activeRole?.company?.sistemaBaseId,
+      userId
+    );
 
     const payload = {
       id: user.id,
@@ -236,13 +273,15 @@ export class AuthService {
       company_id: companyId,
       company_name: activeRole?.company?.name,
       company_slug: activeRole?.company?.slug,
-      modules: Array.from(moduleMap.values()),
+      company_logo_url: activeRole?.company?.logoUrl || null,
+      modules,
     };
+
     this.meCache.set(meCacheKey, {
       payload,
       expiresAt: now + this.meCacheTtlMs,
     });
+
     return payload;
   }
 }
-
