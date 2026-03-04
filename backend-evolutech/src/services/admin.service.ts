@@ -690,6 +690,165 @@ export class AdminService {
     });
   }
 
+  async getTenantTheme(companyId: string) {
+    const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+      select *
+      from company_themes
+      where company_id = ${companyId}
+      limit 1
+    `;
+
+    return rows[0] || null;
+  }
+
+  async upsertTenantTheme(
+    companyId: string,
+    data: {
+      company_display_name?: string | null;
+      logo_path?: string | null;
+      favicon_path?: string | null;
+      login_cover_path?: string | null;
+      primary_color?: string;
+      primary_foreground?: string;
+      secondary_color?: string;
+      secondary_foreground?: string;
+      accent_color?: string;
+      accent_foreground?: string;
+      background_color?: string;
+      foreground_color?: string;
+      card_color?: string;
+      card_foreground?: string;
+      muted_color?: string;
+      muted_foreground?: string;
+      border_color?: string;
+      destructive_color?: string;
+      sidebar_background?: string;
+      sidebar_foreground?: string;
+      sidebar_primary?: string;
+      sidebar_accent?: string;
+      border_radius?: string;
+      font_family?: string;
+      dark_mode_enabled?: boolean;
+    }
+  ) {
+    const payload = {
+      company_display_name: data.company_display_name ?? null,
+      logo_path: data.logo_path ?? null,
+      favicon_path: data.favicon_path ?? null,
+      login_cover_path: data.login_cover_path ?? null,
+      primary_color: data.primary_color ?? '217 91% 60%',
+      primary_foreground: data.primary_foreground ?? '222 47% 6%',
+      secondary_color: data.secondary_color ?? '217 33% 17%',
+      secondary_foreground: data.secondary_foreground ?? '210 40% 98%',
+      accent_color: data.accent_color ?? '187 85% 53%',
+      accent_foreground: data.accent_foreground ?? '222 47% 6%',
+      background_color: data.background_color ?? '222 47% 6%',
+      foreground_color: data.foreground_color ?? '210 40% 98%',
+      card_color: data.card_color ?? '222 47% 8%',
+      card_foreground: data.card_foreground ?? '210 40% 98%',
+      muted_color: data.muted_color ?? '217 33% 12%',
+      muted_foreground: data.muted_foreground ?? '215 20% 55%',
+      border_color: data.border_color ?? '217 33% 17%',
+      destructive_color: data.destructive_color ?? '0 84% 60%',
+      sidebar_background: data.sidebar_background ?? '222 47% 7%',
+      sidebar_foreground: data.sidebar_foreground ?? '210 40% 98%',
+      sidebar_primary: data.sidebar_primary ?? '217 91% 60%',
+      sidebar_accent: data.sidebar_accent ?? '217 33% 17%',
+      border_radius: data.border_radius ?? '0.75rem',
+      font_family: data.font_family ?? 'Inter',
+      dark_mode_enabled: data.dark_mode_enabled ?? true
+    };
+
+    const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+      insert into company_themes (
+        company_id,
+        company_display_name,
+        logo_path,
+        favicon_path,
+        login_cover_path,
+        primary_color,
+        primary_foreground,
+        secondary_color,
+        secondary_foreground,
+        accent_color,
+        accent_foreground,
+        background_color,
+        foreground_color,
+        card_color,
+        card_foreground,
+        muted_color,
+        muted_foreground,
+        border_color,
+        destructive_color,
+        sidebar_background,
+        sidebar_foreground,
+        sidebar_primary,
+        sidebar_accent,
+        border_radius,
+        font_family,
+        dark_mode_enabled
+      )
+      values (
+        ${companyId},
+        ${payload.company_display_name},
+        ${payload.logo_path},
+        ${payload.favicon_path},
+        ${payload.login_cover_path},
+        ${payload.primary_color},
+        ${payload.primary_foreground},
+        ${payload.secondary_color},
+        ${payload.secondary_foreground},
+        ${payload.accent_color},
+        ${payload.accent_foreground},
+        ${payload.background_color},
+        ${payload.foreground_color},
+        ${payload.card_color},
+        ${payload.card_foreground},
+        ${payload.muted_color},
+        ${payload.muted_foreground},
+        ${payload.border_color},
+        ${payload.destructive_color},
+        ${payload.sidebar_background},
+        ${payload.sidebar_foreground},
+        ${payload.sidebar_primary},
+        ${payload.sidebar_accent},
+        ${payload.border_radius},
+        ${payload.font_family},
+        ${payload.dark_mode_enabled}
+      )
+      on conflict (company_id) do update set
+        company_display_name = excluded.company_display_name,
+        logo_path = excluded.logo_path,
+        favicon_path = excluded.favicon_path,
+        login_cover_path = excluded.login_cover_path,
+        primary_color = excluded.primary_color,
+        primary_foreground = excluded.primary_foreground,
+        secondary_color = excluded.secondary_color,
+        secondary_foreground = excluded.secondary_foreground,
+        accent_color = excluded.accent_color,
+        accent_foreground = excluded.accent_foreground,
+        background_color = excluded.background_color,
+        foreground_color = excluded.foreground_color,
+        card_color = excluded.card_color,
+        card_foreground = excluded.card_foreground,
+        muted_color = excluded.muted_color,
+        muted_foreground = excluded.muted_foreground,
+        border_color = excluded.border_color,
+        destructive_color = excluded.destructive_color,
+        sidebar_background = excluded.sidebar_background,
+        sidebar_foreground = excluded.sidebar_foreground,
+        sidebar_primary = excluded.sidebar_primary,
+        sidebar_accent = excluded.sidebar_accent,
+        border_radius = excluded.border_radius,
+        font_family = excluded.font_family,
+        dark_mode_enabled = excluded.dark_mode_enabled,
+        updated_at = now()
+      returning *
+    `;
+
+    return rows[0] || null;
+  }
+
   async updateTenant(companyId: string, data: {
     name?: string;
     plan?: string;

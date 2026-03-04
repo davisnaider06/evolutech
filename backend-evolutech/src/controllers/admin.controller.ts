@@ -309,6 +309,26 @@ export class AdminController {
     }
   }
 
+  async getTenantTheme(req: Request, res: Response) {
+    try {
+      const { tenantId } = req.params;
+      const theme = await adminService.getTenantTheme(tenantId);
+      return res.json(theme);
+    } catch (error: any) {
+      return res.status(400).json({ error: error.message || 'Erro ao carregar tema da empresa' });
+    }
+  }
+
+  async upsertTenantTheme(req: Request, res: Response) {
+    try {
+      const { tenantId } = req.params;
+      const theme = await adminService.upsertTenantTheme(tenantId, req.body || {});
+      return res.json(theme);
+    } catch (error: any) {
+      return res.status(400).json({ error: error.message || 'Erro ao salvar tema da empresa' });
+    }
+  }
+
   async listUsers(req: Request, res: Response) {
     try {
       const users = await adminService.listUsers();
