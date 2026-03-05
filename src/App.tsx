@@ -6,9 +6,11 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import { AuthProvider } from "@/contexts/AuthContext"; 
 import { CustomerAuthProvider } from "@/contexts/CustomerAuthContext";
+import { CourseAdminAuthProvider } from "@/contexts/CourseAdminAuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { AuthGuard } from "@/components/guards/AuthGuard";
 import { CustomerAuthGuard } from "@/components/guards/CustomerAuthGuard";
+import { CourseAdminAuthGuard } from "@/components/guards/CourseAdminAuthGuard";
 import { ModuleGuard } from "@/components/guards/ModuleGuard";
 import { RoleRedirect } from "@/components/guards/RoleRedirect";
 import { AdminEvolutechLayout } from "@/components/layouts/AdminEvolutechLayout";
@@ -23,6 +25,9 @@ import LandingVendas from "./pages/LandingVendas";
 import CustomerLogin from "./pages/customer/CustomerLogin";
 import CustomerRegister from "./pages/customer/CustomerRegister";
 import CustomerDashboard from "./pages/customer/CustomerDashboard";
+import CourseAdminLogin from "./pages/course-admin/CourseAdminLogin";
+import CourseAdminRegister from "./pages/course-admin/CourseAdminRegister";
+import CourseAdminDashboard from "./pages/course-admin/CourseAdminDashboard";
 
 // Admin Evolutech pages
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -73,11 +78,12 @@ const App = () => (
     <TooltipProvider>
       <AuthProvider>
         <CustomerAuthProvider>
-          <ThemeProvider>
-            <Toaster />
-            <Sonner />
-            <BrowserRouter>
-              <Routes>
+          <CourseAdminAuthProvider>
+            <ThemeProvider>
+              <Toaster />
+              <Sonner />
+              <BrowserRouter>
+                <Routes>
                 {/* Public Routes */}
                 <Route path="/" element={<Index />} />
                 <Route path="/vendas" element={<LandingVendas />} />
@@ -97,6 +103,19 @@ const App = () => (
                     <CustomerAuthGuard>
                       <CustomerDashboard />
                     </CustomerAuthGuard>
+                  }
+                />
+                <Route path="/cursos/login" element={<CourseAdminLogin />} />
+                <Route path="/cursos/cadastro" element={<CourseAdminRegister />} />
+                <Route path="/cursos/:slug/login" element={<CourseAdminLogin />} />
+                <Route path="/cursos/:slug/cadastro" element={<CourseAdminRegister />} />
+                <Route path="/cursos" element={<Navigate to="/cursos/login" replace />} />
+                <Route
+                  path="/cursos/dashboard"
+                  element={
+                    <CourseAdminAuthGuard>
+                      <CourseAdminDashboard />
+                    </CourseAdminAuthGuard>
                   }
                 />
                 
@@ -370,9 +389,10 @@ const App = () => (
 
                 {/* 404 */}
                 <Route path="*" element={<NotFound />} />
-              </Routes>
-            </BrowserRouter>
-          </ThemeProvider>
+                </Routes>
+              </BrowserRouter>
+            </ThemeProvider>
+          </CourseAdminAuthProvider>
         </CustomerAuthProvider>
       </AuthProvider>
     </TooltipProvider>

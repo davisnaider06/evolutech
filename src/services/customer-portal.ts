@@ -9,6 +9,7 @@ import {
   CustomerDashboardResponse,
   CustomerLoyaltyResponse,
   CustomerPlanCatalogItem,
+  CustomerCoursePurchaseResult,
   CustomerSubscriptionPurchaseResult,
   CustomerPortalCompanyOption,
   CustomerSubscription,
@@ -99,10 +100,10 @@ export const customerPortalService = {
   subscriptions: () => customerRequest<CustomerSubscription[]>('/customer/subscriptions'),
   loyalty: () => customerRequest<CustomerLoyaltyResponse>('/customer/loyalty'),
   availableCourses: () => customerRequest<CustomerCourseCatalogItem[]>('/customer/courses/available'),
-  purchaseCourse: (courseId: string) =>
-    customerRequest<{ access_id: string; status: string; start_at: string }>(
+  purchaseCourse: (courseId: string, payload: { payment_method: 'pix' | 'credito' | 'debito' | 'cartao' }) =>
+    customerRequest<CustomerCoursePurchaseResult>(
       `/customer/courses/${encodeURIComponent(courseId)}/purchase`,
-      { method: 'POST' }
+      { method: 'POST', body: JSON.stringify(payload) }
     ),
   courses: () => customerRequest<CustomerCourseAccess[]>('/customer/courses'),
 };

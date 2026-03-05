@@ -52,6 +52,7 @@ model Company {
   loyaltySettings         CompanyLoyaltySettings?
   courseAccesses          CourseAccess[]
   courses                 Course[]
+  courseManagerAccounts   CourseManagerAccount[]
   customerAccounts        CustomerAccount[]
   loyaltyProfiles         CustomerLoyaltyProfile[]
   loyaltyTransactions     CustomerLoyaltyTransaction[]
@@ -598,6 +599,9 @@ model Course {
   companyId      String         @map("empresa_id")
   title          String
   description    String?
+  contentType    String         @default("video") @map("content_type")
+  contentUrl     String?        @map("content_url")
+  coverImageUrl  String?        @map("cover_image_url")
   price          Decimal        @default(0) @db.Decimal(10, 2)
   isActive       Boolean        @default(true) @map("is_active")
   createdAt      DateTime       @default(now()) @map("created_at")
@@ -607,6 +611,22 @@ model Course {
 
   @@index([companyId, isActive])
   @@map("courses")
+}
+
+model CourseManagerAccount {
+  id           String    @id @default(uuid())
+  companyId    String    @map("empresa_id")
+  email        String
+  passwordHash String    @map("password_hash")
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, email])
+  @@index([companyId, isActive])
+  @@map("course_manager_accounts")
 }
 
 model CourseAccess {

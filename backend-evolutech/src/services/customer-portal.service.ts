@@ -884,45 +884,170 @@ export class CustomerPortalService {
       id: item.id,
       title: item.title,
       description: item.description,
+      content_type: item.contentType || 'video',
+      content_url: item.contentUrl || null,
+      cover_image_url: item.coverImageUrl || null,
       price: this.toNumber(item.price),
     }));
   }
 
-  async purchaseCourse(auth: AuthenticatedCustomer, courseIdRaw: string) {
+  async purchaseCourse(
+    auth: AuthenticatedCustomer,
+    courseIdRaw: string,
+    payload: { payment_method?: string } = {}
+  ) {
     const context = await this.getCustomerContext(auth);
     const courseId = String(courseIdRaw || '').trim();
+    const paymentMethod = String(payload?.payment_method || '').trim().toLowerCase();
     if (!courseId) throw new CustomerPortalError('courseId obrigatorio', 400);
+    if (!['pix', 'credito', 'debito', 'cartao'].includes(paymentMethod)) {
+      throw new CustomerPortalError('payment_method invalido. Use pix, credito, debito ou cartao', 400);
+    }
 
     const course = await (prisma as any).course.findFirst({
       where: { id: courseId, companyId: context.companyId, isActive: true },
-      select: { id: true, price: true },
+      select: { id: true, title: true, price: true },
     });
     if (!course) throw new CustomerPortalError('Curso nao encontrado', 404);
 
     const existing = await (prisma as any).courseAccess.findFirst({
-      where: { companyId: context.companyId, customerId: context.customerId, courseId: course.id, status: 'active' },
-      select: { id: true },
-    });
-    if (existing) {
-      throw new CustomerPortalError('Curso ja adquirido', 409);
-    }
-
-    const created = await (prisma as any).courseAccess.create({
-      data: {
+      where: {
         companyId: context.companyId,
         customerId: context.customerId,
         courseId: course.id,
-        status: 'active',
-        amountPaid: this.toNumber(course.price),
+        status: { in: ['active', 'pending'] },
       },
-      select: { id: true, status: true, startAt: true },
+      select: { id: true, status: true },
     });
+    if (existing) {
+      throw new CustomerPortalError(
+        existing.status === 'pending' ? 'Compra deste curso ja iniciada e aguardando pagamento' : 'Curso ja adquirido',
+        409
+      );
+    }
 
-    return {
-      access_id: created.id,
-      status: created.status,
-      start_at: created.startAt,
-    };
+    const amount = this.toNumber(course.price);
+    if (amount <= 0) throw new CustomerPortalError('Curso com valor invalido para cobranca', 400);
+
+    return prisma.$transaction(async (tx) => {
+      const activeGateway = await this.paymentService.getCompanyActiveGateway(context.companyId);
+      if (!activeGateway) {
+        throw new CustomerPortalError(
+          'Pagamento indisponivel: o dono da empresa ainda nao configurou gateway de pagamento ativo',
+          400
+        );
+      }
+
+      const orderStatus = paymentMethod === 'pix' ? 'pending_pix' : 'pending_gateway';
+      const order = await tx.order.create({
+        data: {
+          companyId: context.companyId,
+          customerName: context.customer.name,
+          total: amount,
+          status: orderStatus,
+        },
+      });
+
+      const created = await (tx as any).courseAccess.create({
+        data: {
+          companyId: context.companyId,
+          customerId: context.customerId,
+          courseId: course.id,
+          status: 'pending',
+          amountPaid: amount,
+        },
+        select: { id: true, status: true, startAt: true, endAt: true },
+      });
+
+      let gatewayPayment: any = null;
+      if (paymentMethod === 'pix') {
+        if (activeGateway.provider === 'stripe') {
+          gatewayPayment = await this.paymentService.createStripePixPayment(tx, {
+            companyId: context.companyId,
+            orderId: order.id,
+            amount,
+            customerName: context.customer.name,
+          });
+        } else if (activeGateway.provider === 'mercadopago') {
+          gatewayPayment = await this.paymentService.createMercadoPagoPixPayment(tx, {
+            companyId: context.companyId,
+            orderId: order.id,
+            amount,
+            customerName: context.customer.name,
+            customerEmail: context.customer.email,
+          });
+        } else if (activeGateway.provider === 'pagbank') {
+          gatewayPayment = await this.paymentService.createPagBankPixPayment(tx, {
+            companyId: context.companyId,
+            orderId: order.id,
+            amount,
+            customerName: context.customer.name,
+          });
+        }
+      } else {
+        if (activeGateway.provider === 'stripe') {
+          gatewayPayment = await this.paymentService.createStripeCardPaymentLink(tx, {
+            companyId: context.companyId,
+            orderId: order.id,
+            amount,
+            customerName: context.customer.name,
+            paymentMethod: paymentMethod as 'credito' | 'debito' | 'cartao',
+          });
+        } else if (activeGateway.provider === 'mercadopago') {
+          gatewayPayment = await this.paymentService.createMercadoPagoPaymentLink(tx, {
+            companyId: context.companyId,
+            orderId: order.id,
+            amount,
+            customerName: context.customer.name,
+            paymentMethod: paymentMethod as 'credito' | 'debito' | 'cartao',
+          });
+        } else if (activeGateway.provider === 'pagbank') {
+          gatewayPayment = await this.paymentService.createPagBankPaymentLink(tx, {
+            companyId: context.companyId,
+            orderId: order.id,
+            amount,
+            customerName: context.customer.name,
+            paymentMethod: paymentMethod as 'credito' | 'debito' | 'cartao',
+          });
+        }
+      }
+
+      await tx.auditLog.create({
+        data: {
+          companyId: context.companyId,
+          action: 'CUSTOMER_COURSE_PURCHASE_STARTED',
+          resource: 'course_accesses',
+          details: {
+            courseAccessId: created.id,
+            orderId: order.id,
+            paymentMethod,
+            provider: activeGateway.provider,
+            customerId: context.customerId,
+            courseId: course.id,
+            courseTitle: course.title,
+            amount,
+          },
+        },
+      });
+
+      return {
+        access_id: created.id,
+        status: created.status,
+        start_at: created.startAt,
+        end_at: created.endAt,
+        order_id: order.id,
+        payment_gateway: gatewayPayment
+          ? {
+              provider: gatewayPayment.provider,
+              status: gatewayPayment.status,
+              externalPaymentId: gatewayPayment.externalPaymentId,
+              qrCodeText: gatewayPayment.qrCodeText,
+              qrCodeImageUrl: gatewayPayment.qrCodeImageUrl,
+              paymentUrl: gatewayPayment.paymentUrl || null,
+            }
+          : null,
+      };
+    }, { maxWait: 10000, timeout: 30000 });
   }
 }
 

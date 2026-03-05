@@ -170,5 +170,17 @@ export interface CustomerCourseCatalogItem {
   id: string;
   title: string;
   description?: string | null;
+  content_type?: string;
+  content_url?: string | null;
+  cover_image_url?: string | null;
   price: number;
+}
+
+export interface CustomerCoursePurchaseResult {
+  access_id: string;
+  status: string;
+  start_at: string;
+  end_at?: string | null;
+  order_id: string;
+  payment_gateway: CustomerPaymentGatewayResult | null;
 }

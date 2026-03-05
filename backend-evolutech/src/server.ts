@@ -11,6 +11,8 @@ import publicRoutes from './routes/public.routes';
 import paymentWebhookRoutes from './routes/payment-webhook.routes';
 import customerAuthRoutes from './routes/customer-auth.routes';
 import customerRoutes from './routes/customer.routes';
+import courseAuthRoutes from './routes/course-auth.routes';
+import courseAdminRoutes from './routes/course-admin.routes';
 import { prisma } from './db';
 
 const app = express();
@@ -53,6 +55,8 @@ app.use('/api/company', companyRoutes); // Dados Operacionais (Clientes, Produto
 app.use('/api/public', publicRoutes);   // Agendamento público por link
 app.use('/api/customer-auth', customerAuthRoutes); // Cadastro/Login do cliente final
 app.use('/api/customer', customerRoutes); // Portal autenticado do cliente final
+app.use('/api/course-auth', courseAuthRoutes); // Login separado da gestao de cursos
+app.use('/api/course-admin', courseAdminRoutes); // CRUD de cursos por conta separada
 
 app.use((error: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (error?.type === 'entity.too.large' || error?.status === 413) {

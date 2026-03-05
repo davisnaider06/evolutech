@@ -1,7 +1,7 @@
 ﻿import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../db';
-import { AuthedCustomerRequest, AuthedRequest, AppRole } from '../types';
+import { AuthedCourseManagerRequest, AuthedCustomerRequest, AuthedRequest, AppRole } from '../types';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret_fallback_dev';
 const AUTH_REQUIRE_DB_CHECK = process.env.AUTH_REQUIRE_DB_CHECK === 'true';
@@ -26,6 +26,15 @@ type CustomerJwtClaims = {
   email?: string;
   fullName?: string;
   role?: 'CLIENTE';
+  iat?: number;
+  exp?: number;
+};
+
+type CourseManagerJwtClaims = {
+  managerId: string;
+  companyId: string;
+  email?: string;
+  role?: 'COURSE_MANAGER';
   iat?: number;
   exp?: number;
 };
@@ -158,6 +167,40 @@ export const authenticateCustomerToken = async (
       role: 'CLIENTE',
       email: decoded.email || '',
       fullName: decoded.fullName || '',
+    };
+
+    next();
+  } catch (_error) {
+    res.status(403).json({ error: 'Token inválido' });
+  }
+};
+
+export const authenticateCourseManagerToken = async (
+  req: AuthedCourseManagerRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.split(' ')[1];
+
+  if (!token) {
+    res.status(401).json({ error: 'Token não fornecido' });
+    return;
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as CourseManagerJwtClaims;
+
+    if (!decoded.managerId || !decoded.companyId) {
+      res.status(403).json({ error: 'Token inválido' });
+      return;
+    }
+
+    req.courseManager = {
+      managerId: decoded.managerId,
+      companyId: decoded.companyId,
+      email: decoded.email || '',
+      role: 'COURSE_MANAGER',
     };
 
     next();

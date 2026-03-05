@@ -125,7 +125,7 @@ export class CustomerPortalController {
 
   async purchaseCourse(req: AuthedCustomerRequest, res: Response) {
     try {
-      const result = await service.purchaseCourse(req.customer!, req.params.courseId);
+      const result = await service.purchaseCourse(req.customer!, req.params.courseId, req.body || {});
       return res.status(201).json(result);
     } catch (error: unknown) {
       return this.handleError(error, res);
