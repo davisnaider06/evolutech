@@ -3,9 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { ClerkProvider, SignUp } from "@clerk/clerk-react"; // Adicionado Clerk
 
-// Mantemos o AuthProvider por enquanto, mas vamos reescrever o miolo dele no próximo passo
 import { AuthProvider } from "@/contexts/AuthContext"; 
 import { CustomerAuthProvider } from "@/contexts/CustomerAuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
@@ -70,34 +68,21 @@ import Assinaturas from "./pages/empresa/Assinaturas";
 
 const queryClient = new QueryClient();
 
-// Importante: Garanta que esta chave está no seu .env
-const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-
-if (!clerkPubKey) {
-  throw new Error("Faltando a Key do Clerk no .env (VITE_CLERK_PUBLISHABLE_KEY)");
-}
-
 const App = () => (
-  // 1. Envolvendo a aplicação com o ClerkProvider
-  <ClerkProvider publishableKey={clerkPubKey}>
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        {/* 2. AuthProvider mantido ESTRUTURALMENTE. 
-          Próximo passo: alterar o arquivo AuthContext.tsx para consumir o Clerk 
-          em vez do Supabase, mantendo a compatibilidade com AuthGuard.
-        */}
-        <AuthProvider>
-          <CustomerAuthProvider>
-            <ThemeProvider>
-              <Toaster />
-              <Sonner />
-              <BrowserRouter>
-                <Routes>
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <AuthProvider>
+        <CustomerAuthProvider>
+          <ThemeProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <Routes>
                 {/* Public Routes */}
                 <Route path="/" element={<Index />} />
                 <Route path="/vendas" element={<LandingVendas />} />
                 <Route path="/login/*" element={<Login />} />
-                <Route path="/cadastro/*" element={<SignUp />} />
+                <Route path="/cadastro/*" element={<Navigate to="/login" replace />} />
                 <Route path="/aceitar-convite" element={<AcceptInvite />} />
                 <Route path="/chat/:slug" element={<ChatbotPublic />} />
                 <Route path="/agendar/:slug" element={<AgendamentoCliente />} />
@@ -385,14 +370,13 @@ const App = () => (
 
                 {/* 404 */}
                 <Route path="*" element={<NotFound />} />
-                </Routes>
-              </BrowserRouter>
-            </ThemeProvider>
-          </CustomerAuthProvider>
-        </AuthProvider>
-      </TooltipProvider>
-    </QueryClientProvider>
-  </ClerkProvider>
+              </Routes>
+            </BrowserRouter>
+          </ThemeProvider>
+        </CustomerAuthProvider>
+      </AuthProvider>
+    </TooltipProvider>
+  </QueryClientProvider>
 );
 
 export default App;
