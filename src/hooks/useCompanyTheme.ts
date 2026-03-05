@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { companyService } from '@/services/company';
 
 export interface CompanyTheme {
   id: string;
@@ -72,22 +72,39 @@ export const useCompanyTheme = () => {
     }
 
     try {
-      const { data, error } = await supabase
-        .from('company_themes')
-        .select('*')
-        .eq('company_id', user.tenantId)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error fetching company theme:', error);
-        setIsLoading(false);
-        return;
-      }
-
+      const data = await companyService.getTheme();
       if (data) {
-        setTheme(data as CompanyTheme);
+        const normalized = {
+          ...data,
+          company_id: data.company_id || data.companyId || user.tenantId,
+          logo_path: data.logo_path ?? data.logoPath ?? null,
+          favicon_path: data.favicon_path ?? data.faviconPath ?? null,
+          login_cover_path: data.login_cover_path ?? data.loginCoverPath ?? null,
+          company_display_name: data.company_display_name ?? data.companyDisplayName ?? null,
+          primary_color: data.primary_color ?? data.primaryColor ?? DEFAULT_THEME.primary_color,
+          primary_foreground: data.primary_foreground ?? data.primaryForeground ?? DEFAULT_THEME.primary_foreground,
+          secondary_color: data.secondary_color ?? data.secondaryColor ?? DEFAULT_THEME.secondary_color,
+          secondary_foreground: data.secondary_foreground ?? data.secondaryForeground ?? DEFAULT_THEME.secondary_foreground,
+          accent_color: data.accent_color ?? data.accentColor ?? DEFAULT_THEME.accent_color,
+          accent_foreground: data.accent_foreground ?? data.accentForeground ?? DEFAULT_THEME.accent_foreground,
+          background_color: data.background_color ?? data.backgroundColor ?? DEFAULT_THEME.background_color,
+          foreground_color: data.foreground_color ?? data.foregroundColor ?? DEFAULT_THEME.foreground_color,
+          card_color: data.card_color ?? data.cardColor ?? DEFAULT_THEME.card_color,
+          card_foreground: data.card_foreground ?? data.cardForeground ?? DEFAULT_THEME.card_foreground,
+          muted_color: data.muted_color ?? data.mutedColor ?? DEFAULT_THEME.muted_color,
+          muted_foreground: data.muted_foreground ?? data.mutedForeground ?? DEFAULT_THEME.muted_foreground,
+          border_color: data.border_color ?? data.borderColor ?? DEFAULT_THEME.border_color,
+          destructive_color: data.destructive_color ?? data.destructiveColor ?? DEFAULT_THEME.destructive_color,
+          sidebar_background: data.sidebar_background ?? data.sidebarBackground ?? DEFAULT_THEME.sidebar_background,
+          sidebar_foreground: data.sidebar_foreground ?? data.sidebarForeground ?? DEFAULT_THEME.sidebar_foreground,
+          sidebar_primary: data.sidebar_primary ?? data.sidebarPrimary ?? DEFAULT_THEME.sidebar_primary,
+          sidebar_accent: data.sidebar_accent ?? data.sidebarAccent ?? DEFAULT_THEME.sidebar_accent,
+          border_radius: data.border_radius ?? data.borderRadius ?? DEFAULT_THEME.border_radius,
+          font_family: data.font_family ?? data.fontFamily ?? DEFAULT_THEME.font_family,
+          dark_mode_enabled: data.dark_mode_enabled ?? data.darkModeEnabled ?? DEFAULT_THEME.dark_mode_enabled,
+        };
+        setTheme(normalized as CompanyTheme);
       } else {
-        // No theme exists, use defaults
         setTheme(null);
       }
     } catch (err) {
@@ -105,19 +122,10 @@ export const useCompanyTheme = () => {
     if (!user?.tenantId) return false;
 
     try {
-      const { error } = await supabase
-        .from('company_themes')
-        .upsert({
-          company_id: user.tenantId,
-          ...updates,
-        }, {
-          onConflict: 'company_id',
-        });
-
-      if (error) {
-        console.error('Error updating company theme:', error);
-        return false;
-      }
+      await companyService.saveTheme({
+        company_id: user.tenantId,
+        ...updates,
+      });
 
       await fetchTheme();
       return true;

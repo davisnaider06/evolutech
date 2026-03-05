@@ -65,10 +65,47 @@ model Company {
   subscriptionPlans       SubscriptionPlan[]
   subscriptionUsages      SubscriptionUsage[]
   tasks                   Task[]
+  theme                   CompanyTheme?
   userRoles               UserRole[]
 
   @@index([sistemaBaseId])
   @@map("companies")
+}
+
+model CompanyTheme {
+  id                  String   @id @default(uuid())
+  companyId           String   @unique @map("company_id")
+  logoPath            String?  @map("logo_path")
+  faviconPath         String?  @map("favicon_path")
+  loginCoverPath      String?  @map("login_cover_path")
+  companyDisplayName  String?  @map("company_display_name")
+  primaryColor        String?  @map("primary_color")
+  primaryForeground   String?  @map("primary_foreground")
+  secondaryColor      String?  @map("secondary_color")
+  secondaryForeground String?  @map("secondary_foreground")
+  accentColor         String?  @map("accent_color")
+  accentForeground    String?  @map("accent_foreground")
+  backgroundColor     String?  @map("background_color")
+  foregroundColor     String?  @map("foreground_color")
+  cardColor           String?  @map("card_color")
+  cardForeground      String?  @map("card_foreground")
+  mutedColor          String?  @map("muted_color")
+  mutedForeground     String?  @map("muted_foreground")
+  borderColor         String?  @map("border_color")
+  destructiveColor    String?  @map("destructive_color")
+  sidebarBackground   String?  @map("sidebar_background")
+  sidebarForeground   String?  @map("sidebar_foreground")
+  sidebarPrimary      String?  @map("sidebar_primary")
+  sidebarAccent       String?  @map("sidebar_accent")
+  borderRadius        String?  @map("border_radius")
+  fontFamily          String?  @map("font_family")
+  darkModeEnabled     Boolean? @map("dark_mode_enabled")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@map("company_themes")
 }
 
 model UserRole {

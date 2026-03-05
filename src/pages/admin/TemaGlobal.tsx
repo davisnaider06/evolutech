@@ -1,7 +1,9 @@
 ﻿import React, { useState, useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { adminService } from '@/services/admin';
+import { companyService } from '@/services/company';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -85,6 +87,36 @@ const DEFAULT_THEME: Omit<CompanyTheme, 'id' | 'company_id'> = {
   font_family: 'Inter',
   dark_mode_enabled: true,
 };
+
+const normalizeThemeFromApi = (raw: any, companyId: string): Partial<CompanyTheme> => ({
+  id: raw.id,
+  company_id: raw.company_id || raw.companyId || companyId,
+  company_display_name: raw.company_display_name ?? raw.companyDisplayName ?? null,
+  logo_path: raw.logo_path ?? raw.logoPath ?? null,
+  favicon_path: raw.favicon_path ?? raw.faviconPath ?? null,
+  login_cover_path: raw.login_cover_path ?? raw.loginCoverPath ?? null,
+  primary_color: raw.primary_color ?? raw.primaryColor ?? DEFAULT_THEME.primary_color,
+  primary_foreground: raw.primary_foreground ?? raw.primaryForeground ?? DEFAULT_THEME.primary_foreground,
+  secondary_color: raw.secondary_color ?? raw.secondaryColor ?? DEFAULT_THEME.secondary_color,
+  secondary_foreground: raw.secondary_foreground ?? raw.secondaryForeground ?? DEFAULT_THEME.secondary_foreground,
+  accent_color: raw.accent_color ?? raw.accentColor ?? DEFAULT_THEME.accent_color,
+  accent_foreground: raw.accent_foreground ?? raw.accentForeground ?? DEFAULT_THEME.accent_foreground,
+  background_color: raw.background_color ?? raw.backgroundColor ?? DEFAULT_THEME.background_color,
+  foreground_color: raw.foreground_color ?? raw.foregroundColor ?? DEFAULT_THEME.foreground_color,
+  card_color: raw.card_color ?? raw.cardColor ?? DEFAULT_THEME.card_color,
+  card_foreground: raw.card_foreground ?? raw.cardForeground ?? DEFAULT_THEME.card_foreground,
+  muted_color: raw.muted_color ?? raw.mutedColor ?? DEFAULT_THEME.muted_color,
+  muted_foreground: raw.muted_foreground ?? raw.mutedForeground ?? DEFAULT_THEME.muted_foreground,
+  border_color: raw.border_color ?? raw.borderColor ?? DEFAULT_THEME.border_color,
+  destructive_color: raw.destructive_color ?? raw.destructiveColor ?? DEFAULT_THEME.destructive_color,
+  sidebar_background: raw.sidebar_background ?? raw.sidebarBackground ?? DEFAULT_THEME.sidebar_background,
+  sidebar_foreground: raw.sidebar_foreground ?? raw.sidebarForeground ?? DEFAULT_THEME.sidebar_foreground,
+  sidebar_primary: raw.sidebar_primary ?? raw.sidebarPrimary ?? DEFAULT_THEME.sidebar_primary,
+  sidebar_accent: raw.sidebar_accent ?? raw.sidebarAccent ?? DEFAULT_THEME.sidebar_accent,
+  border_radius: raw.border_radius ?? raw.borderRadius ?? DEFAULT_THEME.border_radius,
+  font_family: raw.font_family ?? raw.fontFamily ?? DEFAULT_THEME.font_family,
+  dark_mode_enabled: raw.dark_mode_enabled ?? raw.darkModeEnabled ?? DEFAULT_THEME.dark_mode_enabled,
+});
 
 const ColorPicker: React.FC<{
   label: string;
@@ -186,7 +218,8 @@ const ColorPicker: React.FC<{
 };
 
 export default function TemaGlobal() {
-  const { user } = useAuth();
+  const { user, company } = useAuth();
+  const { refreshTheme } = useTheme();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [theme, setTheme] = useState<Partial<CompanyTheme> | null>(null);
@@ -194,13 +227,36 @@ export default function TemaGlobal() {
   const [isSaving, setIsSaving] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const isOwnerRole = user?.role === 'DONO_EMPRESA';
+  const isAdminThemeRole = ['SUPER_ADMIN_EVOLUTECH', 'ADMIN_EVOLUTECH'].includes(user?.role || '');
 
   useEffect(() => {
     fetchCompanies();
-  }, []);
+  }, [user?.role, user?.tenantId]);
 
   const fetchCompanies = async () => {
     setIsLoading(true);
+    if (isOwnerRole) {
+      if (!user?.tenantId) {
+        setCompanies([]);
+        setIsLoading(false);
+        return;
+      }
+
+      const ownerCompany: Company = {
+        id: user.tenantId,
+        name: company?.name || user.tenantName || 'Minha Empresa',
+        logo_url: company?.logo_url || null,
+        status: 'active',
+      };
+
+      setCompanies([ownerCompany]);
+      setSelectedCompanyId(ownerCompany.id);
+      await fetchCompanyTheme(ownerCompany.id, ownerCompany.name);
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const tenants = await adminService.listarTenants();
       const list: Company[] = (tenants || [])
@@ -229,25 +285,51 @@ export default function TemaGlobal() {
   };
 
   const fetchCompanyTheme = async (companyId: string, fallbackCompanyName?: string) => {
-    const { data, error } = await supabase
-      .from('company_themes')
-      .select('*')
-      .eq('company_id', companyId)
-      .maybeSingle();
+    if (isOwnerRole) {
+      let data: any = null;
+      try {
+        data = await companyService.getTheme();
+      } catch (error) {
+        console.error('Erro ao carregar tema (company api):', error);
+        toast.error('Erro ao carregar tema');
+        return;
+      }
 
-    if (error) {
-      toast.error('Erro ao carregar tema');
+      if (data) {
+        const mergedTheme = {
+          ...DEFAULT_THEME,
+          ...normalizeThemeFromApi(data, companyId),
+          company_id: companyId,
+        };
+        setTheme(mergedTheme);
+        setLogoPreview(mergedTheme.logo_path);
+        return;
+      }
+
+      setTheme({
+        ...DEFAULT_THEME,
+        company_id: companyId,
+        company_display_name: fallbackCompanyName || null,
+      });
+      setLogoPreview(null);
       return;
     }
 
-    if (data) {
-      const mergedTheme = {
-        ...DEFAULT_THEME,
-        ...data,
-        company_id: companyId,
-      };
-      setTheme(mergedTheme);
-      setLogoPreview(mergedTheme.logo_path);
+    try {
+      const data = await adminService.obterTemaTenant(companyId);
+      if (data) {
+        const mergedTheme = {
+          ...DEFAULT_THEME,
+          ...normalizeThemeFromApi(data, companyId),
+          company_id: companyId,
+        };
+        setTheme(mergedTheme);
+        setLogoPreview(mergedTheme.logo_path);
+        return;
+      }
+    } catch (error) {
+      console.error('Erro ao carregar tema:', error);
+      toast.error('Erro ao carregar tema');
       return;
     }
 
@@ -308,13 +390,12 @@ export default function TemaGlobal() {
         company_display_name: theme.company_display_name?.trim() || selectedCompany?.name || null,
       };
 
-      const { error } = await supabase
-        .from('company_themes')
-        .upsert(payload, {
-          onConflict: 'company_id',
-        });
-
-      if (error) throw error;
+      if (isOwnerRole) {
+        await companyService.saveTheme(payload);
+        refreshTheme();
+      } else {
+        await adminService.salvarTemaTenant(selectedCompanyId, payload);
+      }
 
       toast.success('Tema salvo com sucesso!');
       await fetchCompanyTheme(selectedCompanyId, selectedCompany?.name);
@@ -343,7 +424,7 @@ export default function TemaGlobal() {
 
   const selectedCompany = companies.find((company) => company.id === selectedCompanyId);
 
-  if (!user || !['SUPER_ADMIN_EVOLUTECH', 'ADMIN_EVOLUTECH'].includes(user.role)) {
+  if (!user || (!isAdminThemeRole && !isOwnerRole)) {
     return null;
   }
 
@@ -360,64 +441,66 @@ export default function TemaGlobal() {
         </Button>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="glass lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Building2 className="h-5 w-5" />
-              Empresas
-            </CardTitle>
-            <CardDescription>Selecione uma empresa para editar seu tema</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <Select value={selectedCompanyId || ''} onValueChange={handleCompanySelect}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione uma empresa" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {companies.map((company) => (
-                      <SelectItem key={company.id} value={company.id}>
-                        {company.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+      <div className={`grid gap-6 ${isOwnerRole ? '' : 'lg:grid-cols-3'}`}>
+        {!isOwnerRole && (
+          <Card className="glass lg:col-span-1">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="h-5 w-5" />
+                Empresas
+              </CardTitle>
+              <CardDescription>Selecione uma empresa para editar seu tema</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <Select value={selectedCompanyId || ''} onValueChange={handleCompanySelect}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione uma empresa" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {companies.map((company) => (
+                        <SelectItem key={company.id} value={company.id}>
+                          {company.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
-                <ScrollArea className="h-[350px]">
-                  <div className="space-y-2">
-                    {companies.map((company) => (
-                      <button
-                        key={company.id}
-                        type="button"
-                        className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors text-left ${
-                          selectedCompanyId === company.id ? 'bg-primary/20 border border-primary/50' : 'hover:bg-secondary/50'
-                        }`}
-                        onClick={() => handleCompanySelect(company.id)}
-                      >
-                        {company.logo_url ? (
-                          <img src={company.logo_url} alt={company.name} className="h-8 w-8 rounded object-cover" />
-                        ) : (
-                          <div className="flex h-8 w-8 items-center justify-center rounded bg-secondary">
-                            <Building2 className="h-4 w-4 text-muted-foreground" />
-                          </div>
-                        )}
-                        <span className="font-medium text-sm">{company.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  <ScrollArea className="h-[350px]">
+                    <div className="space-y-2">
+                      {companies.map((company) => (
+                        <button
+                          key={company.id}
+                          type="button"
+                          className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors text-left ${
+                            selectedCompanyId === company.id ? 'bg-primary/20 border border-primary/50' : 'hover:bg-secondary/50'
+                          }`}
+                          onClick={() => handleCompanySelect(company.id)}
+                        >
+                          {company.logo_url ? (
+                            <img src={company.logo_url} alt={company.name} className="h-8 w-8 rounded object-cover" />
+                          ) : (
+                            <div className="flex h-8 w-8 items-center justify-center rounded bg-secondary">
+                              <Building2 className="h-4 w-4 text-muted-foreground" />
+                            </div>
+                          )}
+                          <span className="font-medium text-sm">{company.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
-        <Card className="glass lg:col-span-2">
+        <Card className={`glass ${isOwnerRole ? '' : 'lg:col-span-2'}`}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Palette className="h-5 w-5" />

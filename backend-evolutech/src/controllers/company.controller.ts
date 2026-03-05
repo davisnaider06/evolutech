@@ -86,6 +86,24 @@ export class CompanyController {
     }
   }
 
+  async getMyTheme(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.getMyTheme(req.user!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async upsertMyTheme(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.upsertMyTheme(req.user!, req.body || {});
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   async getReportsOverview(req: AuthedRequest, res: Response) {
     try {
       const result = await service.getReportsOverview(req.user!, req.query as any);

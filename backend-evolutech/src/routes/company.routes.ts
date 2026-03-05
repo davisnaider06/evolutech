@@ -24,6 +24,8 @@ if (COMPANY_PERF_DEBUG) {
 }
 
 router.get('/financeiro/overview', companyController.getFinancialOverview.bind(companyController));
+router.get('/theme', companyController.getMyTheme.bind(companyController));
+router.put('/theme', companyController.upsertMyTheme.bind(companyController));
 router.get('/reports/overview', companyController.getReportsOverview.bind(companyController));
 router.get('/commissions/profiles', companyController.listCommissionProfiles.bind(companyController));
 router.put('/commissions/profiles/:professionalId', companyController.upsertCommissionProfile.bind(companyController));
