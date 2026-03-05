@@ -62,7 +62,6 @@ import Pedidos from "./pages/empresa/Pedidos";
 import Pdv from "./pages/empresa/Pdv";
 import Caixa from "./pages/empresa/Caixa";
 import Relatorios from "./pages/empresa/Relatorios";
-import Personalizacao from "./pages/empresa/Personalizacao";
 import GatewaysEmpresa from "./pages/empresa/Gateways";
 import Cobrancas from "./pages/empresa/Cobrancas";
 import Comissoes from "./pages/empresa/Comissoes";
@@ -351,13 +350,14 @@ const App = () => (
                     } 
                   />
                   <Route 
-                    path="/empresa/personalizacao" 
+                    path="/empresa/temas" 
                     element={
                       <AuthGuard allowedRoles={['DONO_EMPRESA']}>
-                        <Personalizacao />
+                        <TemaGlobal />
                       </AuthGuard>
                     } 
                   />
+                  <Route path="/empresa/personalizacao" element={<Navigate to="/empresa/temas" replace />} />
                   <Route
                     path="/empresa/gateways"
                     element={

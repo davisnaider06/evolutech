@@ -690,6 +690,78 @@ export class AdminService {
     });
   }
 
+  async getTenantTheme(companyId: string) {
+    return prisma.companyTheme.findUnique({
+      where: { companyId }
+    });
+  }
+
+  async upsertTenantTheme(
+    companyId: string,
+    data: {
+      company_display_name?: string | null;
+      logo_path?: string | null;
+      favicon_path?: string | null;
+      login_cover_path?: string | null;
+      primary_color?: string;
+      primary_foreground?: string;
+      secondary_color?: string;
+      secondary_foreground?: string;
+      accent_color?: string;
+      accent_foreground?: string;
+      background_color?: string;
+      foreground_color?: string;
+      card_color?: string;
+      card_foreground?: string;
+      muted_color?: string;
+      muted_foreground?: string;
+      border_color?: string;
+      destructive_color?: string;
+      sidebar_background?: string;
+      sidebar_foreground?: string;
+      sidebar_primary?: string;
+      sidebar_accent?: string;
+      border_radius?: string;
+      font_family?: string;
+      dark_mode_enabled?: boolean;
+    }
+  ) {
+    const payload: Prisma.CompanyThemeUncheckedCreateInput = {
+      companyId,
+      companyDisplayName: data.company_display_name ?? null,
+      logoPath: data.logo_path ?? null,
+      faviconPath: data.favicon_path ?? null,
+      loginCoverPath: data.login_cover_path ?? null,
+      primaryColor: data.primary_color ?? '217 91% 60%',
+      primaryForeground: data.primary_foreground ?? '222 47% 6%',
+      secondaryColor: data.secondary_color ?? '217 33% 17%',
+      secondaryForeground: data.secondary_foreground ?? '210 40% 98%',
+      accentColor: data.accent_color ?? '187 85% 53%',
+      accentForeground: data.accent_foreground ?? '222 47% 6%',
+      backgroundColor: data.background_color ?? '222 47% 6%',
+      foregroundColor: data.foreground_color ?? '210 40% 98%',
+      cardColor: data.card_color ?? '222 47% 8%',
+      cardForeground: data.card_foreground ?? '210 40% 98%',
+      mutedColor: data.muted_color ?? '217 33% 12%',
+      mutedForeground: data.muted_foreground ?? '215 20% 55%',
+      borderColor: data.border_color ?? '217 33% 17%',
+      destructiveColor: data.destructive_color ?? '0 84% 60%',
+      sidebarBackground: data.sidebar_background ?? '222 47% 7%',
+      sidebarForeground: data.sidebar_foreground ?? '210 40% 98%',
+      sidebarPrimary: data.sidebar_primary ?? '217 91% 60%',
+      sidebarAccent: data.sidebar_accent ?? '217 33% 17%',
+      borderRadius: data.border_radius ?? '0.75rem',
+      fontFamily: data.font_family ?? 'Inter',
+      darkModeEnabled: data.dark_mode_enabled ?? true
+    };
+
+    return prisma.companyTheme.upsert({
+      where: { companyId },
+      create: payload,
+      update: payload
+    });
+  }
+
   async updateTenant(companyId: string, data: {
     name?: string;
     plan?: string;

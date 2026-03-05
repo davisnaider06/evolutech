@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCompanyModules } from '@/hooks/useCompanyModules';
@@ -55,7 +55,7 @@ const navItems: NavItem[] = [
   { icon: Warehouse, label: 'Estoque', path: '/empresa/estoque', moduleCode: 'inventory' },
   { icon: Calendar, label: 'Agendamentos', path: '/empresa/agendamentos', moduleCode: 'appointments' },
   { icon: ReceiptText, label: 'PDV', path: '/empresa/pdv', moduleCode: 'pdv' },
-  { icon: ReceiptText, label: 'Cobranças', path: '/empresa/cobrancas', moduleCode: 'billing' },
+  { icon: ReceiptText, label: 'CobranÃ§as', path: '/empresa/cobrancas', moduleCode: 'billing' },
   { icon: ShoppingCart, label: 'Pedidos', path: '/empresa/pedidos', moduleCode: 'orders' },
   { icon: Wallet, label: 'Caixa', path: '/empresa/caixa', moduleCode: 'cash' },
   { icon: CreditCard, label: 'Financeiro', path: '/empresa/financeiro', moduleCode: 'finance' },
@@ -63,7 +63,7 @@ const navItems: NavItem[] = [
   { icon: Gift, label: 'Fidelidade', path: '/empresa/fidelidade', moduleCode: 'loyalty' },
   { icon: Repeat, label: 'Assinaturas', path: '/empresa/assinaturas', moduleCode: 'subscriptions' },
   { icon: CreditCard, label: 'Gateways', path: '/empresa/gateways', moduleCode: 'finance', ownerOnly: true, alwaysShow: true },
-  { icon: BarChart3, label: 'Relatórios', path: '/empresa/relatorios', moduleCode: 'reports' },
+  { icon: BarChart3, label: 'RelatÃ³rios', path: '/empresa/relatorios', moduleCode: 'reports' },
   
   // Team management (core for owners)
   { icon: UserPlus, label: 'Equipe', path: '/empresa/equipe', moduleCode: 'users', ownerOnly: true },
@@ -74,8 +74,8 @@ const navItems: NavItem[] = [
   { icon: GraduationCap, label: 'Treinamentos', path: '/empresa/treinamentos', moduleCode: 'training' },
   
   // Customization & Settings (always for owners)
-  { icon: Palette, label: 'Personalização', path: '/empresa/personalizacao', moduleCode: 'design', ownerOnly: true, alwaysShow: true },
-  { icon: Settings, label: 'Configurações', path: '/empresa/configuracoes', moduleCode: 'settings', ownerOnly: true, alwaysShow: true },
+  { icon: Palette, label: 'Temas', path: '/empresa/temas', moduleCode: 'design', ownerOnly: true, alwaysShow: true },
+  { icon: Settings, label: 'ConfiguraÃ§Ãµes', path: '/empresa/configuracoes', moduleCode: 'settings', ownerOnly: true, alwaysShow: true },
 ];
 
 export const EmpresaLayout: React.FC = () => {
@@ -269,3 +269,5 @@ export const EmpresaLayout: React.FC = () => {
     </div>
   );
 };
+
+

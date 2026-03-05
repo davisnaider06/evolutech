@@ -31,6 +31,8 @@ router.put('/sistemas-base/:sistemaId/modulos', controller.replaceSistemaBaseMod
 router.get('/tenants', controller.listTenants.bind(controller));
 router.patch('/tenants/:tenantId', controller.updateTenant.bind(controller));
 router.delete('/tenants/:tenantId', controller.deleteTenant.bind(controller));
+router.get('/tenants/:tenantId/theme', controller.getTenantTheme.bind(controller));
+router.put('/tenants/:tenantId/theme', controller.upsertTenantTheme.bind(controller));
 
 router.get('/users', controller.listUsers.bind(controller));
 router.post('/users', controller.createUser.bind(controller));

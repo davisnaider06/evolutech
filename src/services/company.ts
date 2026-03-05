@@ -29,6 +29,9 @@ const request = async (path: string, init?: RequestInit) => {
 };
 
 export const companyService = {
+  getTheme: async () => request('/theme'),
+  saveTheme: async (data: Record<string, unknown>) =>
+    request('/theme', { method: 'PUT', body: JSON.stringify(data) }),
   financialOverview: async (params?: { dateFrom?: string; dateTo?: string; companyId?: string }) => {
     const searchParams = new URLSearchParams();
     if (params?.dateFrom) searchParams.set('dateFrom', params.dateFrom);
