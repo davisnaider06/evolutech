@@ -29,7 +29,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       id: String(raw.id),
       name: String(raw.name || ''),
       slug: String(raw.slug || ''),
-      logo_url: raw.logo_url || null,
+      logo_url: raw.logo_url || raw.logoUrl || raw.company_logo_url || null,
       plan: (raw.plan || 'starter') as Company['plan'],
       status: (raw.status || 'active') as Company['status'],
       monthly_revenue: Number(raw.monthly_revenue || 0),

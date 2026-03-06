@@ -55,19 +55,19 @@ const navItems: NavItem[] = [
   { icon: Warehouse, label: 'Estoque', path: '/empresa/estoque', moduleCode: 'inventory' },
   { icon: Calendar, label: 'Agendamentos', path: '/empresa/agendamentos', moduleCode: 'appointments' },
   { icon: ReceiptText, label: 'PDV', path: '/empresa/pdv', moduleCode: 'pdv' },
-  { icon: ReceiptText, label: 'CobranÃ§as', path: '/empresa/cobrancas', moduleCode: 'billing' },
+  { icon: ReceiptText, label: 'Cobranças', path: '/empresa/cobrancas', moduleCode: 'billing' },
   { icon: ShoppingCart, label: 'Pedidos', path: '/empresa/pedidos', moduleCode: 'orders' },
   { icon: Wallet, label: 'Caixa', path: '/empresa/caixa', moduleCode: 'cash' },
   { icon: CreditCard, label: 'Financeiro', path: '/empresa/financeiro', moduleCode: 'finance' },
-  { icon: Wallet, label: 'Comissoes', path: '/empresa/comissoes', moduleCode: 'commissions' },
+  { icon: Wallet, label: 'Comissões', path: '/empresa/comissoes', moduleCode: 'commissions' },
   { icon: Gift, label: 'Fidelidade', path: '/empresa/fidelidade', moduleCode: 'loyalty' },
   { icon: Repeat, label: 'Assinaturas', path: '/empresa/assinaturas', moduleCode: 'subscriptions' },
   { icon: CreditCard, label: 'Gateways', path: '/empresa/gateways', moduleCode: 'finance', ownerOnly: true, alwaysShow: true },
-  { icon: BarChart3, label: 'RelatÃ³rios', path: '/empresa/relatorios', moduleCode: 'reports' },
+  { icon: BarChart3, label: 'Relatórios', path: '/empresa/relatorios', moduleCode: 'reports' },
   
   // Team management (core for owners)
   { icon: UserPlus, label: 'Equipe', path: '/empresa/equipe', moduleCode: 'users', ownerOnly: true },
-  { icon: Settings, label: 'Permissoes', path: '/empresa/permissoes', moduleCode: 'permissions', ownerOnly: true },
+  { icon: Settings, label: 'Permissões', path: '/empresa/permissoes', moduleCode: 'permissions', ownerOnly: true },
   
   // Support & Training
   { icon: HeadphonesIcon, label: 'Suporte', path: '/empresa/suporte', moduleCode: 'support' },
@@ -75,7 +75,7 @@ const navItems: NavItem[] = [
   
   // Customization & Settings (always for owners)
   { icon: Palette, label: 'Temas', path: '/empresa/temas', moduleCode: 'design', ownerOnly: true, alwaysShow: true },
-  { icon: Settings, label: 'ConfiguraÃ§Ãµes', path: '/empresa/configuracoes', moduleCode: 'settings', ownerOnly: true, alwaysShow: true },
+  { icon: Settings, label: 'Configurações', path: '/empresa/configuracoes', moduleCode: 'settings', ownerOnly: true, alwaysShow: true },
 ];
 
 export const EmpresaLayout: React.FC = () => {
@@ -112,7 +112,11 @@ export const EmpresaLayout: React.FC = () => {
   };
 
   // White label: use company logo if available
-  const companyLogo = company?.logo_url;
+  const companyLogo =
+    company?.logo_url ||
+    (company as any)?.logoUrl ||
+    (company as any)?.company_logo_url ||
+    null;
   const companyName = company?.name || user.tenantName || 'Minha Empresa';
   const sidebarTitle = user.name || companyName;
 
@@ -207,9 +211,17 @@ export const EmpresaLayout: React.FC = () => {
             'flex items-center gap-3',
             isCollapsed && 'justify-center'
           )}>
-            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full gradient-primary text-sm font-semibold text-primary-foreground">
-              {user.name.charAt(0).toUpperCase()}
-            </div>
+            {companyLogo ? (
+              <img
+                src={companyLogo}
+                alt={companyName}
+                className="h-10 w-10 flex-shrink-0 rounded-full object-cover"
+              />
+            ) : (
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full gradient-primary text-sm font-semibold text-primary-foreground">
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+            )}
             {!isCollapsed && (
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{user.name}</p>
@@ -245,7 +257,15 @@ export const EmpresaLayout: React.FC = () => {
               <Menu className="h-5 w-5" />
             </Button>
             <div className="hidden sm:flex items-center gap-2 rounded-lg bg-secondary px-3 py-1.5">
-              <Building2 className="h-4 w-4 text-muted-foreground" />
+              {companyLogo ? (
+                <img
+                  src={companyLogo}
+                  alt={companyName}
+                  className="h-5 w-5 rounded object-cover"
+                />
+              ) : (
+                <Building2 className="h-4 w-4 text-muted-foreground" />
+              )}
               <span className="text-sm font-medium">{companyName}</span>
             </div>
           </div>
