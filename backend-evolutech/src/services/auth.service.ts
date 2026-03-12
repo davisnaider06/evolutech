@@ -81,45 +81,49 @@ export class AuthService {
           )
         : new Set<string>();
 
-    const moduleMap = new Map<
-      string,
-      {
-        id: string;
-        codigo: string;
-        nome: string;
-        icone: string | null;
-        is_pro: boolean;
-        allowed_roles: string[];
+      const moduleMap = new Map<
+        string,
+        {
+          id: string;
+          codigo: string;
+          nome: string;
+          icone: string | null;
+          is_pro: boolean;
+          allowed_roles: string[];
+        }
+      >();
+
+      for (const item of companyModules) {
+        if (deniedModuleIds.has(item.modulo.id)) continue;
+        moduleMap.set(item.modulo.id, {
+          id: item.modulo.id,
+          codigo: item.modulo.codigo,
+          nome: item.modulo.nome,
+          icone: item.modulo.icone,
+          is_pro: Boolean((item.modulo as any).isPro),
+          allowed_roles: Array.isArray((item as any).allowedRoles) && (item as any).allowedRoles.length > 0
+            ? (item as any).allowedRoles
+            : Array.isArray((item.modulo as any).allowedRoles)
+            ? (item.modulo as any).allowedRoles
+            : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
+        });
       }
-    >();
 
-    for (const item of companyModules) {
-      if (deniedModuleIds.has(item.modulo.id)) continue;
-      moduleMap.set(item.modulo.id, {
-        id: item.modulo.id,
-        codigo: item.modulo.codigo,
-        nome: item.modulo.nome,
-        icone: item.modulo.icone,
-        is_pro: Boolean((item.modulo as any).isPro),
-        allowed_roles: Array.isArray((item.modulo as any).allowedRoles)
-          ? (item.modulo as any).allowedRoles
-          : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
-      });
-    }
-
-    for (const item of sistemaBaseModules) {
-      if (deniedModuleIds.has(item.modulo.id)) continue;
-      moduleMap.set(item.modulo.id, {
-        id: item.modulo.id,
-        codigo: item.modulo.codigo,
-        nome: item.modulo.nome,
-        icone: item.modulo.icone,
-        is_pro: Boolean((item.modulo as any).isPro),
-        allowed_roles: Array.isArray((item.modulo as any).allowedRoles)
-          ? (item.modulo as any).allowedRoles
-          : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
-      });
-    }
+      for (const item of sistemaBaseModules) {
+        if (deniedModuleIds.has(item.modulo.id)) continue;
+        moduleMap.set(item.modulo.id, {
+          id: item.modulo.id,
+          codigo: item.modulo.codigo,
+          nome: item.modulo.nome,
+          icone: item.modulo.icone,
+          is_pro: Boolean((item.modulo as any).isPro),
+          allowed_roles: Array.isArray((item as any).allowedRoles) && (item as any).allowedRoles.length > 0
+            ? (item as any).allowedRoles
+            : Array.isArray((item.modulo as any).allowedRoles)
+            ? (item.modulo as any).allowedRoles
+            : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
+        });
+      }
 
     if (role === 'DONO_EMPRESA') {
       for (const moduleItem of OWNER_DEFAULT_MODULES) {

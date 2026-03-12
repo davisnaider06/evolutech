@@ -50,7 +50,7 @@ export const adminService = {
   atualizarSistemaBase: async (id: string, dados: any) => request(`/sistemas-base/${id}`, { method: 'PATCH', body: JSON.stringify(dados) }),
   excluirSistemaBase: async (id: string) => request(`/sistemas-base/${id}`, { method: 'DELETE' }),
   listarModulosSistemaBase: async (id: string) => request(`/sistemas-base/${id}/modulos`),
-  salvarModulosSistemaBase: async (id: string, modulos: Array<{ modulo_id: string }>) =>
+  salvarModulosSistemaBase: async (id: string, modulos: Array<{ modulo_id: string; allowed_roles?: string[] }>) =>
     request(`/sistemas-base/${id}/modulos`, { method: 'PUT', body: JSON.stringify({ modulos }) }),
 
   listarTenants: async () => request('/tenants'),

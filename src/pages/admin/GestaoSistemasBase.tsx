@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
   SelectContent,
@@ -40,6 +41,7 @@ interface SistemaBase {
 
 interface SistemaModulo {
   modulo_id: string;
+  allowed_roles?: string[];
 }
 
 export default function GestaoSistemasBase() {
@@ -51,6 +53,7 @@ export default function GestaoSistemasBase() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectedSistema, setSelectedSistema] = useState<SistemaBase | null>(null);
+  const [activeRoleTab, setActiveRoleTab] = useState<'DONO_EMPRESA' | 'FUNCIONARIO_EMPRESA'>('DONO_EMPRESA');
   const [formData, setFormData] = useState({
     nome: '',
     descricao: '',
@@ -90,6 +93,7 @@ export default function GestaoSistemasBase() {
     setSelectedSistema(null);
     setFormData({ nome: '', descricao: '', nicho: '', status: 'active' });
     setSistemaModulos([]);
+    setActiveRoleTab('DONO_EMPRESA');
     setIsDialogOpen(true);
   };
 
@@ -107,24 +111,58 @@ export default function GestaoSistemasBase() {
       setSistemaModulos(
         (data || []).map((item: any) => ({
           modulo_id: item.modulo_id,
+          allowed_roles: Array.isArray(item.allowed_roles) ? item.allowed_roles : item.modulos?.allowed_roles || [],
         }))
       );
+      setActiveRoleTab('DONO_EMPRESA');
       setIsDialogOpen(true);
     } catch (error: any) {
       toast({ title: error.message || 'Erro ao carregar modulos do sistema', variant: 'destructive' });
     }
   };
 
-  const isModuloSelected = (moduloId: string) => sistemaModulos.some((m) => m.modulo_id === moduloId);
+  const getModuloRoles = (moduloId: string) => {
+    const item = sistemaModulos.find((entry) => entry.modulo_id === moduloId);
+    return Array.isArray(item?.allowed_roles) && item.allowed_roles.length > 0
+      ? item.allowed_roles
+      : [];
+  };
 
-  const toggleModulo = (moduloId: string) => {
+  const isModuloSelectedForRole = (moduloId: string, role: 'DONO_EMPRESA' | 'FUNCIONARIO_EMPRESA') =>
+    getModuloRoles(moduloId).includes(role);
+
+  const toggleModuloRole = (moduloId: string, role: 'DONO_EMPRESA' | 'FUNCIONARIO_EMPRESA') => {
     setSistemaModulos((prev) => {
-      if (prev.some((m) => m.modulo_id === moduloId)) {
+      const existing = prev.find((item) => item.modulo_id === moduloId);
+      const currentRoles = Array.isArray(existing?.allowed_roles) ? existing.allowed_roles : [];
+      const nextRoles = currentRoles.includes(role)
+        ? currentRoles.filter((item) => item !== role)
+        : [...currentRoles, role];
+
+      if (nextRoles.length === 0) {
         return prev.filter((m) => m.modulo_id !== moduloId);
       }
-      return [...prev, { modulo_id: moduloId }];
+
+      if (existing) {
+        return prev.map((item) =>
+          item.modulo_id === moduloId
+            ? { ...item, allowed_roles: nextRoles }
+            : item
+        );
+      }
+
+      return [...prev, { modulo_id: moduloId, allowed_roles: nextRoles }];
     });
   };
+
+  const getModulesForRoleTab = (role: 'DONO_EMPRESA' | 'FUNCIONARIO_EMPRESA') =>
+    modulos.filter((modulo) => {
+      const allowedRoles =
+        Array.isArray(modulo.allowedRoles) && modulo.allowedRoles.length > 0
+          ? modulo.allowedRoles
+          : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'];
+      return allowedRoles.includes(role);
+    });
 
   const handleSave = async () => {
     if (!formData.nome.trim() || !formData.nicho.trim()) {
@@ -154,7 +192,13 @@ export default function GestaoSistemasBase() {
       }
 
       if (sistemaId) {
-        await adminService.salvarModulosSistemaBase(sistemaId, sistemaModulos);
+        await adminService.salvarModulosSistemaBase(
+          sistemaId,
+          sistemaModulos.map((item) => ({
+            modulo_id: item.modulo_id,
+            allowed_roles: item.allowed_roles || [],
+          }))
+        );
       }
 
       toast({ title: 'Sistema salvo com sucesso' });
@@ -265,26 +309,64 @@ export default function GestaoSistemasBase() {
                 <CardTitle>Modulos do Sistema</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                {modulos.map((modulo) => (
-                  <div key={modulo.id} className="flex items-center justify-between rounded border p-3">
-                    <div>
-                      <p className="font-medium">{modulo.nome}</p>
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm text-muted-foreground">{modulo.codigo}</p>
-                        {highlightedModuleCodes.has((modulo.codigo || '').toLowerCase()) && (
-                          <Badge variant="outline">Portal Cliente</Badge>
-                        )}
-                        {modulo.isPro && <Badge variant="outline">Pro</Badge>}
-                        {(modulo.allowedRoles || ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA']).map((role) => (
-                          <Badge key={`${modulo.id}-${role}`} variant="secondary">
-                            {roleLabel(role)}
-                          </Badge>
-                        ))}
+                <Tabs value={activeRoleTab} onValueChange={(value) => setActiveRoleTab(value as 'DONO_EMPRESA' | 'FUNCIONARIO_EMPRESA')}>
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="DONO_EMPRESA">Dono</TabsTrigger>
+                    <TabsTrigger value="FUNCIONARIO_EMPRESA">Funcionario</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="DONO_EMPRESA" className="space-y-2">
+                    {getModulesForRoleTab('DONO_EMPRESA').map((modulo) => (
+                      <div key={`${modulo.id}-owner`} className="flex items-center justify-between rounded border p-3">
+                        <div>
+                          <p className="font-medium">{modulo.nome}</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm text-muted-foreground">{modulo.codigo}</p>
+                            {highlightedModuleCodes.has((modulo.codigo || '').toLowerCase()) && (
+                              <Badge variant="outline">Portal Cliente</Badge>
+                            )}
+                            {modulo.isPro && <Badge variant="outline">Pro</Badge>}
+                            {(modulo.allowedRoles || ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA']).map((role) => (
+                              <Badge key={`${modulo.id}-${role}`} variant="secondary">
+                                {roleLabel(role)}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                        <Checkbox
+                          checked={isModuloSelectedForRole(modulo.id, 'DONO_EMPRESA')}
+                          onCheckedChange={() => toggleModuloRole(modulo.id, 'DONO_EMPRESA')}
+                        />
                       </div>
-                    </div>
-                    <Checkbox checked={isModuloSelected(modulo.id)} onCheckedChange={() => toggleModulo(modulo.id)} />
-                  </div>
-                ))}
+                    ))}
+                  </TabsContent>
+
+                  <TabsContent value="FUNCIONARIO_EMPRESA" className="space-y-2">
+                    {getModulesForRoleTab('FUNCIONARIO_EMPRESA').map((modulo) => (
+                      <div key={`${modulo.id}-staff`} className="flex items-center justify-between rounded border p-3">
+                        <div>
+                          <p className="font-medium">{modulo.nome}</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm text-muted-foreground">{modulo.codigo}</p>
+                            {highlightedModuleCodes.has((modulo.codigo || '').toLowerCase()) && (
+                              <Badge variant="outline">Portal Cliente</Badge>
+                            )}
+                            {modulo.isPro && <Badge variant="outline">Pro</Badge>}
+                            {(modulo.allowedRoles || ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA']).map((role) => (
+                              <Badge key={`${modulo.id}-${role}`} variant="secondary">
+                                {roleLabel(role)}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                        <Checkbox
+                          checked={isModuloSelectedForRole(modulo.id, 'FUNCIONARIO_EMPRESA')}
+                          onCheckedChange={() => toggleModuloRole(modulo.id, 'FUNCIONARIO_EMPRESA')}
+                        />
+                      </div>
+                    ))}
+                  </TabsContent>
+                </Tabs>
               </CardContent>
             </Card>
 

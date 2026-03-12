@@ -147,7 +147,9 @@ export class CompanyService {
 
   private enforceRoleModuleAccess(userRole: string, requestedCodes: string[], matchedModules: any[]) {
     const allowed = matchedModules.some((item) => {
-      const roles = Array.isArray(item?.modulo?.allowedRoles) && item.modulo.allowedRoles.length > 0
+      const roles = Array.isArray(item?.allowedRoles) && item.allowedRoles.length > 0
+        ? item.allowedRoles
+        : Array.isArray(item?.modulo?.allowedRoles) && item.modulo.allowedRoles.length > 0
         ? item.modulo.allowedRoles
         : this.defaultCompanyAllowedRoles;
       return roles.includes(userRole);
@@ -377,6 +379,7 @@ export class CompanyService {
       },
       select: {
         id: true,
+        allowedRoles: true,
         modulo: {
           select: {
             id: true,
@@ -5543,6 +5546,7 @@ export class CompanyService {
         },
         select: {
           moduloId: true,
+          allowedRoles: true,
           modulo: {
             select: {
               id: true,
@@ -5570,7 +5574,11 @@ export class CompanyService {
         id: item.modulo.id,
         codigo: item.modulo.codigo,
         nome: item.modulo.nome,
-        allowed_roles: Array.isArray(item.modulo.allowedRoles) ? item.modulo.allowedRoles : [],
+        allowed_roles: Array.isArray(item.allowedRoles) && item.allowedRoles.length > 0
+          ? item.allowedRoles
+          : Array.isArray(item.modulo.allowedRoles)
+          ? item.modulo.allowedRoles
+          : [],
         is_pro: Boolean(item.modulo.isPro),
       }))
       .filter((item: any) => {
@@ -5647,6 +5655,7 @@ export class CompanyService {
       },
       select: {
         moduloId: true,
+        allowedRoles: true,
         modulo: {
           select: {
             id: true,
@@ -5660,7 +5669,9 @@ export class CompanyService {
     const moduleByCode = new Map<string, string>();
     const moduleById = new Set<string>();
     for (const item of companyModules) {
-      const roles = Array.isArray(item.modulo.allowedRoles) && item.modulo.allowedRoles.length > 0
+      const roles = Array.isArray(item.allowedRoles) && item.allowedRoles.length > 0
+        ? item.allowedRoles
+        : Array.isArray(item.modulo.allowedRoles) && item.modulo.allowedRoles.length > 0
         ? item.modulo.allowedRoles
         : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'];
       if (!roles.includes('FUNCIONARIO_EMPRESA')) continue;

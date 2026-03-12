@@ -159,25 +159,27 @@ model SistemaBase {
 }
 
 model SistemaBaseModulo {
-  id            String      @id @default(uuid())
-  sistemaBaseId String      @map("sistema_base_id")
-  moduloId      String      @map("modulo_id")
-  isMandatory   Boolean     @default(false) @map("is_mandatory")
-  modulo        Modulo      @relation(fields: [moduloId], references: [id], onDelete: Cascade)
-  sistemaBase   SistemaBase @relation(fields: [sistemaBaseId], references: [id], onDelete: Cascade)
+    id            String      @id @default(uuid())
+    sistemaBaseId String      @map("sistema_base_id")
+    moduloId      String      @map("modulo_id")
+    isMandatory   Boolean     @default(false) @map("is_mandatory")
+    allowedRoles  Role[]      @default([DONO_EMPRESA, FUNCIONARIO_EMPRESA]) @map("allowed_roles")
+    modulo        Modulo      @relation(fields: [moduloId], references: [id], onDelete: Cascade)
+    sistemaBase   SistemaBase @relation(fields: [sistemaBaseId], references: [id], onDelete: Cascade)
 
   @@unique([sistemaBaseId, moduloId])
   @@map("sistema_base_modulos")
 }
 
 model CompanyModule {
-  id          String    @id @default(uuid())
-  companyId   String    @map("empresa_id")
-  moduloId    String    @map("modulo_id")
-  isActive    Boolean   @default(true) @map("is_active")
-  activatedAt DateTime? @default(now()) @map("activated_at")
-  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  modulo      Modulo    @relation(fields: [moduloId], references: [id], onDelete: Cascade)
+    id          String    @id @default(uuid())
+    companyId   String    @map("empresa_id")
+    moduloId    String    @map("modulo_id")
+    isActive    Boolean   @default(true) @map("is_active")
+    activatedAt DateTime? @default(now()) @map("activated_at")
+    allowedRoles Role[]   @default([DONO_EMPRESA, FUNCIONARIO_EMPRESA]) @map("allowed_roles")
+    company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+    modulo      Modulo    @relation(fields: [moduloId], references: [id], onDelete: Cascade)
 
   @@unique([companyId, moduloId])
   @@index([companyId])

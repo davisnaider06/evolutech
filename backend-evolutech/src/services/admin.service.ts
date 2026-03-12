@@ -9,6 +9,14 @@ const mapStatusToIsActive = (status?: SistemaStatusInput): boolean => status ===
 const mapIsActiveToStatus = (isActive: boolean): SistemaStatusInput => (isActive ? 'active' : 'inactive');
 
 export class AdminService {
+  private normalizeScopedRoles(input?: unknown): Role[] {
+    const validRoles: Role[] = ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'];
+    const roles = Array.isArray(input)
+      ? input.filter((item): item is Role => validRoles.includes(item as Role))
+      : [];
+    return roles.length > 0 ? Array.from(new Set(roles)) : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'];
+  }
+
   private async ensureCommissionStaffModule() {
     await prisma.modulo.upsert({
       where: { codigo: 'commissions_staff' },
@@ -96,26 +104,26 @@ export class AdminService {
   }
 
   private async syncCompanyModulesBySistemaBaseId(
-    tx: Prisma.TransactionClient,
-    sistemaBaseId: string
-  ) {
+      tx: Prisma.TransactionClient,
+      sistemaBaseId: string
+    ) {
     const [companies, sistemaModulos] = await Promise.all([
       tx.company.findMany({
         where: { sistemaBaseId },
         select: { id: true }
       }),
-      tx.sistemaBaseModulo.findMany({
-        where: { sistemaBaseId },
-        select: { moduloId: true }
-      })
-    ]);
+        tx.sistemaBaseModulo.findMany({
+          where: { sistemaBaseId },
+          select: { moduloId: true, allowedRoles: true }
+        })
+      ]);
 
     const companyIds = companies.map((company) => company.id);
     if (companyIds.length === 0) {
       return;
     }
 
-    const moduloIds = Array.from(new Set(sistemaModulos.map((item) => item.moduloId)));
+      const moduloIds = Array.from(new Set(sistemaModulos.map((item) => item.moduloId)));
 
     if (moduloIds.length === 0) {
       await tx.companyModule.deleteMany({
@@ -124,24 +132,36 @@ export class AdminService {
       return;
     }
 
-    await tx.companyModule.deleteMany({
-      where: {
-        companyId: { in: companyIds },
-        moduloId: { notIn: moduloIds }
-      }
-    });
+      await tx.companyModule.deleteMany({
+        where: {
+          companyId: { in: companyIds },
+          moduloId: { notIn: moduloIds }
+        }
+      });
 
-    await tx.companyModule.createMany({
-      data: companyIds.flatMap((companyId) =>
-        moduloIds.map((moduloId) => ({
-          companyId,
-          moduloId,
-          isActive: true
-        }))
-      ),
-      skipDuplicates: true
-    });
-  }
+      for (const { moduloId, allowedRoles } of sistemaModulos) {
+        for (const companyId of companyIds) {
+          await tx.companyModule.upsert({
+            where: {
+              companyId_moduloId: {
+                companyId,
+                moduloId,
+              },
+            },
+            update: {
+              isActive: true,
+              allowedRoles,
+            },
+            create: {
+              companyId,
+              moduloId,
+              isActive: true,
+              allowedRoles,
+            },
+          });
+        }
+      }
+    }
 
   private async syncSingleCompanyModulesBySistemaBaseId(
     tx: Prisma.TransactionClient,
@@ -153,10 +173,10 @@ export class AdminService {
       return;
     }
 
-    const sistemaModulos = await tx.sistemaBaseModulo.findMany({
-      where: { sistemaBaseId },
-      select: { moduloId: true }
-    });
+      const sistemaModulos = await tx.sistemaBaseModulo.findMany({
+        where: { sistemaBaseId },
+        select: { moduloId: true, allowedRoles: true }
+      });
 
     const moduloIds = Array.from(new Set(sistemaModulos.map((item) => item.moduloId)));
 
@@ -172,15 +192,27 @@ export class AdminService {
       }
     });
 
-    await tx.companyModule.createMany({
-      data: moduloIds.map((moduloId) => ({
-        companyId,
-        moduloId,
-        isActive: true
-      })),
-      skipDuplicates: true
-    });
-  }
+      for (const { moduloId, allowedRoles } of sistemaModulos) {
+        await tx.companyModule.upsert({
+          where: {
+            companyId_moduloId: {
+              companyId,
+              moduloId,
+            },
+          },
+          update: {
+            isActive: true,
+            allowedRoles,
+          },
+          create: {
+            companyId,
+            moduloId,
+            isActive: true,
+            allowedRoles,
+          },
+        });
+      }
+    }
 
   async getDashboardMetrics() {
     const [activeCompanies, activeUsers, activeModules, totalMrr] = await Promise.all([
@@ -619,24 +651,45 @@ export class AdminService {
   }
 
   async listSistemaBaseModulos(sistemaId: string) {
-    return prisma.sistemaBaseModulo.findMany({
-      where: { sistemaBaseId: sistemaId },
-      include: { modulo: true },
-      orderBy: [{ modulo: { nome: 'asc' } }]
+      return prisma.sistemaBaseModulo.findMany({
+        where: { sistemaBaseId: sistemaId },
+        include: { modulo: true },
+        orderBy: [{ modulo: { nome: 'asc' } }]
     });
   }
 
   async replaceSistemaBaseModulos(
-    sistemaId: string,
-    modulos: Array<{ modulo_id: string; is_default?: boolean } | string>
-  ) {
-    const rawModuloIds = Array.from(
-      new Set(
-        modulos
-          .map((item) => (typeof item === 'string' ? item : item?.modulo_id))
-          .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-      )
-    );
+      sistemaId: string,
+      modulos: Array<{ modulo_id: string; is_default?: boolean; allowed_roles?: Role[] } | string>
+    ) {
+      const normalizedItems = Array.from(
+        new Map(
+          modulos
+            .map((item) => {
+              if (typeof item === 'string') {
+                return [
+                  item,
+                  {
+                    modulo_id: item,
+                    allowed_roles: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] as Role[],
+                  },
+                ] as const;
+              }
+              const moduloId = String(item?.modulo_id || '').trim();
+              if (!moduloId) return null;
+              return [
+                moduloId,
+                {
+                  modulo_id: moduloId,
+                  allowed_roles: this.normalizeScopedRoles(item?.allowed_roles),
+                },
+              ] as const;
+            })
+            .filter((item): item is readonly [string, { modulo_id: string; allowed_roles: Role[] }] => Boolean(item))
+        ).values()
+      );
+
+      const rawModuloIds = normalizedItems.map((item) => item.modulo_id);
 
     await prisma.$transaction(async (tx) => {
       const sistema = await tx.sistemaBase.findUnique({
@@ -649,27 +702,30 @@ export class AdminService {
       }
 
       let moduloIds = rawModuloIds;
-      if (rawModuloIds.length > 0) {
-        const existingModulos = await tx.modulo.findMany({
-          where: { id: { in: rawModuloIds } },
-          select: { id: true }
-        });
-        const existingModuloIds = new Set(existingModulos.map((item) => item.id));
-        moduloIds = rawModuloIds.filter((id) => existingModuloIds.has(id));
-      }
+        if (rawModuloIds.length > 0) {
+          const existingModulos = await tx.modulo.findMany({
+            where: { id: { in: rawModuloIds } },
+            select: { id: true }
+          });
+          const existingModuloIds = new Set(existingModulos.map((item) => item.id));
+          moduloIds = rawModuloIds.filter((id) => existingModuloIds.has(id));
+        }
 
-      await tx.sistemaBaseModulo.deleteMany({ where: { sistemaBaseId: sistemaId } });
+        await tx.sistemaBaseModulo.deleteMany({ where: { sistemaBaseId: sistemaId } });
 
-      if (moduloIds.length > 0) {
-        await tx.sistemaBaseModulo.createMany({
-          data: moduloIds.map((moduloId) => ({
-            sistemaBaseId: sistemaId,
-            moduloId,
-            isMandatory: false
-          })),
-          skipDuplicates: true
-        });
-      }
+        if (moduloIds.length > 0) {
+          await tx.sistemaBaseModulo.createMany({
+            data: normalizedItems
+              .filter((item) => moduloIds.includes(item.modulo_id))
+              .map((item) => ({
+                sistemaBaseId: sistemaId,
+                moduloId: item.modulo_id,
+                isMandatory: false,
+                allowedRoles: item.allowed_roles,
+              })),
+            skipDuplicates: true
+          });
+        }
 
       await this.syncCompanyModulesBySistemaBaseId(tx, sistemaId);
     });

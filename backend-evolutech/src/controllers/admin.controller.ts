@@ -209,6 +209,7 @@ export class AdminController {
         sistema_base_id: item.sistemaBaseId,
         modulo_id: item.moduloId,
         is_default: item.isMandatory,
+        allowed_roles: (item as any).allowedRoles || (item.modulo as any).allowedRoles || ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
         modulos: {
           id: item.modulo.id,
           nome: item.modulo.nome,
@@ -216,7 +217,7 @@ export class AdminController {
           descricao: item.modulo.descricao,
           is_core: item.modulo.isCore,
           is_pro: (item.modulo as any).isPro,
-          allowed_roles: (item.modulo as any).allowedRoles || ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
+          allowed_roles: (item as any).allowedRoles || (item.modulo as any).allowedRoles || ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
           preco_mensal: Number(item.modulo.precoMensal),
           status: item.modulo.status
         }
@@ -238,12 +239,14 @@ export class AdminController {
       const hasInvalidItem = modulos.some(
         (item: unknown) =>
           !(
-            typeof item === 'string' ||
-            (item !== null &&
-              typeof item === 'object' &&
-              typeof (item as { modulo_id?: unknown }).modulo_id === 'string')
-          )
-      );
+              typeof item === 'string' ||
+              (item !== null &&
+                typeof item === 'object' &&
+                typeof (item as { modulo_id?: unknown }).modulo_id === 'string' &&
+                ((item as { allowed_roles?: unknown }).allowed_roles === undefined ||
+                  Array.isArray((item as { allowed_roles?: unknown }).allowed_roles)))
+            )
+        );
 
       if (hasInvalidItem) {
         return res.status(400).json({ error: 'Cada item deve ser string ou objeto com modulo_id' });
