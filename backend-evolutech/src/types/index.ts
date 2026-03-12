@@ -30,14 +30,3 @@ export interface AuthenticatedCustomer {
 export interface AuthedCustomerRequest extends Request {
   customer?: AuthenticatedCustomer;
 }
-
-export interface AuthenticatedCourseManager {
-  managerId: string;
-  companyId: string;
-  email: string;
-  role: 'COURSE_MANAGER';
-}
-
-export interface AuthedCourseManagerRequest extends Request {
-  courseManager?: AuthenticatedCourseManager;
-}

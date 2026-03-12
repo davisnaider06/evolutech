@@ -231,6 +231,7 @@ export class CompanyService {
       appointment_services: (prisma as any).appointmentService,
       appointment_availability: (prisma as any).appointmentAvailability,
       orders: prisma.order,
+      cash_transactions: (prisma as any).cashTransaction,
       courses: (prisma as any).course,
       course_accesses: (prisma as any).courseAccess,
     };
@@ -438,6 +439,16 @@ export class CompanyService {
           : queryParams.status;
     }
 
+    if (table === 'cash_transactions') {
+      const transactionType = String(queryParams.type || '').trim().toLowerCase();
+      const category = String(queryParams.category || '').trim();
+      const paymentMethod = String(queryParams.payment_method || '').trim().toLowerCase();
+
+      if (transactionType) where.type = transactionType;
+      if (category) where.category = category;
+      if (paymentMethod) where.paymentMethod = paymentMethod;
+    }
+
     if (queryParams.dateFrom || queryParams.dateTo) {
       where[config.dateField] = {};
       if (queryParams.dateFrom) where[config.dateField].gte = new Date(queryParams.dateFrom);
@@ -479,6 +490,22 @@ export class CompanyService {
         payload.professionalName = user.fullName;
       }
     }
+    if (table === 'cash_transactions') {
+      payload.transactionDate = payload.transactionDate || payload.transaction_date
+        ? new Date(String(payload.transactionDate || payload.transaction_date))
+        : new Date();
+      payload.createdBy = user.id;
+      delete payload.transaction_date;
+      if (!payload.type || !['entrada', 'saida'].includes(String(payload.type))) {
+        throw new CompanyServiceError('type invalido. Use entrada ou saida', 400);
+      }
+      if (!payload.description || !String(payload.description).trim()) {
+        throw new CompanyServiceError('description obrigatorio', 400);
+      }
+      if (this.toNumber(payload.amount) <= 0) {
+        throw new CompanyServiceError('amount deve ser maior que zero', 400);
+      }
+    }
 
     return model.create({ data: payload });
   }
@@ -517,6 +544,18 @@ export class CompanyService {
     const targetType = String(payload.type || '').trim().toLowerCase();
     if (table === 'appointments' && payload.status !== undefined) {
       payload.status = this.normalizeAppointmentStatus(payload.status);
+    }
+    if (table === 'cash_transactions') {
+      if (payload.transaction_date !== undefined || payload.transactionDate !== undefined) {
+        payload.transactionDate = new Date(String(payload.transactionDate || payload.transaction_date));
+      }
+      delete payload.transaction_date;
+      if (payload.type !== undefined && !['entrada', 'saida'].includes(String(payload.type))) {
+        throw new CompanyServiceError('type invalido. Use entrada ou saida', 400);
+      }
+      if (payload.amount !== undefined && this.toNumber(payload.amount) <= 0) {
+        throw new CompanyServiceError('amount deve ser maior que zero', 400);
+      }
     }
     if (table === 'appointments' && user.role === 'FUNCIONARIO_EMPRESA') {
       payload.professionalId = user.id;
@@ -1649,6 +1688,178 @@ export class CompanyService {
     };
   }
 
+  async getCoursesOverview(
+    user: AuthenticatedUser,
+    queryParams: { company_id?: string; companyId?: string; dateFrom?: string; dateTo?: string } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, ['courses', 'cursos']);
+    this.ensureOwnerCompanyRole(user);
+
+    const accessWhere: any = { companyId };
+    if (queryParams.dateFrom || queryParams.dateTo) {
+      accessWhere.createdAt = {};
+      if (queryParams.dateFrom) accessWhere.createdAt.gte = new Date(String(queryParams.dateFrom));
+      if (queryParams.dateTo) accessWhere.createdAt.lte = new Date(String(queryParams.dateTo));
+    }
+
+    const [courses, accesses] = await Promise.all([
+      (prisma as any).course.findMany({
+        where: { companyId },
+        orderBy: { createdAt: 'desc' },
+      }),
+      (prisma as any).courseAccess.findMany({
+        where: accessWhere,
+        include: {
+          course: {
+            select: {
+              id: true,
+              title: true,
+              price: true,
+              isActive: true,
+            },
+          },
+          customer: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
+    ]);
+
+    const metricsByCourse = new Map<
+      string,
+      {
+        sales_count: number;
+        active_sales: number;
+        pending_sales: number;
+        canceled_sales: number;
+        expired_sales: number;
+        revenue_confirmed: number;
+        revenue_pending: number;
+        last_sale_at: Date | null;
+      }
+    >();
+
+    let confirmedRevenue = 0;
+    let pendingRevenue = 0;
+    let activeSales = 0;
+    let pendingSales = 0;
+
+    for (const access of accesses) {
+      const courseId = String(access.courseId || '');
+      const status = String(access.status || '').toLowerCase();
+      const amountPaid = this.toNumber(access.amountPaid);
+      const current =
+        metricsByCourse.get(courseId) || {
+          sales_count: 0,
+          active_sales: 0,
+          pending_sales: 0,
+          canceled_sales: 0,
+          expired_sales: 0,
+          revenue_confirmed: 0,
+          revenue_pending: 0,
+          last_sale_at: null,
+        };
+
+      current.sales_count += 1;
+      if (!current.last_sale_at || new Date(access.createdAt).getTime() > current.last_sale_at.getTime()) {
+        current.last_sale_at = access.createdAt;
+      }
+
+      if (status === 'active') {
+        current.active_sales += 1;
+        current.revenue_confirmed += amountPaid;
+        confirmedRevenue += amountPaid;
+        activeSales += 1;
+      } else if (status === 'pending') {
+        current.pending_sales += 1;
+        current.revenue_pending += amountPaid;
+        pendingRevenue += amountPaid;
+        pendingSales += 1;
+      } else if (status === 'canceled') {
+        current.canceled_sales += 1;
+      } else if (status === 'expired') {
+        current.expired_sales += 1;
+      }
+
+      metricsByCourse.set(courseId, current);
+    }
+
+    return {
+      summary: {
+        total_courses: courses.length,
+        active_courses: courses.filter((item: any) => Boolean(item.isActive)).length,
+        total_sales: accesses.length,
+        active_sales: activeSales,
+        pending_sales: pendingSales,
+        confirmed_revenue: confirmedRevenue,
+        pending_revenue: pendingRevenue,
+      },
+      courses: courses.map((course: any) => {
+        const metrics = metricsByCourse.get(course.id) || {
+          sales_count: 0,
+          active_sales: 0,
+          pending_sales: 0,
+          canceled_sales: 0,
+          expired_sales: 0,
+          revenue_confirmed: 0,
+          revenue_pending: 0,
+          last_sale_at: null,
+        };
+
+        return {
+          id: course.id,
+          title: course.title,
+          description: course.description,
+          content_type: course.contentType || 'video',
+          content_url: course.contentUrl || null,
+          cover_image_url: course.coverImageUrl || null,
+          price: this.toNumber(course.price),
+          is_active: Boolean(course.isActive),
+          created_at: course.createdAt,
+          updated_at: course.updatedAt,
+          sales_count: metrics.sales_count,
+          active_sales: metrics.active_sales,
+          pending_sales: metrics.pending_sales,
+          canceled_sales: metrics.canceled_sales,
+          expired_sales: metrics.expired_sales,
+          revenue_confirmed: metrics.revenue_confirmed,
+          revenue_pending: metrics.revenue_pending,
+          last_sale_at: metrics.last_sale_at,
+        };
+      }),
+      recent_sales: accesses.map((item: any) => ({
+        id: item.id,
+        status: item.status,
+        amount_paid: this.toNumber(item.amountPaid),
+        start_at: item.startAt,
+        end_at: item.endAt,
+        created_at: item.createdAt,
+        customer: item.customer
+          ? {
+              id: item.customer.id,
+              name: item.customer.name,
+              email: item.customer.email || null,
+            }
+          : null,
+        course: item.course
+          ? {
+              id: item.course.id,
+              title: item.course.title,
+              price: this.toNumber(item.course.price),
+              is_active: Boolean(item.course.isActive),
+            }
+          : null,
+      })),
+    };
+  }
+
   async listPdvProducts(user: AuthenticatedUser, queryParams: any) {
     const companyId = this.resolveCompanyId(user, queryParams);
     await this.ensureAnyModuleAccess(user, companyId, ['pdv', 'orders', 'pedidos']);
@@ -1761,6 +1972,65 @@ export class CompanyService {
       throw new CompanyServiceError('dateFrom nao pode ser maior que dateTo', 400);
     }
 
+    return { start, end };
+  }
+
+  private parseReferenceDate(raw?: string) {
+    const value = String(raw || '').trim();
+    if (!value) {
+      const now = new Date();
+      now.setHours(12, 0, 0, 0);
+      return now;
+    }
+
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) {
+      throw new CompanyServiceError('referenceDate invalida. Use YYYY-MM-DD', 400);
+    }
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const parsed = new Date(year, month - 1, day, 12, 0, 0, 0);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new CompanyServiceError('referenceDate invalida. Use YYYY-MM-DD', 400);
+    }
+    return parsed;
+  }
+
+  private getNamedPeriodBounds(referenceDate: Date, period: 'day' | 'week' | 'month' | 'year') {
+    const start = new Date(referenceDate);
+    const end = new Date(referenceDate);
+
+    if (period === 'day') {
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    }
+
+    if (period === 'week') {
+      const weekday = referenceDate.getDay();
+      const offsetToMonday = weekday === 0 ? -6 : 1 - weekday;
+      start.setDate(referenceDate.getDate() + offsetToMonday);
+      start.setHours(0, 0, 0, 0);
+      end.setTime(start.getTime());
+      end.setDate(start.getDate() + 6);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    }
+
+    if (period === 'month') {
+      start.setDate(1);
+      start.setHours(0, 0, 0, 0);
+      end.setMonth(start.getMonth() + 1, 0);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    }
+
+    start.setMonth(0, 1);
+    start.setHours(0, 0, 0, 0);
+    end.setMonth(11, 31);
+    end.setHours(23, 59, 59, 999);
     return { start, end };
   }
 
@@ -4821,6 +5091,290 @@ export class CompanyService {
         created_at: company.createdAt,
         updated_at: company.updatedAt
       }))
+    };
+  }
+
+  async getCashOverview(
+    user: AuthenticatedUser,
+    queryParams: {
+      company_id?: string;
+      companyId?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      referenceDate?: string;
+      page?: number;
+      pageSize?: number;
+      payment_method?: string;
+      item_type?: string;
+      search?: string;
+    } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, ['cash', 'caixa']);
+
+    const referenceDate = this.parseReferenceDate(queryParams.referenceDate);
+    const { start, end } = this.parseDateRange(queryParams, 30);
+    const page = Math.max(1, Number(queryParams.page || 1));
+    const pageSize = Math.min(100, Math.max(1, Number(queryParams.pageSize || 20)));
+    const paymentMethodFilter = String(queryParams.payment_method || '').trim().toLowerCase();
+    const itemTypeFilter = String(queryParams.item_type || '').trim().toLowerCase();
+    const search = this.normalizeComparableText(String(queryParams.search || ''));
+
+    const [paidOrders, paidTransactions, checkoutLogs, manualTransactions] = await Promise.all([
+      prisma.order.findMany({
+        where: {
+          companyId,
+          status: 'paid',
+        },
+        select: {
+          id: true,
+          customerName: true,
+          total: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: { updatedAt: 'desc' },
+      }),
+      prisma.paymentTransaction.findMany({
+        where: {
+          companyId,
+        },
+        select: {
+          orderId: true,
+          paymentMethod: true,
+          amount: true,
+          status: true,
+          paidAt: true,
+          updatedAt: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.auditLog.findMany({
+        where: {
+          companyId,
+          action: 'PDV_CHECKOUT',
+          resource: 'orders',
+        },
+        select: {
+          createdAt: true,
+          details: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      (prisma as any).cashTransaction.findMany({
+        where: { companyId },
+        select: {
+          id: true,
+          type: true,
+          category: true,
+          description: true,
+          amount: true,
+          paymentMethod: true,
+          transactionDate: true,
+          createdAt: true,
+        },
+        orderBy: { transactionDate: 'desc' },
+      }),
+    ]);
+
+    const transactionsByOrder = new Map<string, any[]>();
+    for (const tx of paidTransactions) {
+      const orderId = String(tx.orderId || '').trim();
+      if (!orderId) continue;
+      const list = transactionsByOrder.get(orderId) || [];
+      list.push(tx);
+      transactionsByOrder.set(orderId, list);
+    }
+
+    const checkoutLogByOrder = new Map<string, any>();
+    for (const log of checkoutLogs) {
+      const details = (log.details || {}) as any;
+      const orderId = String(details?.orderId || '').trim();
+      if (!orderId || checkoutLogByOrder.has(orderId)) continue;
+      checkoutLogByOrder.set(orderId, {
+        createdAt: log.createdAt,
+        paymentMethod: String(details?.paymentMethod || '').trim().toLowerCase() || null,
+        items: Array.isArray(details?.items) ? details.items : [],
+      });
+    }
+
+    const entries = paidOrders.map((order) => {
+      const orderId = String(order.id || '');
+      const txs = transactionsByOrder.get(orderId) || [];
+      const checkoutLog = checkoutLogByOrder.get(orderId);
+      const paidTx = txs.find((item) => String(item.status || '').toLowerCase() === 'paid') || txs[0] || null;
+      const paymentMethod =
+        String(paidTx?.paymentMethod || checkoutLog?.paymentMethod || 'desconhecido').trim().toLowerCase();
+      const paidAt =
+        paidTx?.paidAt ||
+        (String(paidTx?.status || '').toLowerCase() === 'paid' ? paidTx?.updatedAt : null) ||
+        order.updatedAt ||
+        checkoutLog?.createdAt ||
+        order.createdAt;
+      const items = Array.isArray(checkoutLog?.items) ? checkoutLog.items : [];
+      const normalizedItemTypes = Array.from(
+        new Set(
+          items
+            .map((item: any) => String(item?.itemType || '').trim().toLowerCase())
+            .filter(Boolean)
+        )
+      );
+      const itemNames = items
+        .map((item: any) => String(item?.itemName || '').trim())
+        .filter(Boolean);
+
+      return {
+        id: orderId,
+        customer_name: order.customerName || 'Cliente nao informado',
+        payment_method: paymentMethod || 'desconhecido',
+        paid_at: paidAt,
+        order_created_at: order.createdAt,
+        total: this.toNumber(order.total),
+        item_types: normalizedItemTypes,
+        items: items.map((item: any) => ({
+          item_type: String(item?.itemType || '').trim().toLowerCase() || 'produto',
+          item_name: String(item?.itemName || '').trim() || 'Item',
+          quantity: Number(item?.quantity || 0),
+          unit_price: this.toNumber(item?.unitPrice),
+          total_price: this.toNumber(item?.totalPrice),
+        })),
+        item_summary: itemNames.join(', '),
+      };
+    });
+
+      const filteredEntries = entries.filter((entry) => {
+        const paidAt = new Date(entry.paid_at);
+        if (paidAt < start || paidAt > end) return false;
+      if (paymentMethodFilter && entry.payment_method !== paymentMethodFilter) return false;
+      if (itemTypeFilter && !entry.item_types.includes(itemTypeFilter)) return false;
+      if (search) {
+        const haystack = this.normalizeComparableText(
+          `${entry.customer_name} ${entry.item_summary} ${entry.payment_method}`
+        );
+        if (!haystack.includes(search)) return false;
+      }
+        return true;
+      });
+
+      const salesBeforeStart = entries
+        .filter((entry) => new Date(entry.paid_at) < start)
+        .reduce((sum, entry) => sum + entry.total, 0);
+
+      const manualBeforeStart = manualTransactions.reduce(
+        (acc: { entries: number; exits: number }, item: any) => {
+          const transactionDate = new Date(item.transactionDate);
+          if (transactionDate >= start) return acc;
+          const amount = this.toNumber(item.amount);
+          if (String(item.type || '').toLowerCase() === 'entrada') {
+            acc.entries += amount;
+          } else {
+            acc.exits += amount;
+          }
+          return acc;
+        },
+        { entries: 0, exits: 0 }
+      );
+
+      const manualInPeriod = manualTransactions.reduce(
+        (acc: { entries: number; exits: number }, item: any) => {
+          const transactionDate = new Date(item.transactionDate);
+          if (transactionDate < start || transactionDate > end) return acc;
+          const amount = this.toNumber(item.amount);
+          if (String(item.type || '').toLowerCase() === 'entrada') {
+            acc.entries += amount;
+          } else {
+            acc.exits += amount;
+          }
+          return acc;
+        },
+        { entries: 0, exits: 0 }
+      );
+
+      const openingBalance = salesBeforeStart + manualBeforeStart.entries - manualBeforeStart.exits;
+      const periodSalesTotal = entries
+        .filter((entry) => {
+          const paidAt = new Date(entry.paid_at);
+          return paidAt >= start && paidAt <= end;
+        })
+        .reduce((sum, entry) => sum + entry.total, 0);
+      const closingBalance = openingBalance + periodSalesTotal + manualInPeriod.entries - manualInPeriod.exits;
+
+      const buildSummary = (period: 'day' | 'week' | 'month' | 'year') => {
+        const bounds = this.getNamedPeriodBounds(referenceDate, period);
+      const scoped = entries.filter((entry) => {
+        const paidAt = new Date(entry.paid_at);
+        return paidAt >= bounds.start && paidAt <= bounds.end;
+      });
+      const totalReceived = scoped.reduce((sum, entry) => sum + entry.total, 0);
+      const averageTicket = scoped.length > 0 ? totalReceived / scoped.length : 0;
+      return {
+        period,
+        date_from: bounds.start.toISOString(),
+        date_to: bounds.end.toISOString(),
+        total_received: totalReceived,
+        sales_count: scoped.length,
+        average_ticket: averageTicket,
+      };
+    };
+
+    const paymentMethodsMap = new Map<string, number>();
+    const itemTypesMap = new Map<string, number>();
+    for (const entry of filteredEntries) {
+      const paymentMethodKey = String(entry.payment_method || 'desconhecido');
+      paymentMethodsMap.set(paymentMethodKey, (paymentMethodsMap.get(paymentMethodKey) || 0) + entry.total);
+      for (const type of entry.item_types) {
+        const itemTypeKey = String(type || '');
+        itemTypesMap.set(itemTypeKey, (itemTypesMap.get(itemTypeKey) || 0) + 1);
+      }
+    }
+
+    const paginatedEntries = filteredEntries.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize);
+
+    return {
+      period: {
+        reference_date: referenceDate.toISOString(),
+        date_from: start.toISOString(),
+        date_to: end.toISOString(),
+      },
+      summaries: {
+        day: buildSummary('day'),
+        week: buildSummary('week'),
+        month: buildSummary('month'),
+        year: buildSummary('year'),
+      },
+        selected_period: {
+          total_received: filteredEntries.reduce((sum, entry) => sum + entry.total, 0),
+          sales_count: filteredEntries.length,
+        average_ticket:
+          filteredEntries.length > 0
+            ? filteredEntries.reduce((sum, entry) => sum + entry.total, 0) / filteredEntries.length
+            : 0,
+        payment_methods: Array.from(paymentMethodsMap.entries()).map(([payment_method, total]) => ({
+          payment_method,
+          total,
+        })),
+          item_types: Array.from(itemTypesMap.entries()).map(([item_type, count]) => ({
+            item_type,
+            count,
+          })),
+        },
+        manual_period: {
+          total_entries: manualInPeriod.entries,
+          total_exits: manualInPeriod.exits,
+          net: manualInPeriod.entries - manualInPeriod.exits,
+        },
+        balances: {
+          opening_balance: openingBalance,
+          closing_balance: closingBalance,
+          sales_total: periodSalesTotal,
+          manual_entries_total: manualInPeriod.entries,
+          manual_exits_total: manualInPeriod.exits,
+        },
+        entries: paginatedEntries,
+        total: filteredEntries.length,
+        page,
+      pageSize,
     };
   }
 

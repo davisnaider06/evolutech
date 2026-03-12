@@ -204,6 +204,35 @@ export const companyService = {
     const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
     return request(`/subscriptions/usage${suffix}`);
   },
+  getCashOverview: async (params?: {
+    dateFrom?: string;
+    dateTo?: string;
+    referenceDate?: string;
+    page?: number;
+    pageSize?: number;
+    payment_method?: string;
+    item_type?: string;
+    search?: string;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.dateFrom) searchParams.set('dateFrom', params.dateFrom);
+    if (params?.dateTo) searchParams.set('dateTo', params.dateTo);
+    if (params?.referenceDate) searchParams.set('referenceDate', params.referenceDate);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+    if (params?.payment_method) searchParams.set('payment_method', params.payment_method);
+    if (params?.item_type) searchParams.set('item_type', params.item_type);
+    if (params?.search) searchParams.set('search', params.search);
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return request(`/cash/overview${suffix}`);
+  },
+  getCoursesOverview: async (params?: { dateFrom?: string; dateTo?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.dateFrom) searchParams.set('dateFrom', params.dateFrom);
+    if (params?.dateTo) searchParams.set('dateTo', params.dateTo);
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return request(`/courses/overview${suffix}`);
+  },
   upsertCustomerSubscription: async (data: {
     id?: string;
     customer_id: string;

@@ -301,6 +301,25 @@ export class CompanyController {
       return this.handleError(error, res);
     }
   }
+
+  async getCashOverview(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.getCashOverview(req.user!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async getCoursesOverview(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.getCoursesOverview(req.user!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   async listMyTasks(req: AuthedRequest, res: Response) {
     try {
       const result = await service.listMyTasks(req.user!, req.query);

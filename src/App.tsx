@@ -6,11 +6,9 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import { AuthProvider } from "@/contexts/AuthContext"; 
 import { CustomerAuthProvider } from "@/contexts/CustomerAuthContext";
-import { CourseAdminAuthProvider } from "@/contexts/CourseAdminAuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { AuthGuard } from "@/components/guards/AuthGuard";
 import { CustomerAuthGuard } from "@/components/guards/CustomerAuthGuard";
-import { CourseAdminAuthGuard } from "@/components/guards/CourseAdminAuthGuard";
 import { ModuleGuard } from "@/components/guards/ModuleGuard";
 import { RoleRedirect } from "@/components/guards/RoleRedirect";
 import { AdminEvolutechLayout } from "@/components/layouts/AdminEvolutechLayout";
@@ -25,9 +23,6 @@ import LandingVendas from "./pages/LandingVendas";
 import CustomerLogin from "./pages/customer/CustomerLogin";
 import CustomerRegister from "./pages/customer/CustomerRegister";
 import CustomerDashboard from "./pages/customer/CustomerDashboard";
-import CourseAdminLogin from "./pages/course-admin/CourseAdminLogin";
-import CourseAdminRegister from "./pages/course-admin/CourseAdminRegister";
-import CourseAdminDashboard from "./pages/course-admin/CourseAdminDashboard";
 
 // Admin Evolutech pages
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -70,6 +65,7 @@ import Cobrancas from "./pages/empresa/Cobrancas";
 import Comissoes from "./pages/empresa/Comissoes";
 import Fidelidade from "./pages/empresa/Fidelidade";
 import Assinaturas from "./pages/empresa/Assinaturas";
+import Cursos from "./pages/empresa/Cursos";
 
 const queryClient = new QueryClient();
 
@@ -78,12 +74,11 @@ const App = () => (
     <TooltipProvider>
       <AuthProvider>
         <CustomerAuthProvider>
-          <CourseAdminAuthProvider>
-            <ThemeProvider>
-              <Toaster />
-              <Sonner />
-              <BrowserRouter>
-                <Routes>
+          <ThemeProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <Routes>
                 {/* Public Routes */}
                 <Route path="/" element={<Index />} />
                 <Route path="/vendas" element={<LandingVendas />} />
@@ -103,19 +98,6 @@ const App = () => (
                     <CustomerAuthGuard>
                       <CustomerDashboard />
                     </CustomerAuthGuard>
-                  }
-                />
-                <Route path="/cursos/login" element={<CourseAdminLogin />} />
-                <Route path="/cursos/cadastro" element={<CourseAdminRegister />} />
-                <Route path="/cursos/:slug/login" element={<CourseAdminLogin />} />
-                <Route path="/cursos/:slug/cadastro" element={<CourseAdminRegister />} />
-                <Route path="/cursos" element={<Navigate to="/cursos/login" replace />} />
-                <Route
-                  path="/cursos/dashboard"
-                  element={
-                    <CourseAdminAuthGuard>
-                      <CourseAdminDashboard />
-                    </CourseAdminAuthGuard>
                   }
                 />
                 
@@ -345,6 +327,16 @@ const App = () => (
                       </AuthGuard>
                     }
                   />
+                  <Route
+                    path="/empresa/cursos"
+                    element={
+                      <AuthGuard allowedRoles={['DONO_EMPRESA']}>
+                        <ModuleGuard moduleCode="courses">
+                          <Cursos />
+                        </ModuleGuard>
+                      </AuthGuard>
+                    }
+                  />
                   <Route 
                     path="/empresa/configuracoes" 
                     element={
@@ -389,10 +381,9 @@ const App = () => (
 
                 {/* 404 */}
                 <Route path="*" element={<NotFound />} />
-                </Routes>
-              </BrowserRouter>
-            </ThemeProvider>
-          </CourseAdminAuthProvider>
+              </Routes>
+            </BrowserRouter>
+          </ThemeProvider>
         </CustomerAuthProvider>
       </AuthProvider>
     </TooltipProvider>

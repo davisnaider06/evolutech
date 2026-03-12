@@ -57,6 +57,8 @@ router.get('/subscriptions/customers', companyController.listCustomerSubscriptio
 router.post('/subscriptions/customers', companyController.upsertCustomerSubscription.bind(companyController));
 router.put('/subscriptions/customers', companyController.upsertCustomerSubscription.bind(companyController));
 router.get('/subscriptions/usage', companyController.listSubscriptionUsage.bind(companyController));
+router.get('/cash/overview', companyController.getCashOverview.bind(companyController));
+router.get('/courses/overview', companyController.getCoursesOverview.bind(companyController));
 router.post('/pdv/loyalty/preview', companyController.previewPdvLoyalty.bind(companyController));
 router.post('/pdv/preview', companyController.previewPdvCheckout.bind(companyController));
 router.get('/pdv/products', companyController.listPdvProducts.bind(companyController));

@@ -134,11 +134,6 @@ const Login: React.FC = () => {
               Acessar portal do Cliente
               </Link>
             </p>
-            <p className="text-center text-sm text-muted-foreground">
-              <Link className="text-primary hover:underline" to="/cursos/login">
-                Acessar portal de Cursos
-              </Link>
-            </p>
             </div>
 
 

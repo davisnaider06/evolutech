@@ -45,6 +45,7 @@ model Company {
   appointments            Appointment[]
   auditLogs               AuditLog[]
   billingCharges          BillingCharge[]
+  cashTransactions        CashTransaction[]
   commissionAdjustments   CommissionAdjustment[]
   commissionPayouts       CommissionPayout[]
   commissionProfiles      CommissionProfile[]
@@ -321,6 +322,26 @@ model BillingCharge {
 
   @@index([companyId, status, createdAt])
   @@map("billing_charges")
+}
+
+model CashTransaction {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  type            String
+  category        String?
+  description     String
+  amount          Decimal  @db.Decimal(10, 2)
+  paymentMethod   String?  @map("payment_method")
+  referenceType   String?  @map("reference_type")
+  referenceId     String?  @map("reference_id")
+  transactionDate DateTime @map("transaction_date")
+  createdBy       String?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, transactionDate])
+  @@index([companyId, type, transactionDate])
+  @@map("cash_transactions")
 }
 
 model Task {

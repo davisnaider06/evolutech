@@ -49,6 +49,13 @@ export const TABLE_CONFIG: Record<string, TableConfig> = {
     dateField: 'createdAt',
     moduleCodes: ['orders', 'pedidos'],
   },
+  cash_transactions: {
+    searchFields: ['description', 'category', 'paymentMethod', 'referenceType'],
+    allowedOrderBy: ['createdAt', 'transactionDate', 'type', 'amount'],
+    defaultOrderBy: 'transactionDate',
+    dateField: 'transactionDate',
+    moduleCodes: ['cash', 'caixa'],
+  },
   courses: {
     searchFields: ['title', 'description'],
     allowedOrderBy: ['title', 'createdAt', 'updatedAt', 'price', 'isActive'],
