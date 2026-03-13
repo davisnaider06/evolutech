@@ -35,6 +35,17 @@ export const adminService = {
   financialOverview: async () => request('/financeiro/overview'),
   dashboardMetrics: async () => request('/dashboard/metrics'),
   dashboardActivities: async (limit = 10) => request(`/dashboard/activities?limit=${limit}`),
+  listSupportTickets: async (params?: { status?: string; company_id?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.company_id) searchParams.set('company_id', params.company_id);
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return request(`/support/tickets${suffix}`);
+  },
+  updateSupportTicketStatus: async (ticketId: string, status: string) =>
+    request(`/support/tickets/${ticketId}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  respondSupportTicket: async (ticketId: string, response: string) =>
+    request(`/support/tickets/${ticketId}/respond`, { method: 'POST', body: JSON.stringify({ response }) }),
   listGateways: async () => request('/gateways'),
   createGateway: async (dados: any) => request('/gateways', { method: 'POST', body: JSON.stringify(dados) }),
   updateGateway: async (id: string, dados: any) => request(`/gateways/${id}`, { method: 'PATCH', body: JSON.stringify(dados) }),

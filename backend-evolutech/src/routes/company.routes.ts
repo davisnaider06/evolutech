@@ -58,6 +58,8 @@ router.post('/subscriptions/customers', companyController.upsertCustomerSubscrip
 router.put('/subscriptions/customers', companyController.upsertCustomerSubscription.bind(companyController));
 router.get('/subscriptions/usage', companyController.listSubscriptionUsage.bind(companyController));
 router.get('/cash/overview', companyController.getCashOverview.bind(companyController));
+router.get('/support/tickets', companyController.listSupportTickets.bind(companyController));
+router.post('/support/tickets', companyController.createSupportTicket.bind(companyController));
 router.get('/courses/overview', companyController.getCoursesOverview.bind(companyController));
 router.post('/pdv/loyalty/preview', companyController.previewPdvLoyalty.bind(companyController));
 router.post('/pdv/preview', companyController.previewPdvCheckout.bind(companyController));
@@ -72,8 +74,11 @@ router.post('/collections/receivables', companyController.createCollectionsRecei
 router.post('/collections/receivables/:receivableId/pay', companyController.markCollectionsReceivablePaid.bind(companyController));
 router.get('/collections/metrics', companyController.getCollectionsMetrics.bind(companyController));
 router.get('/collections/reminders', companyController.listCollectionReminders.bind(companyController));
+router.get('/collections/executions', companyController.listCollectionsExecutionLogs.bind(companyController));
+router.get('/collections/executions/export', companyController.exportCollectionsExecutionLogsExcel.bind(companyController));
 router.post('/collections/reminders/:reminderId/reprocess', companyController.reprocessCollectionReminder.bind(companyController));
 router.post('/collections/automation/run', companyController.runCollectionsAutomation.bind(companyController));
+router.post('/collections/automation/process-due', companyController.processDueCollectionReminders.bind(companyController));
 router.get('/gateways', companyController.listMyPaymentGateways.bind(companyController));
 router.post('/gateways/connect', companyController.connectMyPaymentGateway.bind(companyController));
 router.post('/gateways/:gatewayId/activate', companyController.activateMyPaymentGateway.bind(companyController));

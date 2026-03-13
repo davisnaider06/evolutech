@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { AlertCircle, CheckCircle2, Copy, ExternalLink, QrCode, ReceiptText, RefreshCcw } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Copy, Download, ExternalLink, QrCode, ReceiptText, RefreshCcw } from 'lucide-react';
 
 type ChargeItem = {
   id: string;
@@ -50,6 +50,9 @@ type ReminderItem = {
   sent_at?: string | null;
   status: 'scheduled' | 'processing' | 'sent' | 'failed' | 'canceled' | string;
   error_message?: string | null;
+  attempt_count?: number;
+  last_attempt_at?: string | null;
+  next_retry_at?: string | null;
   billing_charge?: {
     id: string;
     title: string;
@@ -59,6 +62,22 @@ type ReminderItem = {
     due_date?: string | null;
     status?: string;
   } | null;
+};
+
+type ExecutionLogItem = {
+  id: string;
+  trigger_source: string;
+  dry_run: boolean;
+  send_now: boolean;
+  charges_analyzed: number;
+  reminders_created: number;
+  reminders_sent: number;
+  reminders_failed: number;
+  reminders_retried: number;
+  processed_scheduled: number;
+  status: string;
+  error_message?: string | null;
+  created_at: string;
 };
 
 type AutomationResult = {
@@ -108,16 +127,30 @@ const statusVariant = (status: string): 'default' | 'secondary' | 'destructive' 
   return 'outline';
 };
 
+const executionLabel = (value: string) => {
+  const normalized = String(value || '').toLowerCase();
+  if (normalized === 'manual') return 'Manual';
+  if (normalized === 'manual-reprocess') return 'Reprocessamento manual';
+  if (normalized === 'manual-process-due') return 'Processar agendados';
+  if (normalized === 'job') return 'Job de agendamento';
+  if (normalized === 'job-cycle') return 'Ciclo completo do job';
+  return value || '-';
+};
+
 const Cobrancas: React.FC = () => {
   const [loadingCharges, setLoadingCharges] = useState(true);
   const [loadingMetrics, setLoadingMetrics] = useState(true);
   const [loadingReminders, setLoadingReminders] = useState(true);
+  const [loadingExecutions, setLoadingExecutions] = useState(true);
   const [savingCharge, setSavingCharge] = useState(false);
   const [runningAutomation, setRunningAutomation] = useState(false);
+  const [processingDue, setProcessingDue] = useState(false);
   const [reprocessingId, setReprocessingId] = useState<string | null>(null);
   const [charges, setCharges] = useState<ChargeItem[]>([]);
   const [metrics, setMetrics] = useState<MetricsResponse['summary'] | null>(null);
   const [reminders, setReminders] = useState<ReminderItem[]>([]);
+  const [executionLogs, setExecutionLogs] = useState<ExecutionLogItem[]>([]);
+  const [exportingExecutions, setExportingExecutions] = useState(false);
   const [lastAutomationResult, setLastAutomationResult] = useState<AutomationResult | null>(null);
   const [form, setForm] = useState({
     title: '',
@@ -136,6 +169,12 @@ const Cobrancas: React.FC = () => {
     date_from: '',
     date_to: '',
     billing_charge_id: '',
+  });
+  const [executionFilters, setExecutionFilters] = useState({
+    trigger_source: '',
+    status: '',
+    date_from: '',
+    date_to: '',
   });
 
   const activeFilterCount = useMemo(() => {
@@ -201,8 +240,33 @@ const Cobrancas: React.FC = () => {
     }
   };
 
+  const executionActiveFilterCount = useMemo(() => {
+    return Object.values(executionFilters).filter(Boolean).length;
+  }, [executionFilters]);
+
+  const loadExecutionLogs = async (nextFilters?: Partial<typeof executionFilters>) => {
+    setLoadingExecutions(true);
+    try {
+      const mergedFilters = { ...executionFilters, ...(nextFilters || {}) };
+      const payload = await companyService.listCollectionsExecutionLogs({
+        page: 1,
+        pageSize: 10,
+        trigger_source: mergedFilters.trigger_source || undefined,
+        status: mergedFilters.status || undefined,
+        date_from: mergedFilters.date_from || undefined,
+        date_to: mergedFilters.date_to || undefined,
+      });
+      setExecutionLogs(Array.isArray(payload?.data) ? payload.data : []);
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao carregar execucoes');
+      setExecutionLogs([]);
+    } finally {
+      setLoadingExecutions(false);
+    }
+  };
+
   const loadAll = async () => {
-    await Promise.all([loadCharges(), loadMetrics(), loadReminders()]);
+    await Promise.all([loadCharges(), loadMetrics(), loadReminders(), loadExecutionLogs()]);
   };
 
   useEffect(() => {
@@ -309,6 +373,48 @@ const Cobrancas: React.FC = () => {
     }
   };
 
+  const processDueReminders = async () => {
+    setProcessingDue(true);
+    try {
+      const payload = await companyService.processDueCollectionReminders({ limit: 50 });
+      toast.success(
+        `Processados ${Number(payload?.processed_count || 0)} lembretes. Enviados: ${Number(
+          payload?.reminders_sent || 0
+        )}, falhos: ${Number(payload?.reminders_failed || 0)}`
+      );
+      await Promise.all([loadReminders(), loadExecutionLogs(), loadMetrics(), loadCharges()]);
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao processar lembretes agendados');
+    } finally {
+      setProcessingDue(false);
+    }
+  };
+
+  const exportExecutionLogs = async () => {
+    setExportingExecutions(true);
+    try {
+      const blob = await companyService.exportCollectionsExecutionLogsExcel({
+        trigger_source: executionFilters.trigger_source || undefined,
+        status: executionFilters.status || undefined,
+        date_from: executionFilters.date_from || undefined,
+        date_to: executionFilters.date_to || undefined,
+      });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `collections-execucoes-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Exportacao concluida');
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao exportar execucoes');
+    } finally {
+      setExportingExecutions(false);
+    }
+  };
+
   const applyHistoryFilter = async (chargeId: string) => {
     const nextFilters = { ...reminderFilters, billing_charge_id: chargeId };
     setReminderFilters(nextFilters);
@@ -410,8 +516,14 @@ const Cobrancas: React.FC = () => {
             <Button disabled={runningAutomation} onClick={() => runAutomation(false)}>
               {runningAutomation ? 'Executando...' : 'Rodar automacao com envio'}
             </Button>
+            <Button variant="secondary" disabled={processingDue} onClick={processDueReminders}>
+              {processingDue ? 'Processando...' : 'Processar agendados e retries'}
+            </Button>
             <Button variant="ghost" disabled={runningAutomation} onClick={loadReminders}>
               Atualizar lembretes
+            </Button>
+            <Button variant="ghost" disabled={loadingExecutions} onClick={loadExecutionLogs}>
+              Atualizar execucoes
             </Button>
           </div>
 
@@ -560,6 +672,135 @@ const Cobrancas: React.FC = () => {
               {savingCharge ? 'Gerando cobranca...' : 'Gerar cobranca'}
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="glass">
+        <CardHeader>
+          <CardTitle>Logs de execucao</CardTitle>
+          <CardDescription>
+            Historico das simulacoes, envios manuais, processamento de agendados e execucoes automaticas.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-2">
+              <Label>Origem</Label>
+              <Select
+                value={executionFilters.trigger_source || 'all'}
+                onValueChange={(value) =>
+                  setExecutionFilters((old) => ({ ...old, trigger_source: value === 'all' ? '' : value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  <SelectItem value="manual">Manual</SelectItem>
+                  <SelectItem value="manual-reprocess">Reprocessamento manual</SelectItem>
+                  <SelectItem value="manual-process-due">Processar agendados</SelectItem>
+                  <SelectItem value="job">Job</SelectItem>
+                  <SelectItem value="job-cycle">Job cycle</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select
+                value={executionFilters.status || 'all'}
+                onValueChange={(value) =>
+                  setExecutionFilters((old) => ({ ...old, status: value === 'all' ? '' : value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="completed">completed</SelectItem>
+                  <SelectItem value="partial">partial</SelectItem>
+                  <SelectItem value="failed">failed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Data inicial</Label>
+              <Input
+                type="date"
+                value={executionFilters.date_from}
+                onChange={(e) => setExecutionFilters((old) => ({ ...old, date_from: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Data final</Label>
+              <Input
+                type="date"
+                value={executionFilters.date_to}
+                onChange={(e) => setExecutionFilters((old) => ({ ...old, date_to: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={() => loadExecutionLogs()} disabled={loadingExecutions}>
+              Aplicar filtros
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={loadingExecutions}
+              onClick={() => {
+                const emptyFilters = {
+                  trigger_source: '',
+                  status: '',
+                  date_from: '',
+                  date_to: '',
+                };
+                setExecutionFilters(emptyFilters);
+                loadExecutionLogs(emptyFilters);
+              }}
+            >
+              Limpar filtros
+            </Button>
+            <Button variant="secondary" disabled={exportingExecutions} onClick={exportExecutionLogs} className="gap-2">
+              <Download className="h-4 w-4" />
+              {exportingExecutions ? 'Exportando...' : 'Exportar Excel'}
+            </Button>
+            <Badge variant="outline">{executionActiveFilterCount} filtros ativos</Badge>
+          </div>
+          {loadingExecutions && <p className="text-muted-foreground">Carregando execucoes...</p>}
+          {!loadingExecutions && executionLogs.length === 0 && (
+            <p className="text-muted-foreground">Nenhuma execucao registrada ainda.</p>
+          )}
+          {!loadingExecutions &&
+            executionLogs.map((item) => (
+              <div key={item.id} className="rounded-lg border border-border p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="font-medium">{executionLabel(item.trigger_source)}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {datetime(item.created_at)} - {item.dry_run ? 'simulacao' : item.send_now ? 'envio ativo' : 'agendamento'}
+                    </p>
+                  </div>
+                  <Badge variant={statusVariant(item.status)}>{item.status}</Badge>
+                </div>
+
+                <div className="grid gap-2 text-sm md:grid-cols-3 lg:grid-cols-6">
+                  <p><span className="text-muted-foreground">Cobrancas:</span> {item.charges_analyzed}</p>
+                  <p><span className="text-muted-foreground">Criados:</span> {item.reminders_created}</p>
+                  <p><span className="text-muted-foreground">Enviados:</span> {item.reminders_sent}</p>
+                  <p><span className="text-muted-foreground">Falhos:</span> {item.reminders_failed}</p>
+                  <p><span className="text-muted-foreground">Retries:</span> {item.reminders_retried}</p>
+                  <p><span className="text-muted-foreground">Processados:</span> {item.processed_scheduled}</p>
+                </div>
+
+                {item.error_message && (
+                  <div className="rounded-md border border-border px-3 py-2 text-sm flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 mt-0.5 text-amber-500" />
+                    <span>{item.error_message}</span>
+                  </div>
+                )}
+              </div>
+            ))}
         </CardContent>
       </Card>
 
@@ -775,6 +1016,15 @@ const Cobrancas: React.FC = () => {
                   </p>
                   <p>
                     <span className="text-muted-foreground">Enviado em:</span> {datetime(item.sent_at)}
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground">Tentativas:</span> {Number(item.attempt_count || 0)}
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground">Ultima tentativa:</span> {datetime(item.last_attempt_at)}
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground">Proximo retry:</span> {datetime(item.next_retry_at)}
                   </p>
                 </div>
 

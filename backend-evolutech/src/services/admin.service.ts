@@ -215,7 +215,7 @@ export class AdminService {
     }
 
   async getDashboardMetrics() {
-    const [activeCompanies, activeUsers, activeModules, totalMrr] = await Promise.all([
+    const [activeCompanies, activeUsers, activeModules, totalMrr, openTickets] = await Promise.all([
       prisma.company.count({ where: { status: 'active' } }),
       prisma.user.count({ where: { isActive: true } }),
       prisma.modulo.count({ where: { status: 'active' } }),
@@ -223,16 +223,130 @@ export class AdminService {
         where: { status: 'active' },
         _sum: { monthlyRevenue: true },
       }),
+      (prisma as any).supportTicket.count({
+        where: { status: { in: ['aberto', 'em_andamento', 'aguardando_cliente'] } },
+      }),
     ]);
 
     return {
       totalCompanies: activeCompanies,
       activeUsers,
       totalMRR: Number(totalMrr._sum.monthlyRevenue || 0),
-      openTickets: 0,
+      openTickets,
       gatewaysActive: 0,
       modulesActive: activeModules,
     };
+  }
+
+  async listSupportTickets(queryParams?: { status?: string; company_id?: string }) {
+    const status = String(queryParams?.status || '').trim();
+    const companyId = String(queryParams?.company_id || '').trim();
+    const where: any = {};
+    if (status) where.status = status;
+    if (companyId) where.companyId = companyId;
+
+    const items = await (prisma as any).supportTicket.findMany({
+      where,
+      include: {
+        company: { select: { id: true, name: true, slug: true } },
+        createdByUser: { select: { id: true, fullName: true, email: true } },
+        respondedByUser: { select: { id: true, fullName: true, email: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return items.map((item: any) => ({
+      id: item.id,
+      company_id: item.companyId,
+      title: item.title,
+      description: item.description,
+      priority: item.priority,
+      status: item.status,
+      category: item.category,
+      response: item.response,
+      responded_at: item.respondedAt,
+      created_at: item.createdAt,
+      updated_at: item.updatedAt,
+      company: item.company ? { id: item.company.id, name: item.company.name, slug: item.company.slug } : null,
+      created_by: item.createdByUser
+        ? { id: item.createdByUser.id, name: item.createdByUser.fullName, email: item.createdByUser.email }
+        : null,
+      responded_by: item.respondedByUser
+        ? { id: item.respondedByUser.id, name: item.respondedByUser.fullName, email: item.respondedByUser.email }
+        : null,
+    }));
+  }
+
+  async updateSupportTicketStatus(ticketId: string, status: string, actorUserId?: string) {
+    const normalized = String(status || '').trim().toLowerCase();
+    const allowed = ['aberto', 'em_andamento', 'aguardando_cliente', 'resolvido', 'fechado'];
+    if (!allowed.includes(normalized)) {
+      throw new Error('Status invalido para ticket');
+    }
+
+    const updated = await (prisma as any).supportTicket.update({
+      where: { id: ticketId },
+      data: {
+        status: normalized,
+        respondedByUserId: actorUserId || undefined,
+        respondedAt: normalized === 'resolvido' || normalized === 'fechado' ? new Date() : undefined,
+      },
+      include: {
+        company: { select: { id: true, name: true, slug: true } },
+        createdByUser: { select: { id: true, fullName: true, email: true } },
+        respondedByUser: { select: { id: true, fullName: true, email: true } },
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: actorUserId || null,
+        companyId: updated.companyId,
+        action: 'SUPPORT_TICKET_STATUS_UPDATED',
+        resource: 'support_tickets',
+        details: {
+          ticketId: updated.id,
+          status: updated.status,
+        },
+      },
+    });
+
+    return updated;
+  }
+
+  async respondSupportTicket(ticketId: string, response: string, actorUserId?: string) {
+    const normalizedResponse = String(response || '').trim();
+    if (!normalizedResponse) throw new Error('Resposta obrigatoria');
+
+    const updated = await (prisma as any).supportTicket.update({
+      where: { id: ticketId },
+      data: {
+        response: normalizedResponse,
+        status: 'resolvido',
+        respondedByUserId: actorUserId || undefined,
+        respondedAt: new Date(),
+      },
+      include: {
+        company: { select: { id: true, name: true, slug: true } },
+        createdByUser: { select: { id: true, fullName: true, email: true } },
+        respondedByUser: { select: { id: true, fullName: true, email: true } },
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: actorUserId || null,
+        companyId: updated.companyId,
+        action: 'SUPPORT_TICKET_RESPONDED',
+        resource: 'support_tickets',
+        details: {
+          ticketId: updated.id,
+          status: updated.status,
+        },
+      },
+    });
+
+    return updated;
   }
 
   async getFinancialOverview() {

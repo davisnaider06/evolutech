@@ -12,6 +12,7 @@ import paymentWebhookRoutes from './routes/payment-webhook.routes';
 import customerAuthRoutes from './routes/customer-auth.routes';
 import customerRoutes from './routes/customer.routes';
 import { prisma } from './db';
+import { CompanyService } from './services/company.service';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -22,6 +23,12 @@ const corsOrigins = String(process.env.CORS_ORIGIN || '*')
   .filter(Boolean);
 const DB_KEEPALIVE_ENABLED = process.env.DB_KEEPALIVE_ENABLED !== 'false';
 const DB_KEEPALIVE_MS = Math.max(60000, Number(process.env.DB_KEEPALIVE_MS || 240000));
+const COLLECTIONS_JOB_ENABLED = process.env.COLLECTIONS_AUTOMATION_JOB_ENABLED === 'true';
+const COLLECTIONS_JOB_MS = Math.max(60000, Number(process.env.COLLECTIONS_AUTOMATION_JOB_MS || 300000));
+const COLLECTIONS_JOB_STARTUP_DELAY_MS = Math.max(
+  5000,
+  Number(process.env.COLLECTIONS_AUTOMATION_JOB_STARTUP_DELAY_MS || 15000)
+);
 
 // Middlewares Globais
 app.use(
@@ -86,6 +93,39 @@ const startServer = async () => {
         console.warn('Database keepalive failed', error);
       }
     }, DB_KEEPALIVE_MS).unref();
+  }
+
+  if (COLLECTIONS_JOB_ENABLED) {
+    const companyService = new CompanyService();
+    let collectionsJobRunning = false;
+
+    const runCollectionsJob = async (reason: 'startup' | 'interval') => {
+      if (collectionsJobRunning) {
+        console.warn(`Collections automation job skipped (${reason}) because a previous cycle is still running`);
+        return;
+      }
+
+      collectionsJobRunning = true;
+      try {
+        await companyService.runCollectionsBackgroundJobs();
+      } catch (error) {
+        console.warn(`Collections automation job failed (${reason})`, error);
+      } finally {
+        collectionsJobRunning = false;
+      }
+    };
+
+    setTimeout(() => {
+      try {
+        void runCollectionsJob('startup');
+      } catch (error) {
+        console.warn('Collections automation startup scheduling failed', error);
+      }
+    }, COLLECTIONS_JOB_STARTUP_DELAY_MS).unref();
+
+    setInterval(() => {
+      void runCollectionsJob('interval');
+    }, COLLECTIONS_JOB_MS).unref();
   }
 };
 
