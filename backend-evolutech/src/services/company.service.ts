@@ -350,7 +350,7 @@ export class CompanyService {
       ? (queryOrBody.company_id || queryOrBody.companyId || user.companyId)
       : user.companyId;
 
-    if (!companyId) throw new CompanyServiceError('Company ID obrigat�rio', 400);
+    if (!companyId) throw new CompanyServiceError('Company ID obrigatorio', 400);
     if (!this.checkAccess(user, companyId)) throw new CompanyServiceError('Acesso negado', 403);
 
     return companyId;
@@ -3744,6 +3744,19 @@ export class CompanyService {
     });
 
     const createdReminderIds: string[] = [];
+    const previewItems: Array<{
+      billing_charge_id: string;
+      title: string;
+      customer_name: string;
+      customer_phone: string | null;
+      amount: number;
+      due_date: Date | null;
+      step_code: string;
+      scheduled_at: Date;
+      has_phone: boolean;
+      already_exists: boolean;
+      action: 'schedule' | 'skip_existing';
+    }> = [];
     let scheduledCount = 0;
     let sentCount = 0;
     let failedCount = 0;
@@ -3762,6 +3775,21 @@ export class CompanyService {
           },
           select: { id: true },
         });
+        if (dryRun) {
+          previewItems.push({
+            billing_charge_id: charge.id,
+            title: charge.title,
+            customer_name: charge.customerName,
+            customer_phone: charge.customerPhone || null,
+            amount: Number(charge.amount || 0),
+            due_date: charge.dueDate,
+            step_code: step.code,
+            scheduled_at: scheduleAt,
+            has_phone: String(charge.customerPhone || '').trim().length > 0,
+            already_exists: Boolean(existing),
+            action: existing ? 'skip_existing' : 'schedule',
+          });
+        }
         if (existing) continue;
 
         if (dryRun) {
@@ -3852,6 +3880,7 @@ export class CompanyService {
       reminders_sent: sentCount,
       reminders_failed: failedCount,
       reminder_ids: createdReminderIds,
+      preview: dryRun ? previewItems : [],
     };
   }
 

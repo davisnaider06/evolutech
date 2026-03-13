@@ -68,6 +68,19 @@ type AutomationResult = {
   reminders_created: number;
   reminders_sent: number;
   reminders_failed: number;
+  preview?: Array<{
+    billing_charge_id: string;
+    title: string;
+    customer_name: string;
+    customer_phone?: string | null;
+    amount: number;
+    due_date?: string | null;
+    step_code: string;
+    scheduled_at: string;
+    has_phone: boolean;
+    already_exists: boolean;
+    action: 'schedule' | 'skip_existing';
+  }>;
 };
 
 const currency = (value: number) =>
@@ -128,6 +141,10 @@ const Cobrancas: React.FC = () => {
   const activeFilterCount = useMemo(() => {
     return Object.values(reminderFilters).filter(Boolean).length;
   }, [reminderFilters]);
+  const previewToShow = useMemo(
+    () => (Array.isArray(lastAutomationResult?.preview) ? lastAutomationResult.preview : []),
+    [lastAutomationResult]
+  );
 
   const loadCharges = async () => {
     setLoadingCharges(true);
@@ -155,20 +172,27 @@ const Cobrancas: React.FC = () => {
     }
   };
 
-  const loadReminders = async () => {
+  const loadReminders = async (
+    nextFilters?: Partial<typeof reminderFilters>,
+    options?: { silent?: boolean }
+  ) => {
     setLoadingReminders(true);
     try {
+      const mergedFilters = { ...reminderFilters, ...(nextFilters || {}) };
       const payload = await companyService.listCollectionReminders({
-        status: reminderFilters.status || undefined,
-        step_code: reminderFilters.step_code || undefined,
-        customer: reminderFilters.customer || undefined,
-        date_from: reminderFilters.date_from || undefined,
-        date_to: reminderFilters.date_to || undefined,
-        billing_charge_id: reminderFilters.billing_charge_id || undefined,
+        status: mergedFilters.status || undefined,
+        step_code: mergedFilters.step_code || undefined,
+        customer: mergedFilters.customer || undefined,
+        date_from: mergedFilters.date_from || undefined,
+        date_to: mergedFilters.date_to || undefined,
+        billing_charge_id: mergedFilters.billing_charge_id || undefined,
         page: 1,
         pageSize: 50,
       });
       setReminders(Array.isArray(payload?.data) ? payload.data : []);
+      if (nextFilters && !options?.silent) {
+        toast.success('Lista de lembretes atualizada');
+      }
     } catch (error: any) {
       toast.error(error?.message || 'Erro ao carregar lembretes');
       setReminders([]);
@@ -286,25 +310,13 @@ const Cobrancas: React.FC = () => {
   };
 
   const applyHistoryFilter = async (chargeId: string) => {
-    setReminderFilters((prev) => ({ ...prev, billing_charge_id: chargeId }));
-    setLoadingReminders(true);
+    const nextFilters = { ...reminderFilters, billing_charge_id: chargeId };
+    setReminderFilters(nextFilters);
     try {
-      const payload = await companyService.listCollectionReminders({
-        status: reminderFilters.status || undefined,
-        step_code: reminderFilters.step_code || undefined,
-        customer: reminderFilters.customer || undefined,
-        date_from: reminderFilters.date_from || undefined,
-        date_to: reminderFilters.date_to || undefined,
-        billing_charge_id: chargeId,
-        page: 1,
-        pageSize: 50,
-      });
-      setReminders(Array.isArray(payload?.data) ? payload.data : []);
+      await loadReminders(nextFilters, { silent: true });
       toast.success('Historico filtrado pela cobranca selecionada');
     } catch (error: any) {
       toast.error(error?.message || 'Erro ao filtrar historico');
-    } finally {
-      setLoadingReminders(false);
     }
   };
 
@@ -414,6 +426,42 @@ const Cobrancas: React.FC = () => {
                 <span>Lembretes enviados: {lastAutomationResult.reminders_sent}</span>
                 <span>Lembretes com falha: {lastAutomationResult.reminders_failed}</span>
               </div>
+            </div>
+          )}
+
+          {lastAutomationResult?.dry_run && previewToShow.length > 0 && (
+            <div className="rounded-lg border border-border p-4 text-sm">
+              <p className="mb-3 font-medium">Preview da simulacao</p>
+              <div className="space-y-2">
+                {previewToShow.slice(0, 12).map((item) => (
+                  <div key={`${item.billing_charge_id}-${item.step_code}`} className="rounded-md border border-border p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="font-medium">{item.title}</p>
+                        <p className="text-muted-foreground">
+                          {item.customer_name} - etapa {item.step_code} - agendado {datetime(item.scheduled_at)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={item.action === 'schedule' ? 'default' : 'outline'}>
+                          {item.action === 'schedule' ? 'Vai gerar lembrete' : 'Ja existe'}
+                        </Badge>
+                        <Badge variant={item.has_phone ? 'outline' : 'destructive'}>
+                          {item.has_phone ? 'Com telefone' : 'Sem telefone'}
+                        </Badge>
+                      </div>
+                    </div>
+                    <p className="mt-2 text-muted-foreground">
+                      Valor {currency(item.amount)} - vencimento {dateOnly(item.due_date)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              {previewToShow.length > 12 && (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Mostrando 12 de {previewToShow.length} itens previstos na simulacao.
+                </p>
+              )}
             </div>
           )}
         </CardContent>
@@ -534,7 +582,7 @@ const Cobrancas: React.FC = () => {
                   <div>
                     <p className="font-medium">{item.title}</p>
                     <p className="text-sm text-muted-foreground">
-                      {item.customer_name} • Pedido {item.order_id.slice(0, 8)} • Venc.: {dateOnly(item.due_date)}
+                      {item.customer_name} - Pedido {item.order_id.slice(0, 8)} - Venc.: {dateOnly(item.due_date)}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -680,17 +728,16 @@ const Cobrancas: React.FC = () => {
             <Button
               variant="ghost"
               onClick={() => {
-                setReminderFilters({
+                const emptyFilters = {
                   status: '',
                   step_code: '',
                   customer: '',
                   date_from: '',
                   date_to: '',
                   billing_charge_id: '',
-                });
-                setTimeout(() => {
-                  loadReminders();
-                }, 0);
+                };
+                setReminderFilters(emptyFilters);
+                loadReminders(emptyFilters, { silent: true });
               }}
               disabled={loadingReminders}
             >
@@ -710,7 +757,7 @@ const Cobrancas: React.FC = () => {
                   <div>
                     <p className="font-medium">{item.billing_charge?.title || 'Cobranca sem titulo'}</p>
                     <p className="text-sm text-muted-foreground">
-                      {item.billing_charge?.customer_name || '-'} • Etapa {item.step_code} • Agendado {datetime(item.scheduled_at)}
+                      {item.billing_charge?.customer_name || '-'} - Etapa {item.step_code} - Agendado {datetime(item.scheduled_at)}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
