@@ -311,6 +311,24 @@ export class CompanyController {
     }
   }
 
+  async listSupportTickets(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.listSupportTickets(req.user!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async createSupportTicket(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.createSupportTicket(req.user!, req.body || {});
+      return res.status(201).json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   async getCoursesOverview(req: AuthedRequest, res: Response) {
     try {
       const result = await service.getCoursesOverview(req.user!, req.query as any);
@@ -586,6 +604,42 @@ export class CompanyController {
     try {
       const result = await service.runCollectionsAutomation(req.user!, req.body || {});
       return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async processDueCollectionReminders(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.processDueCollectionReminders(req.user!, req.body || {});
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async listCollectionsExecutionLogs(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.listCollectionsExecutionLogs(req.user!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async exportCollectionsExecutionLogsExcel(req: AuthedRequest, res: Response) {
+    try {
+      const fileBuffer = await service.exportCollectionsExecutionLogsExcel(req.user!, req.query as any);
+      const stamp = new Date().toISOString().slice(0, 10);
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="collections-execucoes-${stamp}.xlsx"`
+      );
+      return res.status(200).send(fileBuffer);
     } catch (error: unknown) {
       return this.handleError(error, res);
     }

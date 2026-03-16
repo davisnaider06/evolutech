@@ -1,16 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useAuditLog } from '@/hooks/useAuditLog';
-import { supabase } from '@/integrations/supabase/client';
+import { adminService } from '@/services/admin';
+import { companyService } from '@/services/company';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/hooks/use-toast';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -25,21 +25,24 @@ import {
 import { Plus, HeadphonesIcon, Clock, CheckCircle, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { toast } from 'sonner';
 
-interface Ticket {
+type Ticket = {
   id: string;
-  empresa_id: string;
-  usuario_id: string;
-  titulo: string;
-  descricao: string;
-  prioridade: 'baixa' | 'media' | 'alta' | 'urgente';
+  company_id: string;
+  title: string;
+  description: string;
+  priority: 'baixa' | 'media' | 'alta' | 'urgente';
   status: 'aberto' | 'em_andamento' | 'aguardando_cliente' | 'resolvido' | 'fechado';
-  categoria: string | null;
-  resposta: string | null;
+  category?: string | null;
+  response?: string | null;
+  responded_at?: string | null;
   created_at: string;
-  profiles?: { full_name: string | null; email: string };
-  companies?: { name: string };
-}
+  updated_at?: string;
+  company?: { id: string; name: string; slug: string } | null;
+  created_by?: { id: string; name: string; email: string } | null;
+  responded_by?: { id: string; name: string; email: string } | null;
+};
 
 const prioridadeColors = {
   baixa: 'bg-green-500/20 text-green-500',
@@ -58,131 +61,113 @@ const statusColors = {
 
 const statusLabels = {
   aberto: 'Aberto',
-  em_andamento: 'Em Andamento',
-  aguardando_cliente: 'Aguardando Cliente',
+  em_andamento: 'Em andamento',
+  aguardando_cliente: 'Aguardando cliente',
   resolvido: 'Resolvido',
   fechado: 'Fechado',
 };
 
 export default function Suporte() {
   const { user } = useAuth();
-  const { logAudit } = useAuditLog();
-  const { toast } = useToast();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
-  const [formData, setFormData] = useState({
-    titulo: '',
-    descricao: '',
-    prioridade: 'media' as const,
-    categoria: '',
-  });
   const [resposta, setResposta] = useState('');
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    priority: 'media' as Ticket['priority'],
+    category: '',
+  });
 
   const isEvolutech = user?.role === 'SUPER_ADMIN_EVOLUTECH' || user?.role === 'ADMIN_EVOLUTECH';
+  const isOwner = user?.role === 'DONO_EMPRESA';
 
-  useEffect(() => {
-    fetchTickets();
-  }, [user]);
+  const stats = useMemo(
+    () => ({
+      open: tickets.filter((ticket) => !['fechado', 'resolvido'].includes(ticket.status)).length,
+      inProgress: tickets.filter((ticket) => ticket.status === 'em_andamento').length,
+      resolved: tickets.filter((ticket) => ticket.status === 'resolvido').length,
+      total: tickets.length,
+    }),
+    [tickets]
+  );
 
   const fetchTickets = async () => {
-    const { data, error } = await supabase
-      .from('tickets_suporte')
-      .select('*, companies(name)')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      toast({ title: 'Erro ao carregar tickets', variant: 'destructive' });
-    } else {
-      setTickets((data || []) as unknown as Ticket[]);
+    setLoading(true);
+    try {
+      const data = isEvolutech
+        ? await adminService.listSupportTickets()
+        : await companyService.listSupportTickets();
+      setTickets(Array.isArray(data) ? data : []);
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao carregar tickets');
+      setTickets([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
+  };
+
+  useEffect(() => {
+    void fetchTickets();
+  }, [isEvolutech]);
+
+  const resetForm = () => {
+    setFormData({
+      title: '',
+      description: '',
+      priority: 'media',
+      category: '',
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    const { data, error } = await supabase
-      .from('tickets_suporte')
-      .insert({
-        ...formData,
-        empresa_id: user?.tenantId,
-        usuario_id: user?.id,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      toast({ title: 'Erro ao criar ticket', variant: 'destructive' });
-    } else {
-      await logAudit({ action: 'create', entityType: 'tickets_suporte', entityId: data.id, details: formData });
-      toast({ title: 'Ticket criado com sucesso' });
-      fetchTickets();
+    try {
+      await companyService.createSupportTicket(formData);
+      toast.success('Ticket criado com sucesso');
+      setIsDialogOpen(false);
+      resetForm();
+      await fetchTickets();
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao criar ticket');
     }
-
-    setIsDialogOpen(false);
-    resetForm();
   };
 
   const handleResponder = async () => {
-    if (!selectedTicket || !resposta) return;
-
-    const { error } = await supabase
-      .from('tickets_suporte')
-      .update({
-        resposta,
-        status: 'resolvido',
-      })
-      .eq('id', selectedTicket.id);
-
-    if (error) {
-      toast({ title: 'Erro ao responder', variant: 'destructive' });
-    } else {
-      await logAudit({ action: 'update', entityType: 'tickets_suporte', entityId: selectedTicket.id, details: { resposta, status: 'resolvido' } });
-      toast({ title: 'Resposta enviada' });
-      fetchTickets();
+    if (!selectedTicket || !resposta.trim()) return;
+    try {
+      await adminService.respondSupportTicket(selectedTicket.id, resposta.trim());
+      toast.success('Resposta enviada');
       setSelectedTicket(null);
       setResposta('');
+      await fetchTickets();
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao responder ticket');
     }
   };
 
   const handleUpdateStatus = async (ticket: Ticket, newStatus: string) => {
-    const { error } = await supabase
-      .from('tickets_suporte')
-      .update({ status: newStatus })
-      .eq('id', ticket.id);
-
-    if (error) {
-      toast({ title: 'Erro ao atualizar status', variant: 'destructive' });
-    } else {
-      await logAudit({ action: 'update', entityType: 'tickets_suporte', entityId: ticket.id, details: { status: newStatus } });
-      toast({ title: 'Status atualizado' });
-      fetchTickets();
+    try {
+      await adminService.updateSupportTicketStatus(ticket.id, newStatus);
+      toast.success('Status atualizado');
+      await fetchTickets();
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao atualizar status');
     }
   };
 
-  const resetForm = () => {
-    setFormData({
-      titulo: '',
-      descricao: '',
-      prioridade: 'media',
-      categoria: '',
-    });
-  };
-
-  const openTickets = tickets.filter(t => t.status !== 'fechado' && t.status !== 'resolvido').length;
-
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">Suporte</h1>
           <p className="text-muted-foreground">
-            {isEvolutech ? 'Gerencie todos os tickets de suporte' : 'Abra e acompanhe seus tickets'}
+            {isEvolutech ? 'Gerencie os tickets enviados pelas empresas' : 'Abra e acompanhe seus tickets de suporte'}
           </p>
         </div>
-        {!isEvolutech && (
+        {isOwner && (
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={resetForm} className="gap-2">
@@ -193,39 +178,42 @@ export default function Suporte() {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Abrir Ticket de Suporte</DialogTitle>
+                <DialogDescription>
+                  Descreva o problema para que o admin da Evolutech acompanhe e responda dentro do sistema.
+                </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <Input
-                  placeholder="Título do problema"
-                  value={formData.titulo}
-                  onChange={(e) => setFormData({ ...formData, titulo: e.target.value })}
+                  placeholder="Titulo do problema"
+                  value={formData.title}
+                  onChange={(e) => setFormData((old) => ({ ...old, title: e.target.value }))}
                   required
                 />
                 <Textarea
-                  placeholder="Descreva o problema em detalhes..."
-                  value={formData.descricao}
-                  onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
+                  placeholder="Descreva o problema com o maximo de contexto util"
+                  value={formData.description}
+                  onChange={(e) => setFormData((old) => ({ ...old, description: e.target.value }))}
                   required
-                  rows={4}
+                  rows={5}
                 />
                 <Select
-                  value={formData.prioridade}
-                  onValueChange={(v: any) => setFormData({ ...formData, prioridade: v })}
+                  value={formData.priority}
+                  onValueChange={(value: Ticket['priority']) => setFormData((old) => ({ ...old, priority: value }))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Prioridade" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="baixa">Baixa</SelectItem>
-                    <SelectItem value="media">Média</SelectItem>
+                    <SelectItem value="media">Media</SelectItem>
                     <SelectItem value="alta">Alta</SelectItem>
                     <SelectItem value="urgente">Urgente</SelectItem>
                   </SelectContent>
                 </Select>
                 <Input
                   placeholder="Categoria (opcional)"
-                  value={formData.categoria}
-                  onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
+                  value={formData.category}
+                  onChange={(e) => setFormData((old) => ({ ...old, category: e.target.value }))}
                 />
                 <Button type="submit" className="w-full">Enviar Ticket</Button>
               </form>
@@ -234,14 +222,13 @@ export default function Suporte() {
         )}
       </div>
 
-      {/* Stats */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Em Aberto</p>
-                <p className="text-2xl font-bold">{openTickets}</p>
+                <p className="text-sm text-muted-foreground">Em aberto</p>
+                <p className="text-2xl font-bold">{stats.open}</p>
               </div>
               <AlertCircle className="h-8 w-8 text-blue-500" />
             </div>
@@ -251,10 +238,8 @@ export default function Suporte() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Em Andamento</p>
-                <p className="text-2xl font-bold">
-                  {tickets.filter(t => t.status === 'em_andamento').length}
-                </p>
+                <p className="text-sm text-muted-foreground">Em andamento</p>
+                <p className="text-2xl font-bold">{stats.inProgress}</p>
               </div>
               <Clock className="h-8 w-8 text-purple-500" />
             </div>
@@ -265,9 +250,7 @@ export default function Suporte() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Resolvidos</p>
-                <p className="text-2xl font-bold">
-                  {tickets.filter(t => t.status === 'resolvido').length}
-                </p>
+                <p className="text-2xl font-bold">{stats.resolved}</p>
               </div>
               <CheckCircle className="h-8 w-8 text-green-500" />
             </div>
@@ -278,7 +261,7 @@ export default function Suporte() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total</p>
-                <p className="text-2xl font-bold">{tickets.length}</p>
+                <p className="text-2xl font-bold">{stats.total}</p>
               </div>
               <HeadphonesIcon className="h-8 w-8 text-primary" />
             </div>
@@ -286,7 +269,6 @@ export default function Suporte() {
         </Card>
       </div>
 
-      {/* Tickets List */}
       <div className="space-y-4">
         {loading ? (
           <div className="flex justify-center py-8">
@@ -295,7 +277,7 @@ export default function Suporte() {
         ) : tickets.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-muted-foreground">
-              Nenhum ticket encontrado
+              Nenhum ticket encontrado.
             </CardContent>
           </Card>
         ) : (
@@ -305,47 +287,43 @@ export default function Suporte() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 space-y-2">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-semibold">{ticket.titulo}</h3>
-                      <Badge className={prioridadeColors[ticket.prioridade]}>
-                        {ticket.prioridade.charAt(0).toUpperCase() + ticket.prioridade.slice(1)}
+                      <h3 className="font-semibold">{ticket.title}</h3>
+                      <Badge className={prioridadeColors[ticket.priority]}>
+                        {ticket.priority.charAt(0).toUpperCase() + ticket.priority.slice(1)}
                       </Badge>
                       <Badge className={statusColors[ticket.status]}>
                         {statusLabels[ticket.status]}
                       </Badge>
                     </div>
-                    <p className="text-sm text-muted-foreground line-clamp-2">{ticket.descricao}</p>
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      {isEvolutech && ticket.companies && (
-                        <span>Empresa: {ticket.companies.name}</span>
-                      )}
-                      <span>Por: {ticket.profiles?.full_name || ticket.profiles?.email}</span>
+                    <p className="text-sm text-muted-foreground line-clamp-3">{ticket.description}</p>
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                      {isEvolutech && ticket.company && <span>Empresa: {ticket.company.name}</span>}
+                      <span>Por: {ticket.created_by?.name || ticket.created_by?.email || '-'}</span>
                       <span>{format(new Date(ticket.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}</span>
                     </div>
-                    {ticket.resposta && (
-                      <div className="mt-3 p-3 bg-green-500/10 rounded-lg border border-green-500/20">
-                        <p className="text-sm font-medium text-green-500">Resposta:</p>
-                        <p className="text-sm">{ticket.resposta}</p>
+                    {ticket.response && (
+                      <div className="mt-3 rounded-lg border border-green-500/20 bg-green-500/10 p-3">
+                        <p className="text-sm font-medium text-green-500">Resposta do suporte</p>
+                        <p className="text-sm">{ticket.response}</p>
                       </div>
                     )}
                   </div>
+
                   {isEvolutech && ticket.status !== 'fechado' && (
                     <div className="flex flex-col gap-2">
-                      <Select
-                        value={ticket.status}
-                        onValueChange={(v) => handleUpdateStatus(ticket, v)}
-                      >
-                        <SelectTrigger className="w-40">
+                      <Select value={ticket.status} onValueChange={(value) => handleUpdateStatus(ticket, value)}>
+                        <SelectTrigger className="w-44">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="aberto">Aberto</SelectItem>
-                          <SelectItem value="em_andamento">Em Andamento</SelectItem>
-                          <SelectItem value="aguardando_cliente">Aguardando</SelectItem>
+                          <SelectItem value="em_andamento">Em andamento</SelectItem>
+                          <SelectItem value="aguardando_cliente">Aguardando cliente</SelectItem>
                           <SelectItem value="resolvido">Resolvido</SelectItem>
                           <SelectItem value="fechado">Fechado</SelectItem>
                         </SelectContent>
                       </Select>
-                      {!ticket.resposta && (
+                      {!ticket.response && (
                         <Button size="sm" onClick={() => setSelectedTicket(ticket)}>
                           Responder
                         </Button>
@@ -359,19 +337,21 @@ export default function Suporte() {
         )}
       </div>
 
-      {/* Response Dialog */}
       <Dialog open={!!selectedTicket} onOpenChange={() => setSelectedTicket(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Responder Ticket</DialogTitle>
+            <DialogDescription>
+              Essa resposta ficará visível para o dono da empresa dentro do app.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="p-3 bg-secondary rounded-lg">
-              <p className="font-medium">{selectedTicket?.titulo}</p>
-              <p className="text-sm text-muted-foreground mt-1">{selectedTicket?.descricao}</p>
+            <div className="rounded-lg bg-secondary p-3">
+              <p className="font-medium">{selectedTicket?.title}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{selectedTicket?.description}</p>
             </div>
             <Textarea
-              placeholder="Digite sua resposta..."
+              placeholder="Digite a resposta do suporte"
               value={resposta}
               onChange={(e) => setResposta(e.target.value)}
               rows={4}

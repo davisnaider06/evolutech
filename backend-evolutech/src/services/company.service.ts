@@ -3603,6 +3603,285 @@ export class CompanyService {
     return `Olá ${charge.customerName}, sua cobrança "${charge.title}" no valor de R$ ${amount} venceu em ${dueDate}. Etapa ${stepCode}.`;
   }
 
+
+  private getReminderRetryDelaysMinutes() {
+    const parsed = String(process.env.COLLECTIONS_RETRY_DELAYS_MINUTES || '5,30,120')
+      .split(',')
+      .map((item) => Number(String(item).trim()))
+      .filter((item) => Number.isFinite(item) && item > 0);
+    return parsed.length > 0 ? parsed : [5, 30, 120];
+  }
+
+  private getNextReminderRetryAt(attemptCount: number, referenceDate = new Date()) {
+    const retryDelays = this.getReminderRetryDelaysMinutes();
+    const delayMinutes = retryDelays[attemptCount - 1];
+    if (!delayMinutes) return null;
+    return new Date(referenceDate.getTime() + delayMinutes * 60 * 1000);
+  }
+
+  private createCollectionsSystemUser(companyId: string | null = null): AuthenticatedUser {
+    return {
+      id: 'collections-system',
+      email: 'collections-system@evolutech.local',
+      fullName: 'Collections System',
+      role: 'SUPER_ADMIN_EVOLUTECH',
+      companyId,
+      companyName: null,
+    };
+  }
+
+  private async createCollectionsExecutionLog(data: {
+    companyId: string;
+    triggerSource: string;
+    dryRun: boolean;
+    sendNow: boolean;
+    chargesAnalyzed?: number;
+    remindersCreated?: number;
+    remindersSent?: number;
+    remindersFailed?: number;
+    remindersRetried?: number;
+    processedScheduled?: number;
+    status?: string;
+    errorMessage?: string | null;
+    metadata?: Record<string, unknown> | null;
+  }) {
+    return (prisma as any).collectionAutomationRun.create({
+      data: {
+        companyId: data.companyId,
+        triggerSource: data.triggerSource,
+        dryRun: data.dryRun,
+        sendNow: data.sendNow,
+        chargesAnalyzed: Number(data.chargesAnalyzed || 0),
+        remindersCreated: Number(data.remindersCreated || 0),
+        remindersSent: Number(data.remindersSent || 0),
+        remindersFailed: Number(data.remindersFailed || 0),
+        remindersRetried: Number(data.remindersRetried || 0),
+        processedScheduled: Number(data.processedScheduled || 0),
+        status: String(data.status || 'completed'),
+        errorMessage: data.errorMessage || null,
+        metadata: data.metadata || null,
+      },
+    });
+  }
+
+  private async executeReminderSend(
+    reminderId: string,
+    companyId: string,
+    options?: {
+      actorUserId?: string | null;
+      triggerSource?: string;
+    }
+  ) {
+    const triggerSource = String(options?.triggerSource || 'manual').trim() || 'manual';
+    const reminder = await (prisma as any).billingReminder.findFirst({
+      where: { id: reminderId, companyId },
+      include: {
+        billingCharge: {
+          select: {
+            id: true,
+            title: true,
+            customerName: true,
+            customerPhone: true,
+            amount: true,
+            dueDate: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    if (!reminder) {
+      throw new CompanyServiceError('Lembrete nao encontrado', 404);
+    }
+    if (reminder.status === 'canceled') {
+      throw new CompanyServiceError('Lembrete cancelado nao pode ser enviado', 400);
+    }
+    if (reminder.billingCharge?.status === 'paid') {
+      throw new CompanyServiceError('Cobranca paga nao pode receber lembrete', 400);
+    }
+
+    const now = new Date();
+    const attemptCount = Number(reminder.attemptCount || 0) + 1;
+
+    await (prisma as any).billingReminder.update({
+      where: { id: reminder.id },
+      data: {
+        status: 'processing',
+        errorMessage: null,
+        lastAttemptAt: now,
+        attemptCount,
+        nextRetryAt: null,
+      },
+    });
+
+    const phone = String(reminder.billingCharge?.customerPhone || '').trim();
+    if (!phone) {
+      const nextRetryAt = this.getNextReminderRetryAt(attemptCount, now);
+      const failed = await (prisma as any).billingReminder.update({
+        where: { id: reminder.id },
+        data: {
+          status: 'failed',
+          errorMessage: 'Cliente sem telefone para WhatsApp',
+          nextRetryAt,
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          userId: options?.actorUserId || null,
+          companyId,
+          action: 'COLLECTIONS_REMINDER_SEND_ATTEMPT',
+          resource: 'billing_reminders',
+          details: {
+            reminderId: failed.id,
+            billingChargeId: failed.billingChargeId,
+            triggerSource,
+            result: 'failed',
+            attemptCount,
+            nextRetryAt: nextRetryAt?.toISOString() || null,
+            error: failed.errorMessage,
+          },
+        },
+      });
+
+      return {
+        id: failed.id,
+        billing_charge_id: failed.billingChargeId,
+        status: failed.status,
+        sent_at: failed.sentAt,
+        error_message: failed.errorMessage,
+        next_retry_at: failed.nextRetryAt,
+        attempt_count: failed.attemptCount,
+      };
+    }
+
+    try {
+      await this.sendWhatsApp(this.createCollectionsSystemUser(companyId), {
+        company_id: companyId,
+        phone,
+        message: this.buildReminderMessage(reminder.billingCharge, reminder.stepCode),
+      });
+
+      const sent = await (prisma as any).billingReminder.update({
+        where: { id: reminder.id },
+        data: {
+          status: 'sent',
+          sentAt: new Date(),
+          errorMessage: null,
+          nextRetryAt: null,
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          userId: options?.actorUserId || null,
+          companyId,
+          action: 'COLLECTIONS_REMINDER_SEND_ATTEMPT',
+          resource: 'billing_reminders',
+          details: {
+            reminderId: sent.id,
+            billingChargeId: sent.billingChargeId,
+            triggerSource,
+            result: 'sent',
+            attemptCount,
+          },
+        },
+      });
+
+      return {
+        id: sent.id,
+        billing_charge_id: sent.billingChargeId,
+        status: sent.status,
+        sent_at: sent.sentAt,
+        error_message: sent.errorMessage,
+        next_retry_at: sent.nextRetryAt,
+        attempt_count: sent.attemptCount,
+      };
+    } catch (error: any) {
+      const nextRetryAt = this.getNextReminderRetryAt(attemptCount, now);
+      const failed = await (prisma as any).billingReminder.update({
+        where: { id: reminder.id },
+        data: {
+          status: 'failed',
+          errorMessage: String(error?.message || 'Falha ao enviar WhatsApp').slice(0, 500),
+          nextRetryAt,
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          userId: options?.actorUserId || null,
+          companyId,
+          action: 'COLLECTIONS_REMINDER_SEND_ATTEMPT',
+          resource: 'billing_reminders',
+          details: {
+            reminderId: failed.id,
+            billingChargeId: failed.billingChargeId,
+            triggerSource,
+            result: 'failed',
+            attemptCount,
+            nextRetryAt: nextRetryAt?.toISOString() || null,
+            error: failed.errorMessage,
+          },
+        },
+      });
+
+      return {
+        id: failed.id,
+        billing_charge_id: failed.billingChargeId,
+        status: failed.status,
+        sent_at: failed.sentAt,
+        error_message: failed.errorMessage,
+        next_retry_at: failed.nextRetryAt,
+        attempt_count: failed.attemptCount,
+      };
+    }
+  }
+
+  private async processDueCollectionRemindersInternal(
+    companyId: string,
+    options?: { actorUserId?: string | null; triggerSource?: string; limit?: number }
+  ) {
+    const now = new Date();
+    const limit = Math.max(1, Math.min(200, Number(options?.limit || 50)));
+    const reminders = await (prisma as any).billingReminder.findMany({
+      where: {
+        companyId,
+        OR: [
+          { status: 'scheduled', scheduledAt: { lte: now } },
+          { status: 'failed', nextRetryAt: { not: null, lte: now } },
+        ],
+        billingCharge: {
+          status: { in: ['pending', 'overdue'] },
+        },
+      },
+      orderBy: [{ scheduledAt: 'asc' }, { nextRetryAt: 'asc' }, { createdAt: 'asc' }],
+      take: limit,
+      select: { id: true },
+    });
+
+    let sentCount = 0;
+    let failedCount = 0;
+    let retriedCount = 0;
+
+    for (const reminder of reminders) {
+      const result = await this.executeReminderSend(reminder.id, companyId, {
+        actorUserId: options?.actorUserId || null,
+        triggerSource: options?.triggerSource || 'worker',
+      });
+      if (Number(result.attempt_count || 0) > 1) retriedCount += 1;
+      if (result.status === 'sent') sentCount += 1;
+      if (result.status === 'failed') failedCount += 1;
+    }
+
+    return {
+      processed_count: reminders.length,
+      reminders_sent: sentCount,
+      reminders_failed: failedCount,
+      reminders_retried: retriedCount,
+    };
+  }
+
   async listCollectionReminders(
     user: AuthenticatedUser,
     queryParams: {
@@ -3692,6 +3971,9 @@ export class CompanyService {
         sent_at: item.sentAt,
         status: item.status,
         error_message: item.errorMessage,
+        attempt_count: Number(item.attemptCount || 0),
+        last_attempt_at: item.lastAttemptAt,
+        next_retry_at: item.nextRetryAt,
         billing_charge: item.billingCharge
           ? {
               id: item.billingCharge.id,
@@ -3712,7 +3994,13 @@ export class CompanyService {
 
   async runCollectionsAutomation(
     user: AuthenticatedUser,
-    payload: { company_id?: string; companyId?: string; dry_run?: boolean; send_now?: boolean } = {}
+    payload: {
+      company_id?: string;
+      companyId?: string;
+      dry_run?: boolean;
+      send_now?: boolean;
+      trigger_source?: string;
+    } = {}
   ) {
     const companyId = this.resolveCompanyId(user, payload);
     await this.ensureAnyModuleAccess(user, companyId, ['collections', 'billing', 'cobrancas']);
@@ -3722,6 +4010,7 @@ export class CompanyService {
 
     const dryRun = payload.dry_run === true;
     const sendNow = payload.send_now !== false;
+    const triggerSource = String(payload.trigger_source || 'manual').trim() || 'manual';
     await this.autoMarkOverdueCharges(companyId);
 
     const now = new Date();
@@ -3805,6 +4094,7 @@ export class CompanyService {
             channel: 'whatsapp',
             scheduledAt: scheduleAt,
             status: sendNow ? 'processing' : 'scheduled',
+            nextRetryAt: sendNow ? null : scheduleAt,
           },
           select: { id: true },
         });
@@ -3812,47 +4102,27 @@ export class CompanyService {
         scheduledCount += 1;
 
         if (!sendNow) continue;
-
-        const hasPhone = String(charge.customerPhone || '').trim().length > 0;
-        if (!hasPhone) {
-          await (prisma as any).billingReminder.update({
-            where: { id: created.id },
-            data: {
-              status: 'failed',
-              errorMessage: 'Cliente sem telefone para WhatsApp',
-            },
-          });
-          failedCount += 1;
-          continue;
-        }
-
-        try {
-          await this.sendWhatsApp(user, {
-            company_id: companyId,
-            phone: String(charge.customerPhone || ''),
-            message: this.buildReminderMessage(charge, step.code),
-          });
-          await (prisma as any).billingReminder.update({
-            where: { id: created.id },
-            data: {
-              status: 'sent',
-              sentAt: new Date(),
-              errorMessage: null,
-            },
-          });
-          sentCount += 1;
-        } catch (error: any) {
-          await (prisma as any).billingReminder.update({
-            where: { id: created.id },
-            data: {
-              status: 'failed',
-              errorMessage: String(error?.message || 'Falha ao enviar WhatsApp').slice(0, 500),
-            },
-          });
-          failedCount += 1;
-        }
+        const result = await this.executeReminderSend(created.id, companyId, {
+          actorUserId: user.id,
+          triggerSource,
+        });
+        if (result.status === 'sent') sentCount += 1;
+        if (result.status === 'failed') failedCount += 1;
       }
     }
+
+    await this.createCollectionsExecutionLog({
+      companyId,
+      triggerSource,
+      dryRun,
+      sendNow,
+      chargesAnalyzed: charges.length,
+      remindersCreated: scheduledCount,
+      remindersSent: sentCount,
+      remindersFailed: failedCount,
+      status: 'completed',
+      metadata: dryRun ? { preview_count: previewItems.length } : null,
+    });
 
     await prisma.auditLog.create({
       data: {
@@ -3863,6 +4133,7 @@ export class CompanyService {
         details: {
           dryRun,
           sendNow,
+          triggerSource,
           chargesAnalyzed: charges.length,
           scheduledCount,
           sentCount,
@@ -3930,6 +4201,7 @@ export class CompanyService {
           status: 'scheduled',
           errorMessage: null,
           scheduledAt: now,
+          nextRetryAt: null,
         },
       });
 
@@ -3953,89 +4225,265 @@ export class CompanyService {
         status: scheduled.status,
         sent_at: scheduled.sentAt,
         error_message: scheduled.errorMessage,
+        next_retry_at: scheduled.nextRetryAt,
+        attempt_count: scheduled.attemptCount,
       };
     }
 
-    await (prisma as any).billingReminder.update({
-      where: { id: reminder.id },
-      data: {
-        status: 'processing',
-        errorMessage: null,
+    const result = await this.executeReminderSend(reminder.id, companyId, {
+      actorUserId: user.id,
+      triggerSource: 'manual-reprocess',
+    });
+
+    await this.createCollectionsExecutionLog({
+      companyId,
+      triggerSource: 'manual-reprocess',
+      dryRun: false,
+      sendNow: true,
+      remindersSent: result.status === 'sent' ? 1 : 0,
+      remindersFailed: result.status === 'failed' ? 1 : 0,
+      remindersRetried: Number(result.attempt_count || 0) > 1 ? 1 : 0,
+      processedScheduled: 1,
+      status: result.status === 'sent' ? 'completed' : 'partial',
+      metadata: {
+        reminder_id: result.id,
+        billing_charge_id: result.billing_charge_id,
       },
     });
 
-    const phone = String(reminder.billingCharge?.customerPhone || '').trim();
-    if (!phone) {
-      const failed = await (prisma as any).billingReminder.update({
-        where: { id: reminder.id },
-        data: {
-          status: 'failed',
-          errorMessage: 'Cliente sem telefone para WhatsApp',
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        companyId,
+        action: 'COLLECTIONS_REMINDER_REPROCESSED',
+        resource: 'billing_reminders',
+        details: {
+          reminderId: result.id,
+          billingChargeId: result.billing_charge_id,
+          mode: 'send_now',
+          result: result.status,
+          attemptCount: result.attempt_count,
+          nextRetryAt: result.next_retry_at || null,
         },
-      });
-      return {
-        id: failed.id,
-        billing_charge_id: failed.billingChargeId,
-        status: failed.status,
-        sent_at: failed.sentAt,
-        error_message: failed.errorMessage,
-      };
+      },
+    });
+
+    return result;
+  }
+
+  async processDueCollectionReminders(
+    user: AuthenticatedUser,
+    payload?: { company_id?: string; companyId?: string; limit?: number }
+  ) {
+    const companyId = this.resolveCompanyId(user, payload || {});
+    await this.ensureAnyModuleAccess(user, companyId, ['collections', 'billing', 'cobrancas']);
+    if (user.role === 'FUNCIONARIO_EMPRESA') {
+      throw new CompanyServiceError('Apenas dono da empresa pode processar lembretes agendados', 403);
     }
 
-    try {
-      await this.sendWhatsApp(user, {
-        company_id: companyId,
-        phone,
-        message: this.buildReminderMessage(reminder.billingCharge, reminder.stepCode),
-      });
+    await this.autoMarkOverdueCharges(companyId);
+    const result = await this.processDueCollectionRemindersInternal(companyId, {
+      actorUserId: user.id,
+      triggerSource: 'manual-process-due',
+      limit: Number(payload?.limit || 50),
+    });
 
-      const sent = await (prisma as any).billingReminder.update({
-        where: { id: reminder.id },
-        data: {
-          status: 'sent',
-          sentAt: new Date(),
-          errorMessage: null,
-        },
-      });
+    await this.createCollectionsExecutionLog({
+      companyId,
+      triggerSource: 'manual-process-due',
+      dryRun: false,
+      sendNow: true,
+      remindersSent: result.reminders_sent,
+      remindersFailed: result.reminders_failed,
+      remindersRetried: result.reminders_retried,
+      processedScheduled: result.processed_count,
+      status: 'completed',
+    });
 
-      await prisma.auditLog.create({
-        data: {
-          userId: user.id,
-          companyId,
-          action: 'COLLECTIONS_REMINDER_REPROCESSED',
-          resource: 'billing_reminders',
-          details: {
-            reminderId: sent.id,
-            billingChargeId: sent.billingChargeId,
-            mode: 'send_now',
-            result: 'sent',
+    return {
+      company_id: companyId,
+      ...result,
+    };
+  }
+
+  async listCollectionsExecutionLogs(
+    user: AuthenticatedUser,
+    queryParams?: {
+      company_id?: string;
+      companyId?: string;
+      page?: number;
+      pageSize?: number;
+      trigger_source?: string;
+      status?: string;
+      date_from?: string;
+      date_to?: string;
+    }
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams || {});
+    await this.ensureAnyModuleAccess(user, companyId, ['collections', 'billing', 'cobrancas']);
+    const page = Math.max(1, Number(queryParams?.page || 1));
+    const pageSize = Math.min(100, Math.max(1, Number(queryParams?.pageSize || 20)));
+    const triggerSource = String(queryParams?.trigger_source || '').trim();
+    const status = String(queryParams?.status || '').trim();
+    const dateFrom = queryParams?.date_from ? new Date(String(queryParams.date_from)) : null;
+    const dateTo = queryParams?.date_to ? new Date(String(queryParams.date_to)) : null;
+    const where: any = { companyId };
+
+    if (triggerSource) where.triggerSource = triggerSource;
+    if (status) where.status = status;
+    if ((dateFrom && !Number.isNaN(dateFrom.getTime())) || (dateTo && !Number.isNaN(dateTo.getTime()))) {
+      where.createdAt = {};
+      if (dateFrom && !Number.isNaN(dateFrom.getTime())) where.createdAt.gte = dateFrom;
+      if (dateTo && !Number.isNaN(dateTo.getTime())) where.createdAt.lte = dateTo;
+    }
+
+    const [items, total] = await Promise.all([
+      (prisma as any).collectionAutomationRun.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: pageSize,
+        skip: (page - 1) * pageSize,
+      }),
+      (prisma as any).collectionAutomationRun.count({
+        where,
+      }),
+    ]);
+
+    return {
+      data: items.map((item: any) => ({
+        id: item.id,
+        company_id: item.companyId,
+        trigger_source: item.triggerSource,
+        dry_run: item.dryRun,
+        send_now: item.sendNow,
+        charges_analyzed: item.chargesAnalyzed,
+        reminders_created: item.remindersCreated,
+        reminders_sent: item.remindersSent,
+        reminders_failed: item.remindersFailed,
+        reminders_retried: item.remindersRetried,
+        processed_scheduled: item.processedScheduled,
+        status: item.status,
+        error_message: item.errorMessage,
+        metadata: item.metadata,
+        created_at: item.createdAt,
+      })),
+      total,
+      page,
+      pageSize,
+    };
+  }
+
+  async exportCollectionsExecutionLogsExcel(
+    user: AuthenticatedUser,
+    queryParams?: {
+      company_id?: string;
+      companyId?: string;
+      trigger_source?: string;
+      status?: string;
+      date_from?: string;
+      date_to?: string;
+    }
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams || {});
+    await this.ensureAnyModuleAccess(user, companyId, ['collections', 'billing', 'cobrancas']);
+
+    const result = await this.listCollectionsExecutionLogs(user, {
+      ...(queryParams || {}),
+      company_id: companyId,
+      page: 1,
+      pageSize: 1000,
+    });
+
+    const workbook = XLSX.utils.book_new();
+    const resumo = [
+      { campo: 'Empresa', valor: companyId },
+      { campo: 'Total de execucoes', valor: result.total },
+      { campo: 'Origem filtrada', valor: String(queryParams?.trigger_source || 'todas') },
+      { campo: 'Status filtrado', valor: String(queryParams?.status || 'todos') },
+      { campo: 'Data inicial', valor: String(queryParams?.date_from || '-') },
+      { campo: 'Data final', valor: String(queryParams?.date_to || '-') },
+      { campo: 'Exportado em', valor: new Date().toISOString() },
+    ];
+
+    const execucoes = result.data.map((item: any) => ({
+      id: item.id,
+      origem: item.trigger_source,
+      status: item.status,
+      simulacao: item.dry_run ? 'Sim' : 'Nao',
+      envio_ativo: item.send_now ? 'Sim' : 'Nao',
+      cobrancas_analisadas: item.charges_analyzed,
+      lembretes_criados: item.reminders_created,
+      lembretes_enviados: item.reminders_sent,
+      lembretes_falhos: item.reminders_failed,
+      lembretes_retry: item.reminders_retried,
+      processados: item.processed_scheduled,
+      erro: item.error_message || '',
+      criado_em: item.created_at,
+    }));
+
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(resumo), 'Resumo');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(execucoes), 'Execucoes');
+
+    return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
+  }
+
+  async runCollectionsBackgroundJobs() {
+    const companies = await prisma.company.findMany({
+      where: {
+        status: 'active',
+        modules: {
+          some: {
+            isActive: true,
+            modulo: {
+              codigo: { in: ['collections', 'billing', 'cobrancas'] },
+            },
           },
         },
-      });
+      },
+      select: { id: true },
+    });
 
-      return {
-        id: sent.id,
-        billing_charge_id: sent.billingChargeId,
-        status: sent.status,
-        sent_at: sent.sentAt,
-        error_message: sent.errorMessage,
-      };
-    } catch (error: any) {
-      const failed = await (prisma as any).billingReminder.update({
-        where: { id: reminder.id },
-        data: {
+    for (const company of companies) {
+      try {
+        await this.autoMarkOverdueCharges(company.id);
+        const automationResult = await this.runCollectionsAutomation(
+          this.createCollectionsSystemUser(company.id),
+          {
+            company_id: company.id,
+            dry_run: false,
+            send_now: false,
+            trigger_source: 'job',
+          }
+        );
+        const processingResult = await this.processDueCollectionRemindersInternal(company.id, {
+          actorUserId: null,
+          triggerSource: 'job',
+          limit: 100,
+        });
+
+        await this.createCollectionsExecutionLog({
+          companyId: company.id,
+          triggerSource: 'job-cycle',
+          dryRun: false,
+          sendNow: true,
+          chargesAnalyzed: automationResult.charges_analyzed,
+          remindersCreated: automationResult.reminders_created,
+          remindersSent: processingResult.reminders_sent,
+          remindersFailed: processingResult.reminders_failed,
+          remindersRetried: processingResult.reminders_retried,
+          processedScheduled: processingResult.processed_count,
+          status: 'completed',
+        });
+      } catch (error: any) {
+        await this.createCollectionsExecutionLog({
+          companyId: company.id,
+          triggerSource: 'job-cycle',
+          dryRun: false,
+          sendNow: true,
           status: 'failed',
-          errorMessage: String(error?.message || 'Falha ao enviar WhatsApp').slice(0, 500),
-        },
-      });
-
-      return {
-        id: failed.id,
-        billing_charge_id: failed.billingChargeId,
-        status: failed.status,
-        sent_at: failed.sentAt,
-        error_message: failed.errorMessage,
-      };
+          errorMessage: String(error?.message || 'Falha no job de collections').slice(0, 500),
+        });
+      }
     }
   }
 
@@ -5492,6 +5940,119 @@ export class CompanyService {
       total: filteredEntries.length,
       page,
       pageSize,
+    };
+  }
+
+  async listSupportTickets(
+    user: AuthenticatedUser,
+    queryParams: { company_id?: string; companyId?: string; status?: string } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, ['support']);
+
+    const status = String(queryParams.status || '').trim();
+    const where: any = { companyId };
+    if (status) where.status = status;
+
+    const items = await (prisma as any).supportTicket.findMany({
+      where,
+      include: {
+        company: { select: { id: true, name: true, slug: true } },
+        createdByUser: { select: { id: true, fullName: true, email: true } },
+        respondedByUser: { select: { id: true, fullName: true, email: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return items.map((item: any) => ({
+      id: item.id,
+      company_id: item.companyId,
+      title: item.title,
+      description: item.description,
+      priority: item.priority,
+      status: item.status,
+      category: item.category,
+      response: item.response,
+      responded_at: item.respondedAt,
+      created_at: item.createdAt,
+      updated_at: item.updatedAt,
+      company: item.company ? { id: item.company.id, name: item.company.name, slug: item.company.slug } : null,
+      created_by: item.createdByUser
+        ? { id: item.createdByUser.id, name: item.createdByUser.fullName, email: item.createdByUser.email }
+        : null,
+      responded_by: item.respondedByUser
+        ? { id: item.respondedByUser.id, name: item.respondedByUser.fullName, email: item.respondedByUser.email }
+        : null,
+    }));
+  }
+
+  async createSupportTicket(
+    user: AuthenticatedUser,
+    payload: { company_id?: string; companyId?: string; title?: string; description?: string; priority?: string; category?: string } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, payload);
+    await this.ensureAnyModuleAccess(user, companyId, ['support']);
+    this.ensureOwnerCompanyRole(user);
+
+    const title = String(payload.title || '').trim();
+    const description = String(payload.description || '').trim();
+    const priority = String(payload.priority || 'media').trim().toLowerCase();
+    const category = String(payload.category || '').trim() || null;
+    const allowedPriorities = ['baixa', 'media', 'alta', 'urgente'];
+
+    if (!title) throw new CompanyServiceError('Titulo obrigatorio', 400);
+    if (!description) throw new CompanyServiceError('Descricao obrigatoria', 400);
+    if (!allowedPriorities.includes(priority)) {
+      throw new CompanyServiceError('Prioridade invalida. Use baixa, media, alta ou urgente', 400);
+    }
+
+    const created = await (prisma as any).supportTicket.create({
+      data: {
+        companyId,
+        createdByUserId: user.id,
+        title,
+        description,
+        priority,
+        status: 'aberto',
+        category,
+      },
+      include: {
+        company: { select: { id: true, name: true, slug: true } },
+        createdByUser: { select: { id: true, fullName: true, email: true } },
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        companyId,
+        action: 'SUPPORT_TICKET_CREATED',
+        resource: 'support_tickets',
+        details: {
+          ticketId: created.id,
+          title,
+          priority,
+          category,
+        },
+      },
+    });
+
+    return {
+      id: created.id,
+      company_id: created.companyId,
+      title: created.title,
+      description: created.description,
+      priority: created.priority,
+      status: created.status,
+      category: created.category,
+      response: created.response,
+      responded_at: created.respondedAt,
+      created_at: created.createdAt,
+      updated_at: created.updatedAt,
+      company: created.company ? { id: created.company.id, name: created.company.name, slug: created.company.slug } : null,
+      created_by: created.createdByUser
+        ? { id: created.createdByUser.id, name: created.createdByUser.fullName, email: created.createdByUser.email }
+        : null,
     };
   }
 

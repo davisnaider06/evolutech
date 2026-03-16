@@ -72,6 +72,38 @@
    - status vai para `sent` quando o envio funciona
    - ou permanece `failed` com nova mensagem de erro
 
+## Collections - Processamento agendado
+
+1. Garantir que exista lembrete `scheduled` com data/hora atual ou passada.
+2. Chamar `POST /api/company/collections/automation/process-due`.
+3. Validar:
+   - lembretes vencidos sao processados
+   - falhas entram em retry com `next_retry_at`
+   - `attempt_count` aumenta a cada nova tentativa
+
+## Collections - Logs de execucao
+
+1. Rodar simulacao, automacao real e processamento de agendados.
+2. Chamar `GET /api/company/collections/executions`.
+3. Validar:
+   - cada execucao gera log por empresa
+   - log mostra origem (`manual`, `manual-reprocess`, `manual-process-due`, `job`, `job-cycle`)
+   - contadores de criados, enviados, falhos e retried batem com a operacao
+
+## Collections - Job automatico em producao
+
+1. Configurar no backend:
+   - `COLLECTIONS_AUTOMATION_JOB_ENABLED=true`
+   - `COLLECTIONS_AUTOMATION_JOB_MS=300000`
+   - `COLLECTIONS_AUTOMATION_JOB_STARTUP_DELAY_MS=15000`
+   - `COLLECTIONS_RETRY_DELAYS_MINUTES=5,30,120`
+2. Reiniciar o backend.
+3. Validar:
+   - uma execucao `job` ou `job-cycle` aparece em `Logs de execucao`
+   - o job nao dispara ciclos sobrepostos
+   - lembretes `failed` ganham novo `next_retry_at`
+   - lembretes `scheduled` vencidos sao enviados sem acao manual
+
 ## Collections - Baixa manual
 
 1. Em uma cobranca ainda nao paga, clicar em `Marcar como pago`.

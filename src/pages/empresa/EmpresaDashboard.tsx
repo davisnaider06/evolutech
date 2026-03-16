@@ -17,6 +17,11 @@ import { toast } from 'sonner';
 import { API_URL } from '@/config/api';
 
 interface DashboardMetricsResponse {
+  company?: {
+    id: string;
+    name: string;
+    slug: string;
+  };
   summary: {
     employeesTotal: number;
     customersTotal: number;
@@ -25,6 +30,20 @@ interface DashboardMetricsResponse {
     upcomingAppointments: number;
     revenueMonth: number;
   };
+  recentAppointments?: Array<{
+    id: string;
+    customerName?: string | null;
+    serviceName?: string | null;
+    status?: string;
+    scheduledAt: string;
+  }>;
+  recentOrders?: Array<{
+    id: string;
+    customerName?: string | null;
+    total: number;
+    status?: string;
+    createdAt: string;
+  }>;
 }
 
 const API_COMPANY_URL = `${API_URL}/company`;
@@ -40,6 +59,13 @@ const EmpresaDashboard: React.FC = () => {
     upcomingAppointments: 0,
     revenueMonth: 0,
   });
+  const [recentItems, setRecentItems] = useState<Array<{
+    id: string;
+    type: 'agendamento' | 'pedido';
+    description: string;
+    timestamp: string;
+    user: string;
+  }>>([]);
 
   const isOwner = user?.role === 'DONO_EMPRESA';
 
@@ -69,6 +95,32 @@ const EmpresaDashboard: React.FC = () => {
 
         const data = (await response.json()) as DashboardMetricsResponse;
         setMetrics(data.summary);
+        const appointmentItems = Array.isArray(data.recentAppointments)
+          ? data.recentAppointments.map((item) => ({
+              id: `appointment-${item.id}`,
+              type: 'agendamento' as const,
+              description: `${item.customerName || 'Cliente'} - ${item.serviceName || 'Servico'} (${item.status || 'pendente'})`,
+              timestamp: new Date(item.scheduledAt).toLocaleString('pt-BR'),
+              sortDate: item.scheduledAt,
+              user: 'Agenda',
+            }))
+          : [];
+        const orderItems = Array.isArray(data.recentOrders)
+          ? data.recentOrders.map((item) => ({
+              id: `order-${item.id}`,
+              type: 'pedido' as const,
+              description: `Pedido de ${item.customerName || 'Cliente'} - ${currency.format(Number(item.total || 0))} (${item.status || 'pending'})`,
+              timestamp: new Date(item.createdAt).toLocaleString('pt-BR'),
+              sortDate: item.createdAt,
+              user: 'Vendas',
+            }))
+          : [];
+        setRecentItems(
+          [...appointmentItems, ...orderItems]
+            .sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime())
+            .slice(0, 6)
+            .map(({ sortDate, ...item }) => item)
+        );
       } catch (error: any) {
         toast.error(error.message || 'Erro ao carregar métricas');
       } finally {
@@ -120,7 +172,7 @@ const EmpresaDashboard: React.FC = () => {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <RecentActivity />
+        <RecentActivity items={recentItems} title="Recentes da empresa" />
 
         <Card>
           <CardHeader>

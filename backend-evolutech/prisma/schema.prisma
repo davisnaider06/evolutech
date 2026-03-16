@@ -24,6 +24,8 @@ model User {
   commissionProfiles                  CommissionProfile[]
   tasks                               Task[]
   roles                               UserRole[]
+  supportTicketsCreated               SupportTicket[]        @relation("SupportTicketCreatedBy")
+  supportTicketsResponded             SupportTicket[]        @relation("SupportTicketRespondedBy")
 
   @@map("profiles")
 }
@@ -43,18 +45,19 @@ model Company {
   appointmentAvailability AppointmentAvailability[]
   appointmentServices     AppointmentService[]
   appointments            Appointment[]
-  auditLogs               AuditLog[]
-  billingCharges          BillingCharge[]
-  cashTransactions        CashTransaction[]
+    auditLogs               AuditLog[]
+    billingCharges          BillingCharge[]
+    billingReminders        BillingReminder[]
+    cashTransactions        CashTransaction[]
   commissionAdjustments   CommissionAdjustment[]
   commissionPayouts       CommissionPayout[]
   commissionProfiles      CommissionProfile[]
   sistemaBase             SistemaBase?                 @relation(fields: [sistemaBaseId], references: [id])
   loyaltySettings         CompanyLoyaltySettings?
-  courseAccesses          CourseAccess[]
-  courses                 Course[]
-  courseManagerAccounts   CourseManagerAccount[]
-  customerAccounts        CustomerAccount[]
+    courseAccesses          CourseAccess[]
+    courses                 Course[]
+    collectionsRuns         CollectionAutomationRun[]
+    customerAccounts        CustomerAccount[]
   loyaltyProfiles         CustomerLoyaltyProfile[]
   loyaltyTransactions     CustomerLoyaltyTransaction[]
   customerSubscriptions   CustomerSubscription[]
@@ -69,6 +72,7 @@ model Company {
   tasks                   Task[]
   theme                   CompanyTheme?
   userRoles               UserRole[]
+  supportTickets          SupportTicket[]
 
   @@index([sistemaBaseId])
   @@map("companies")
@@ -239,6 +243,30 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+model SupportTicket {
+  id                String   @id @default(uuid())
+  companyId         String   @map("empresa_id")
+  createdByUserId   String   @map("created_by_user_id")
+  respondedByUserId String?  @map("responded_by_user_id")
+  title             String   @map("titulo")
+  description       String   @map("descricao")
+  priority          String   @default("media") @map("prioridade")
+  status            String   @default("aberto")
+  category          String?  @map("categoria")
+  response          String?  @map("resposta")
+  respondedAt       DateTime? @map("responded_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdByUser     User     @relation("SupportTicketCreatedBy", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  respondedByUser   User?    @relation("SupportTicketRespondedBy", fields: [respondedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, status])
+  @@index([createdByUserId])
+  @@index([respondedByUserId])
+  @@map("support_tickets")
+}
+
 model Order {
   id                  String               @id @default(uuid())
   companyId           String               @map("empresa_id")
@@ -321,9 +349,58 @@ model BillingCharge {
   updatedAt     DateTime  @updatedAt @map("updated_at")
   company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  reminders     BillingReminder[]
 
   @@index([companyId, status, createdAt])
   @@map("billing_charges")
+}
+
+model BillingReminder {
+  id             String       @id @default(uuid())
+  companyId      String       @map("empresa_id")
+  billingChargeId String      @map("billing_charge_id")
+  stepCode       String       @map("step_code")
+  channel        String       @default("whatsapp")
+  scheduledAt    DateTime     @map("scheduled_at")
+  sentAt         DateTime?    @map("sent_at")
+  status         String       @default("scheduled")
+  errorMessage   String?      @map("error_message")
+  attemptCount   Int          @default(0) @map("attempt_count")
+  lastAttemptAt  DateTime?    @map("last_attempt_at")
+  nextRetryAt    DateTime?    @map("next_retry_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  billingCharge  BillingCharge @relation(fields: [billingChargeId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, billingChargeId, stepCode])
+  @@index([companyId, status, scheduledAt])
+  @@index([companyId, nextRetryAt, status])
+  @@index([billingChargeId])
+  @@map("billing_reminders")
+}
+
+model CollectionAutomationRun {
+  id                     String    @id @default(uuid())
+  companyId              String    @map("empresa_id")
+  triggerSource          String    @map("trigger_source")
+  dryRun                 Boolean   @default(false) @map("dry_run")
+  sendNow                Boolean   @default(true) @map("send_now")
+  chargesAnalyzed        Int       @default(0) @map("charges_analyzed")
+  remindersCreated       Int       @default(0) @map("reminders_created")
+  remindersSent          Int       @default(0) @map("reminders_sent")
+  remindersFailed        Int       @default(0) @map("reminders_failed")
+  remindersRetried       Int       @default(0) @map("reminders_retried")
+  processedScheduled     Int       @default(0) @map("processed_scheduled")
+  status                 String    @default("completed")
+  errorMessage           String?   @map("error_message")
+  metadata               Json?
+  createdAt              DateTime  @default(now()) @map("created_at")
+  company                Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+  @@index([companyId, status, createdAt])
+  @@map("collection_automation_runs")
 }
 
 model CashTransaction {
@@ -634,22 +711,6 @@ model Course {
 
   @@index([companyId, isActive])
   @@map("courses")
-}
-
-model CourseManagerAccount {
-  id           String    @id @default(uuid())
-  companyId    String    @map("empresa_id")
-  email        String
-  passwordHash String    @map("password_hash")
-  isActive     Boolean   @default(true) @map("is_active")
-  lastLoginAt  DateTime? @map("last_login_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
-  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  @@unique([companyId, email])
-  @@index([companyId, isActive])
-  @@map("course_manager_accounts")
 }
 
 model CourseAccess {

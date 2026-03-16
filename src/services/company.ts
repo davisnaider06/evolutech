@@ -32,6 +32,14 @@ export const companyService = {
   getTheme: async () => request('/theme'),
   saveTheme: async (data: Record<string, unknown>) =>
     request('/theme', { method: 'PUT', body: JSON.stringify(data) }),
+  listSupportTickets: async (status?: string) =>
+    request(`/support/tickets${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+  createSupportTicket: async (data: {
+    title: string;
+    description: string;
+    priority: 'baixa' | 'media' | 'alta' | 'urgente';
+    category?: string;
+  }) => request('/support/tickets', { method: 'POST', body: JSON.stringify(data) }),
   financialOverview: async (params?: { dateFrom?: string; dateTo?: string; companyId?: string }) => {
     const searchParams = new URLSearchParams();
     if (params?.dateFrom) searchParams.set('dateFrom', params.dateFrom);
@@ -336,11 +344,57 @@ export const companyService = {
     const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
     return request(`/collections/reminders${suffix}`);
   },
+  listCollectionsExecutionLogs: async (params?: {
+    page?: number;
+    pageSize?: number;
+    trigger_source?: string;
+    status?: string;
+    date_from?: string;
+    date_to?: string;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+    if (params?.trigger_source) searchParams.set('trigger_source', params.trigger_source);
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.date_from) searchParams.set('date_from', params.date_from);
+    if (params?.date_to) searchParams.set('date_to', params.date_to);
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return request(`/collections/executions${suffix}`);
+  },
+  exportCollectionsExecutionLogsExcel: async (params?: {
+    trigger_source?: string;
+    status?: string;
+    date_from?: string;
+    date_to?: string;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.trigger_source) searchParams.set('trigger_source', params.trigger_source);
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.date_from) searchParams.set('date_from', params.date_from);
+    if (params?.date_to) searchParams.set('date_to', params.date_to);
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    const response = await fetch(`${API_COMPANY_URL}/collections/executions/export${suffix}`, {
+      headers: getHeaders(),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || `Erro ${response.status}`);
+    }
+
+    return response.blob();
+  },
   reprocessCollectionReminder: async (
     reminderId: string,
     data?: { company_id?: string; send_now?: boolean }
   ) =>
     request(`/collections/reminders/${encodeURIComponent(reminderId)}/reprocess`, {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    }),
+  processDueCollectionReminders: async (data?: { company_id?: string; limit?: number }) =>
+    request('/collections/automation/process-due', {
       method: 'POST',
       body: JSON.stringify(data || {}),
     }),

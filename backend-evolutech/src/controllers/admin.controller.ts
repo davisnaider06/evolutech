@@ -80,6 +80,37 @@ export class AdminController {
     }
   }
 
+  async listSupportTickets(req: Request, res: Response) {
+    try {
+      const tickets = await adminService.listSupportTickets(req.query as any);
+      return res.json(tickets);
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message || 'Erro ao carregar tickets de suporte' });
+    }
+  }
+
+  async updateSupportTicketStatus(req: Request, res: Response) {
+    try {
+      const { ticketId } = req.params;
+      const actorUserId = (req as any).user?.id;
+      const ticket = await adminService.updateSupportTicketStatus(ticketId, req.body?.status, actorUserId);
+      return res.json(ticket);
+    } catch (error: any) {
+      return res.status(400).json({ error: error.message || 'Erro ao atualizar ticket de suporte' });
+    }
+  }
+
+  async respondSupportTicket(req: Request, res: Response) {
+    try {
+      const { ticketId } = req.params;
+      const actorUserId = (req as any).user?.id;
+      const ticket = await adminService.respondSupportTicket(ticketId, req.body?.response, actorUserId);
+      return res.json(ticket);
+    } catch (error: any) {
+      return res.status(400).json({ error: error.message || 'Erro ao responder ticket de suporte' });
+    }
+  }
+
   async listModulos(req: Request, res: Response) {
     try {
       const onlyActive = req.query.active === 'true';
