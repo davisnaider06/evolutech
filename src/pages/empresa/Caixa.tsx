@@ -66,6 +66,31 @@ interface CashOverviewResponse {
     payment_methods: Array<{ payment_method: string; total: number }>;
     item_types: Array<{ item_type: string; count: number }>;
   };
+  comparison: {
+    previous_period: {
+      date_from: string;
+      date_to: string;
+      total_received: number;
+      sales_count: number;
+      average_ticket: number;
+      manual_entries_total: number;
+      manual_exits_total: number;
+    };
+    deltas: {
+      total_received: number;
+      sales_count: number;
+      average_ticket: number;
+    };
+  };
+  rankings: {
+    top_items: Array<{
+      item_type: string;
+      item_name: string;
+      quantity: number;
+      total_amount: number;
+      orders_count: number;
+    }>;
+  };
   manual_period: {
     total_entries: number;
     total_exits: number;
@@ -156,6 +181,14 @@ const formatItemType = (value?: string | null) => {
   if (normalized === 'service') return 'Servico';
   if (normalized === 'product') return 'Produto';
   return normalized || '-';
+};
+
+const formatDelta = (value: number, kind: 'currency' | 'number') => {
+  const prefix = value > 0 ? '+' : value < 0 ? '-' : '';
+  if (kind === 'currency') {
+    return `${prefix}${formatCurrency(Math.abs(value))}`;
+  }
+  return `${prefix}${Math.abs(value)}`;
 };
 
 const emptyManualForm = {
@@ -272,6 +305,9 @@ const Caixa: React.FC = () => {
   const periodManualEntries = Number(overview?.manual_period.total_entries || 0);
   const periodManualExits = Number(overview?.manual_period.total_exits || 0);
   const closingBalance = Number(overview?.balances.closing_balance || 0);
+  const comparisonDeltaRevenue = Number(overview?.comparison.deltas.total_received || 0);
+  const comparisonDeltaSales = Number(overview?.comparison.deltas.sales_count || 0);
+  const comparisonDeltaTicket = Number(overview?.comparison.deltas.average_ticket || 0);
 
   const exportExcel = () => {
     if (!overview || (overview.entries.length === 0 && manualTransactions.length === 0)) {
@@ -655,6 +691,49 @@ const Caixa: React.FC = () => {
         <div className="space-y-6">
           <Card>
             <CardHeader>
+              <CardTitle>Comparativo de periodo</CardTitle>
+              <CardDescription>Compara o filtro atual com o periodo imediatamente anterior.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="rounded-lg border p-3">
+                <p className="text-sm font-medium">Periodo anterior</p>
+                <p className="text-sm text-muted-foreground">
+                  {formatDateTime(overview?.comparison.previous_period.date_from)} ate{' '}
+                  {formatDateTime(overview?.comparison.previous_period.date_to)}
+                </p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Receita</p>
+                <p className="mt-1 text-lg font-semibold">
+                  {formatCurrency(Number(overview?.comparison.previous_period.total_received || 0))}
+                </p>
+                <p className={`text-xs ${comparisonDeltaRevenue >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  Delta atual: {formatDelta(comparisonDeltaRevenue, 'currency')}
+                </p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Vendas</p>
+                <p className="mt-1 text-lg font-semibold">
+                  {Number(overview?.comparison.previous_period.sales_count || 0)}
+                </p>
+                <p className={`text-xs ${comparisonDeltaSales >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  Delta atual: {formatDelta(comparisonDeltaSales, 'number')}
+                </p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Ticket medio</p>
+                <p className="mt-1 text-lg font-semibold">
+                  {formatCurrency(Number(overview?.comparison.previous_period.average_ticket || 0))}
+                </p>
+                <p className={`text-xs ${comparisonDeltaTicket >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  Delta atual: {formatDelta(comparisonDeltaTicket, 'currency')}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle>Formas de pagamento</CardTitle>
               <CardDescription>Distribuicao das entradas de vendas no periodo.</CardDescription>
             </CardHeader>
@@ -685,6 +764,32 @@ const Caixa: React.FC = () => {
                   <div key={item.item_type} className="flex items-center justify-between rounded border p-3 text-sm">
                     <span>{formatItemType(item.item_type)}</span>
                     <span className="font-medium">{item.count}</span>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Ranking de itens</CardTitle>
+              <CardDescription>Top produtos e servicos por faturamento no periodo filtrado.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {!overview?.rankings.top_items.length ? (
+                <p className="text-sm text-muted-foreground">Sem dados no periodo.</p>
+              ) : (
+                overview.rankings.top_items.map((item, index) => (
+                  <div key={`${item.item_type}-${item.item_name}-${index}`} className="rounded border p-3 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-medium">{item.item_name}</p>
+                        <p className="text-muted-foreground">
+                          {formatItemType(item.item_type)} | Qtd: {item.quantity} | Vendas: {item.orders_count}
+                        </p>
+                      </div>
+                      <p className="font-semibold">{formatCurrency(item.total_amount)}</p>
+                    </div>
                   </div>
                 ))
               )}

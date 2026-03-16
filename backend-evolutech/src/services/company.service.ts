@@ -5352,6 +5352,16 @@ export class CompanyService {
 
     const paymentMethodsMap = new Map<string, number>();
     const itemTypesMap = new Map<string, number>();
+    const rankingMap = new Map<
+      string,
+      {
+        item_type: string;
+        item_name: string;
+        quantity: number;
+        total_amount: number;
+        order_ids: Set<string>;
+      }
+    >();
     for (const entry of filteredEntries) {
       const paymentMethodKey = String(entry.payment_method || 'desconhecido');
       paymentMethodsMap.set(paymentMethodKey, (paymentMethodsMap.get(paymentMethodKey) || 0) + entry.total);
@@ -5359,9 +5369,65 @@ export class CompanyService {
         const itemTypeKey = String(type || '');
         itemTypesMap.set(itemTypeKey, (itemTypesMap.get(itemTypeKey) || 0) + 1);
       }
+      for (const item of entry.items) {
+        const rankingKey = `${String(item.item_type || '')}:${String(item.item_name || '')}`;
+        const current =
+          rankingMap.get(rankingKey) || {
+            item_type: String(item.item_type || '').trim().toLowerCase() || 'produto',
+            item_name: String(item.item_name || '').trim() || 'Item',
+            quantity: 0,
+            total_amount: 0,
+            order_ids: new Set<string>(),
+          };
+        current.quantity += Number(item.quantity || 0);
+        current.total_amount += this.toNumber(item.total_price);
+        current.order_ids.add(entry.id);
+        rankingMap.set(rankingKey, current);
+      }
     }
 
     const paginatedEntries = filteredEntries.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize);
+    const selectedPeriodTotalReceived = filteredEntries.reduce((sum, entry) => sum + entry.total, 0);
+    const selectedPeriodAverageTicket =
+      filteredEntries.length > 0 ? selectedPeriodTotalReceived / filteredEntries.length : 0;
+
+    const previousPeriodDurationMs = Math.max(1, end.getTime() - start.getTime() + 1);
+    const previousStart = new Date(start.getTime() - previousPeriodDurationMs);
+    const previousEnd = new Date(end.getTime() - previousPeriodDurationMs);
+    const previousEntries = entries.filter((entry) => {
+      const paidAt = new Date(entry.paid_at);
+      return paidAt >= previousStart && paidAt <= previousEnd;
+    });
+    const previousPeriodTotalReceived = previousEntries.reduce((sum, entry) => sum + entry.total, 0);
+    const previousPeriodAverageTicket =
+      previousEntries.length > 0 ? previousPeriodTotalReceived / previousEntries.length : 0;
+    const previousManualInPeriod = manualTransactions.reduce(
+      (acc: { entries: number; exits: number }, item: any) => {
+        const transactionDate = new Date(item.transactionDate);
+        if (transactionDate < previousStart || transactionDate > previousEnd) return acc;
+        const amount = this.toNumber(item.amount);
+        if (String(item.type || '').toLowerCase() === 'entrada') {
+          acc.entries += amount;
+        } else {
+          acc.exits += amount;
+        }
+        return acc;
+      },
+      { entries: 0, exits: 0 }
+    );
+    const ranking = Array.from(rankingMap.values())
+      .map((item) => ({
+        item_type: item.item_type,
+        item_name: item.item_name,
+        quantity: item.quantity,
+        total_amount: item.total_amount,
+        orders_count: item.order_ids.size,
+      }))
+      .sort((a, b) => {
+        if (b.total_amount !== a.total_amount) return b.total_amount - a.total_amount;
+        if (b.quantity !== a.quantity) return b.quantity - a.quantity;
+        return a.item_name.localeCompare(b.item_name);
+      });
 
     return {
       period: {
@@ -5375,37 +5441,56 @@ export class CompanyService {
         month: buildSummary('month'),
         year: buildSummary('year'),
       },
-        selected_period: {
-          total_received: filteredEntries.reduce((sum, entry) => sum + entry.total, 0),
-          sales_count: filteredEntries.length,
+      selected_period: {
+        total_received: selectedPeriodTotalReceived,
+        sales_count: filteredEntries.length,
         average_ticket:
           filteredEntries.length > 0
-            ? filteredEntries.reduce((sum, entry) => sum + entry.total, 0) / filteredEntries.length
+            ? selectedPeriodAverageTicket
             : 0,
         payment_methods: Array.from(paymentMethodsMap.entries()).map(([payment_method, total]) => ({
           payment_method,
           total,
         })),
-          item_types: Array.from(itemTypesMap.entries()).map(([item_type, count]) => ({
-            item_type,
-            count,
-          })),
+        item_types: Array.from(itemTypesMap.entries()).map(([item_type, count]) => ({
+          item_type,
+          count,
+        })),
+      },
+      comparison: {
+        previous_period: {
+          date_from: previousStart.toISOString(),
+          date_to: previousEnd.toISOString(),
+          total_received: previousPeriodTotalReceived,
+          sales_count: previousEntries.length,
+          average_ticket: previousPeriodAverageTicket,
+          manual_entries_total: previousManualInPeriod.entries,
+          manual_exits_total: previousManualInPeriod.exits,
         },
-        manual_period: {
-          total_entries: manualInPeriod.entries,
-          total_exits: manualInPeriod.exits,
-          net: manualInPeriod.entries - manualInPeriod.exits,
+        deltas: {
+          total_received: selectedPeriodTotalReceived - previousPeriodTotalReceived,
+          sales_count: filteredEntries.length - previousEntries.length,
+          average_ticket: selectedPeriodAverageTicket - previousPeriodAverageTicket,
         },
-        balances: {
-          opening_balance: openingBalance,
-          closing_balance: closingBalance,
-          sales_total: periodSalesTotal,
-          manual_entries_total: manualInPeriod.entries,
-          manual_exits_total: manualInPeriod.exits,
-        },
-        entries: paginatedEntries,
-        total: filteredEntries.length,
-        page,
+      },
+      rankings: {
+        top_items: ranking.slice(0, 10),
+      },
+      manual_period: {
+        total_entries: manualInPeriod.entries,
+        total_exits: manualInPeriod.exits,
+        net: manualInPeriod.entries - manualInPeriod.exits,
+      },
+      balances: {
+        opening_balance: openingBalance,
+        closing_balance: closingBalance,
+        sales_total: periodSalesTotal,
+        manual_entries_total: manualInPeriod.entries,
+        manual_exits_total: manualInPeriod.exits,
+      },
+      entries: paginatedEntries,
+      total: filteredEntries.length,
+      page,
       pageSize,
     };
   }
