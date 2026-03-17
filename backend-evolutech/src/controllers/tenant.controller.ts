@@ -13,9 +13,6 @@ export class TenantController {
         empresaStatus,
         logo_url,
         sistemaBaseId,
-        ownerFullName,
-        ownerEmail,
-        ownerPassword,
       } = req.body ?? {};
 
       if (!empresaNome || !sistemaBaseId) {
@@ -31,9 +28,6 @@ export class TenantController {
         companyStatus: empresaStatus,
         companyLogoUrl: logo_url,
         sistemaBaseId,
-        ownerFullName,
-        ownerEmail,
-        ownerPassword,
       });
 
       return res.status(201).json(result);

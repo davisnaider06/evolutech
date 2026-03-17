@@ -6,14 +6,16 @@ const router = Router();
 const controller = new AdminController();
 
 router.use(authenticateToken);
+
+router.get('/support/tickets', requireRoles(['SUPER_ADMIN_EVOLUTECH', 'ADMIN_EVOLUTECH']), controller.listSupportTickets.bind(controller));
+router.patch('/support/tickets/:ticketId/status', requireRoles(['SUPER_ADMIN_EVOLUTECH', 'ADMIN_EVOLUTECH']), controller.updateSupportTicketStatus.bind(controller));
+router.post('/support/tickets/:ticketId/respond', requireRoles(['SUPER_ADMIN_EVOLUTECH', 'ADMIN_EVOLUTECH']), controller.respondSupportTicket.bind(controller));
+
 router.use(requireRoles(['SUPER_ADMIN_EVOLUTECH']));
 
 router.get('/financeiro/overview', controller.getFinancialOverview.bind(controller));
 router.get('/dashboard/metrics', controller.getDashboardMetrics.bind(controller));
 router.get('/dashboard/activities', controller.listRecentActivity.bind(controller));
-router.get('/support/tickets', controller.listSupportTickets.bind(controller));
-router.patch('/support/tickets/:ticketId/status', controller.updateSupportTicketStatus.bind(controller));
-router.post('/support/tickets/:ticketId/respond', controller.respondSupportTicket.bind(controller));
 router.get('/gateways', controller.listPaymentGateways.bind(controller));
 router.post('/gateways', controller.createPaymentGateway.bind(controller));
 router.patch('/gateways/:gatewayId', controller.updatePaymentGateway.bind(controller));

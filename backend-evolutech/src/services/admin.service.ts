@@ -1034,25 +1034,41 @@ export class AdminService {
         if (company.status !== 'active') throw new Error('Empresa inativa');
       }
 
-      const passwordHash = await bcrypt.hash(password, 10);
       const existingUser = await tx.user.findUnique({ where: { email } });
-      const user = existingUser
-        ? await tx.user.update({
-            where: { id: existingUser.id },
-            data: {
-              fullName,
-              passwordHash,
-              isActive: true
-            }
+      const existingRoles = existingUser
+        ? await tx.userRole.findMany({
+            where: { userId: existingUser.id },
+            select: { id: true, role: true, companyId: true },
           })
+        : [];
+
+      if (existingRoles.length > 0) {
+        throw new Error('Ja existe um usuario com este e-mail. Altere o perfil do usuario existente.');
+      }
+
+      const user = existingUser
+        ? existingUser
         : await tx.user.create({
             data: {
               fullName,
               email,
-              passwordHash,
+              passwordHash: await bcrypt.hash(password, 10),
               isActive: true
             }
           });
+
+      if (existingUser && !existingUser.isActive) {
+        throw new Error('Ja existe um usuario com este e-mail, mas ele esta inativo');
+      }
+
+      if (existingUser && !existingUser.passwordHash) {
+        await tx.user.update({
+          where: { id: existingUser.id },
+          data: {
+            passwordHash: await bcrypt.hash(password, 10),
+          },
+        });
+      }
 
       const existingRole = await tx.userRole.findFirst({
         where: {
@@ -1073,6 +1089,16 @@ export class AdminService {
           companyId: requiresCompany ? companyId : null
         }
       });
+
+      if (role === 'DONO_EMPRESA' && companyId) {
+        await tx.userRole.deleteMany({
+          where: {
+            companyId,
+            role: 'DONO_EMPRESA',
+            userId: { not: user.id },
+          },
+        });
+      }
 
       return tx.user.findUnique({
         where: { id: user.id },
@@ -1135,9 +1161,19 @@ export class AdminService {
         data: {
           userId,
           role,
-          companyId: requiresCompany ? companyId : null
-        }
+          companyId: requiresCompany ? companyId : null,
+        },
       });
+
+      if (role === 'DONO_EMPRESA' && companyId) {
+        await tx.userRole.deleteMany({
+          where: {
+            companyId,
+            role: 'DONO_EMPRESA',
+            userId: { not: userId },
+          },
+        });
+      }
 
       return tx.user.findUnique({
         where: { id: userId },

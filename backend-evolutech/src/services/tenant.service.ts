@@ -1,4 +1,3 @@
-import bcrypt from 'bcryptjs';
 import { Role, Status } from '@prisma/client';
 import { prisma } from '../db';
 
@@ -9,9 +8,6 @@ export interface CreateTenantInput {
   companyStatus?: 'active' | 'inactive' | 'pending';
   companyLogoUrl?: string | null;
   sistemaBaseId: string;
-  ownerFullName?: string;
-  ownerEmail?: string;
-  ownerPassword?: string;
 }
 
 interface TenantOnboardingResult {
@@ -22,25 +18,15 @@ interface TenantOnboardingResult {
     logoUrl?: string | null;
     sistemaBaseId: string;
   };
-  owner: {
-    id: string;
-    email: string;
-    fullName: string;
-    role: Role;
-  };
+  owner: null;
   modulosLiberados: {
     total: number;
     moduloIds: string[];
   };
-  credentials: {
-    email: string;
-    temporaryPassword: string;
-    requiresPasswordChange: boolean;
-  };
+  credentials: null;
 }
 
 const ALLOWED_COMPANY_STATUS: ReadonlySet<Status> = new Set(['active', 'inactive', 'pending']);
-const OWNER_ROLE: Role = 'DONO_EMPRESA';
 const APPOINTMENTS_CODES = new Set(['agendamentos', 'appointments']);
 
 const normalizeText = (value: string): string =>
@@ -62,11 +48,6 @@ const resolveCompanyStatus = (statusInput?: string): Status => {
   return ALLOWED_COMPANY_STATUS.has(value) ? value : 'active';
 };
 
-const generateTemporaryPassword = (): string => {
-  const randomBlock = Math.random().toString(36).slice(2, 10);
-  return `Ev0!${randomBlock}`;
-};
-
 export class TenantService {
   async onboardTenant(input: CreateTenantInput): Promise<TenantOnboardingResult> {
     const companyName = input.companyName?.trim();
@@ -79,15 +60,6 @@ export class TenantService {
       throw new Error('Campos obrigatorios ausentes para onboarding');
     }
 
-    const ownerFullName =
-      String(input.ownerFullName || '').trim() || `Dono ${companyName}`;
-    const ownerEmailInput = String(input.ownerEmail || '').trim().toLowerCase();
-    const ownerEmail =
-      ownerEmailInput ||
-      `${toSlug(companyName)}.owner@evolutech.local`;
-    const temporaryPassword = String(input.ownerPassword || '').trim() || generateTemporaryPassword();
-    const ownerPasswordHash = await bcrypt.hash(temporaryPassword, 10);
-
     const created = await prisma.$transaction(async (tx) => {
       const sistemaBase = await tx.sistemaBase.findUnique({
         where: { id: sistemaBaseId },
@@ -95,6 +67,7 @@ export class TenantService {
           modulos: {
             select: {
               moduloId: true,
+              allowedRoles: true,
               modulo: { select: { codigo: true } },
             },
           },
@@ -131,48 +104,41 @@ export class TenantService {
         },
       });
 
-      const existingUser = await tx.user.findUnique({
-        where: { email: ownerEmail },
-        select: { id: true },
-      });
-      const ownerUser = existingUser
-        ? await tx.user.update({
-            where: { id: existingUser.id },
-            data: {
-              fullName: ownerFullName,
-              passwordHash: ownerPasswordHash,
-              isActive: true,
+      const moduloBindings = Array.from(
+        new Map(
+          sistemaBase.modulos.map((item) => [
+            item.moduloId,
+            {
+              moduloId: item.moduloId,
+              allowedRoles:
+                Array.isArray(item.allowedRoles) && item.allowedRoles.length > 0
+                  ? (item.allowedRoles as Role[])
+                  : (['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] as Role[]),
             },
-          })
-        : await tx.user.create({
-            data: {
-              email: ownerEmail,
-              fullName: ownerFullName,
-              passwordHash: ownerPasswordHash,
+          ])
+        ).values()
+      );
+      if (moduloBindings.length > 0) {
+        for (const binding of moduloBindings) {
+          await tx.companyModule.upsert({
+            where: {
+              companyId_moduloId: {
+                companyId: company.id,
+                moduloId: binding.moduloId,
+              },
+            },
+            update: {
               isActive: true,
+              allowedRoles: binding.allowedRoles,
+            },
+            create: {
+              companyId: company.id,
+              moduloId: binding.moduloId,
+              isActive: true,
+              allowedRoles: binding.allowedRoles,
             },
           });
-
-      const existingRole = await tx.userRole.findFirst({
-        where: { userId: ownerUser.id, companyId: company.id },
-        select: { id: true },
-      });
-      if (!existingRole) {
-        await tx.userRole.create({
-          data: { userId: ownerUser.id, companyId: company.id, role: OWNER_ROLE },
-        });
-      }
-
-      const moduloIds = Array.from(new Set(sistemaBase.modulos.map((m) => m.moduloId)));
-      if (moduloIds.length > 0) {
-        await tx.companyModule.createMany({
-          data: moduloIds.map((moduloId) => ({
-            companyId: company.id,
-            moduloId,
-            isActive: true,
-          })),
-          skipDuplicates: true,
-        });
+        }
       }
 
       const hasAppointmentsModule = sistemaBase.modulos.some((item) =>
@@ -195,26 +161,9 @@ export class TenantService {
             },
           });
         }
-
-        const hasAvailability = await (tx as any).appointmentAvailability.findFirst({
-          where: { companyId: company.id, professionalId: ownerUser.id, isActive: true },
-          select: { id: true },
-        });
-        if (!hasAvailability) {
-          await (tx as any).appointmentAvailability.createMany({
-            data: [
-              { companyId: company.id, professionalId: ownerUser.id, weekday: 1, startTime: '09:00', endTime: '18:00', isActive: true },
-              { companyId: company.id, professionalId: ownerUser.id, weekday: 2, startTime: '09:00', endTime: '18:00', isActive: true },
-              { companyId: company.id, professionalId: ownerUser.id, weekday: 3, startTime: '09:00', endTime: '18:00', isActive: true },
-              { companyId: company.id, professionalId: ownerUser.id, weekday: 4, startTime: '09:00', endTime: '18:00', isActive: true },
-              { companyId: company.id, professionalId: ownerUser.id, weekday: 5, startTime: '09:00', endTime: '18:00', isActive: true },
-            ],
-            skipDuplicates: true,
-          });
-        }
       }
 
-      return { company, ownerUser, moduloIds };
+      return { company, moduloIds: moduloBindings.map((item) => item.moduloId) };
     }, { maxWait: 10000, timeout: 30000 });
 
     return {
@@ -225,21 +174,12 @@ export class TenantService {
         logoUrl: created.company.logoUrl,
         sistemaBaseId: created.company.sistemaBaseId as string,
       },
-      owner: {
-        id: created.ownerUser.id,
-        email: created.ownerUser.email,
-        fullName: created.ownerUser.fullName,
-        role: OWNER_ROLE,
-      },
+      owner: null,
       modulosLiberados: {
         total: created.moduloIds.length,
         moduloIds: created.moduloIds,
       },
-      credentials: {
-        email: created.ownerUser.email,
-        temporaryPassword,
-        requiresPasswordChange: true,
-      },
+      credentials: null,
     };
   }
 }
