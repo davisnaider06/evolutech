@@ -106,6 +106,7 @@ const sanitizeFileName = (value: string) =>
 
 const Cursos: React.FC = () => {
   const { company, user } = useAuth();
+  const isOwner = user?.role === 'DONO_EMPRESA';
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingContent, setUploadingContent] = useState(false);
@@ -127,11 +128,51 @@ const Cursos: React.FC = () => {
   const loadOverview = async () => {
     setLoading(true);
     try {
-      const data = await companyService.getCoursesOverview({
-        dateFrom: filters.dateFrom || undefined,
-        dateTo: filters.dateTo || undefined,
-      });
-      setOverview(data);
+      if (isOwner) {
+        const data = await companyService.getCoursesOverview({
+          dateFrom: filters.dateFrom || undefined,
+          dateTo: filters.dateTo || undefined,
+        });
+        setOverview(data);
+      } else {
+        const result = await companyService.list('courses', {
+          page: 1,
+          pageSize: 500,
+          orderBy: 'createdAt',
+        });
+        const courses = (result?.data || []).map((course: any) => ({
+          id: course.id,
+          title: course.title,
+          description: course.description || null,
+          content_type: course.contentType || 'video',
+          content_url: course.contentUrl || null,
+          cover_image_url: course.coverImageUrl || null,
+          price: Number(course.price || 0),
+          is_active: Boolean(course.isActive),
+          created_at: course.createdAt,
+          updated_at: course.updatedAt,
+          sales_count: 0,
+          active_sales: 0,
+          pending_sales: 0,
+          revenue_confirmed: 0,
+          revenue_pending: 0,
+          last_sale_at: null,
+        }));
+
+        setOverview({
+          summary: {
+            total_courses: courses.length,
+            active_courses: courses.filter((course: CourseItem) => course.is_active).length,
+            total_sales: 0,
+            active_sales: 0,
+            pending_sales: 0,
+            confirmed_revenue: 0,
+            pending_revenue: 0,
+          },
+          courses,
+          recent_sales: [],
+        });
+      }
     } catch (error: any) {
       toast.error(error.message || 'Erro ao carregar cursos');
     } finally {
@@ -141,7 +182,7 @@ const Cursos: React.FC = () => {
 
   useEffect(() => {
     loadOverview();
-  }, [filters.dateFrom, filters.dateTo]);
+  }, [filters.dateFrom, filters.dateTo, isOwner]);
 
   const resetForm = () => {
     setEditingId(null);
@@ -355,39 +396,53 @@ const Cursos: React.FC = () => {
     <div className="space-y-6">
       <PageHeader
         title="Cursos"
-        description="Gerencie seus cursos e acompanhe a receita gerada por eles."
+        description={
+          isOwner
+            ? 'Gerencie seus cursos e acompanhe a receita gerada por eles.'
+            : 'Cadastre, edite e visualize os cursos da empresa.'
+        }
         buttonLabel="Novo curso"
         onButtonClick={openCreate}
       >
-        <Button variant="outline" onClick={exportRevenueExcel}>
-          Exportar receita
-        </Button>
-        <Input
-          type="date"
-          value={filters.dateFrom}
-          onChange={(event) => setFilters((prev) => ({ ...prev, dateFrom: event.target.value }))}
-          className="w-auto"
-        />
-        <Input
-          type="date"
-          value={filters.dateTo}
-          onChange={(event) => setFilters((prev) => ({ ...prev, dateTo: event.target.value }))}
-          className="w-auto"
-        />
+        {isOwner ? (
+          <>
+            <Button variant="outline" onClick={exportRevenueExcel}>
+              Exportar receita
+            </Button>
+            <Input
+              type="date"
+              value={filters.dateFrom}
+              onChange={(event) => setFilters((prev) => ({ ...prev, dateFrom: event.target.value }))}
+              className="w-auto"
+            />
+            <Input
+              type="date"
+              value={filters.dateTo}
+              onChange={(event) => setFilters((prev) => ({ ...prev, dateTo: event.target.value }))}
+              className="w-auto"
+            />
+          </>
+        ) : null}
       </PageHeader>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Cursos cadastrados</p><p className="text-2xl font-bold">{overview?.summary.total_courses || 0}</p></CardContent></Card>
-        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Cursos ativos</p><p className="text-2xl font-bold">{overview?.summary.active_courses || 0}</p></CardContent></Card>
-        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Receita confirmada</p><p className="text-2xl font-bold">{toMoney(overview?.summary.confirmed_revenue || 0)}</p></CardContent></Card>
-        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Receita pendente</p><p className="text-2xl font-bold">{toMoney(overview?.summary.pending_revenue || 0)}</p></CardContent></Card>
-      </div>
+      {isOwner ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Cursos cadastrados</p><p className="text-2xl font-bold">{overview?.summary.total_courses || 0}</p></CardContent></Card>
+          <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Cursos ativos</p><p className="text-2xl font-bold">{overview?.summary.active_courses || 0}</p></CardContent></Card>
+          <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Receita confirmada</p><p className="text-2xl font-bold">{toMoney(overview?.summary.confirmed_revenue || 0)}</p></CardContent></Card>
+          <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Receita pendente</p><p className="text-2xl font-bold">{toMoney(overview?.summary.pending_revenue || 0)}</p></CardContent></Card>
+        </div>
+      ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
+      <div className={`grid gap-6 ${isOwner ? 'xl:grid-cols-[2fr_1fr]' : ''}`}>
         <Card>
           <CardHeader>
             <CardTitle>Catalogo de cursos</CardTitle>
-            <CardDescription>Crie, edite, ative e acompanhe o desempenho de cada curso.</CardDescription>
+            <CardDescription>
+              {isOwner
+                ? 'Crie, edite, ative e acompanhe o desempenho de cada curso.'
+                : 'Crie, edite, ative e visualize os cursos cadastrados.'}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {loading ? (
@@ -410,10 +465,16 @@ const Cursos: React.FC = () => {
                     </div>
                     <div className="grid gap-1 text-sm text-muted-foreground">
                       <p>Preco: {toMoney(course.price)}</p>
-                      <p>Vendas confirmadas: {course.active_sales || 0}</p>
-                      <p>Vendas pendentes: {course.pending_sales || 0}</p>
-                      <p>Receita confirmada: {toMoney(course.revenue_confirmed || 0)}</p>
-                      <p>Ultima venda: {formatDateTime(course.last_sale_at)}</p>
+                      {isOwner ? (
+                        <>
+                          <p>Vendas confirmadas: {course.active_sales || 0}</p>
+                          <p>Vendas pendentes: {course.pending_sales || 0}</p>
+                          <p>Receita confirmada: {toMoney(course.revenue_confirmed || 0)}</p>
+                          <p>Ultima venda: {formatDateTime(course.last_sale_at)}</p>
+                        </>
+                      ) : (
+                        <p>Status do curso: {course.is_active ? 'Ativo' : 'Inativo'}</p>
+                      )}
                     </div>
                     <div className="flex gap-2">
                       <Button size="sm" variant="outline" onClick={() => openEdit(course)}>Editar</Button>
@@ -431,35 +492,37 @@ const Cursos: React.FC = () => {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Receita dos cursos</CardTitle>
-            <CardDescription>Entradas recentes para acompanhar o resultado do modulo.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="rounded-lg border p-3">
-              <p className="text-sm font-medium">Resumo comercial</p>
-              <p className="text-sm text-muted-foreground">Vendas totais: {overview?.summary.total_sales || 0}</p>
-              <p className="text-sm text-muted-foreground">Confirmadas: {overview?.summary.active_sales || 0}</p>
-              <p className="text-sm text-muted-foreground">Pendentes: {overview?.summary.pending_sales || 0}</p>
-            </div>
-            {!overview?.recent_sales.length ? (
-              <p className="text-sm text-muted-foreground">Nenhuma venda recente no periodo.</p>
-            ) : (
-              overview.recent_sales.map((sale) => (
-                <div key={sale.id} className="rounded-lg border p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-medium">{sale.course?.title || 'Curso removido'}</p>
-                    <Badge variant="outline">{sale.status}</Badge>
+        {isOwner ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Receita dos cursos</CardTitle>
+              <CardDescription>Entradas recentes para acompanhar o resultado do modulo.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="rounded-lg border p-3">
+                <p className="text-sm font-medium">Resumo comercial</p>
+                <p className="text-sm text-muted-foreground">Vendas totais: {overview?.summary.total_sales || 0}</p>
+                <p className="text-sm text-muted-foreground">Confirmadas: {overview?.summary.active_sales || 0}</p>
+                <p className="text-sm text-muted-foreground">Pendentes: {overview?.summary.pending_sales || 0}</p>
+              </div>
+              {!overview?.recent_sales.length ? (
+                <p className="text-sm text-muted-foreground">Nenhuma venda recente no periodo.</p>
+              ) : (
+                overview.recent_sales.map((sale) => (
+                  <div key={sale.id} className="rounded-lg border p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium">{sale.course?.title || 'Curso removido'}</p>
+                      <Badge variant="outline">{sale.status}</Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{sale.customer?.name || 'Cliente'}</p>
+                    <p className="text-sm">{toMoney(sale.amount_paid)}</p>
+                    <p className="text-xs text-muted-foreground">{formatDateTime(sale.created_at)}</p>
                   </div>
-                  <p className="text-sm text-muted-foreground">{sale.customer?.name || 'Cliente'}</p>
-                  <p className="text-sm">{toMoney(sale.amount_paid)}</p>
-                  <p className="text-xs text-muted-foreground">{formatDateTime(sale.created_at)}</p>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        ) : null}
       </div>
 
       <Dialog
