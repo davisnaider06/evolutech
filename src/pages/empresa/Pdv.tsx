@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,6 +34,11 @@ interface PdvOrder {
   total: number;
   status: string;
   createdAt: string;
+}
+
+interface CustomerOption {
+  id: string;
+  name: string;
 }
 
 interface LoyaltyPreview {
@@ -83,6 +88,7 @@ const Pdv: React.FC = () => {
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerName, setCustomerName] = useState('');
+  const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [discount, setDiscount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<'dinheiro' | 'pix' | 'credito' | 'debito'>('dinheiro');
   const [gatewayQrImage, setGatewayQrImage] = useState<string | null>(null);
@@ -118,6 +124,25 @@ const Pdv: React.FC = () => {
     }
   };
 
+  const fetchCustomers = async () => {
+    try {
+      const result = await companyService.list('customers', {
+        page: 1,
+        pageSize: 200,
+        is_active: 'true',
+        orderBy: 'name',
+      });
+      setCustomers(
+        (result?.data || []).map((item: any) => ({
+          id: String(item.id),
+          name: String(item.name || ''),
+        }))
+      );
+    } catch (_error) {
+      setCustomers([]);
+    }
+  };
+
   useEffect(() => {
     const timeout = setTimeout(() => {
       fetchCatalog();
@@ -127,6 +152,7 @@ const Pdv: React.FC = () => {
 
   useEffect(() => {
     fetchPendingPixOrders();
+    fetchCustomers();
   }, []);
 
   const subtotal = useMemo(
@@ -222,6 +248,12 @@ const Pdv: React.FC = () => {
           return { ...cartItem, quantity: Math.max(0, Math.min(quantity, maxQuantity)) };
         })
         .filter((cartItem) => cartItem.quantity > 0)
+    );
+  };
+
+  const removeFromCart = (itemType: 'product' | 'service', itemId: string) => {
+    setCart((prev) =>
+      prev.filter((cartItem) => !(cartItem.itemType === itemType && cartItem.itemId === itemId))
     );
   };
 
@@ -343,7 +375,18 @@ const Pdv: React.FC = () => {
             <div className="space-y-2">
               {cart.map((item) => (
                 <div key={`${item.itemType}-${item.itemId}`} className="rounded border p-2">
-                  <p className="text-sm font-medium">{item.name}</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-medium">{item.name}</p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      onClick={() => removeFromCart(item.itemType, item.itemId)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                   <div className="mt-2 flex items-center gap-2">
                     <Input
                       type="number"
@@ -362,7 +405,17 @@ const Pdv: React.FC = () => {
 
             <div className="space-y-2">
               <Label>Cliente (opcional)</Label>
-              <Input value={customerName} onChange={(event) => setCustomerName(event.target.value)} />
+              <Input
+                list="pdv-customers-list"
+                value={customerName}
+                onChange={(event) => setCustomerName(event.target.value)}
+                placeholder="Selecione ou digite para filtrar"
+              />
+              <datalist id="pdv-customers-list">
+                {customers.map((customer) => (
+                  <option key={customer.id} value={customer.name} />
+                ))}
+              </datalist>
             </div>
 
             <div className="flex items-center justify-between rounded-lg border p-3">
