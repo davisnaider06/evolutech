@@ -1,6 +1,7 @@
 import { prisma } from '../db';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { Prisma } from '@prisma/client';
 import { AppRole } from '../types';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret_fallback_dev';
@@ -27,6 +28,17 @@ type JwtAuthPayload = {
 export class AuthService {
   private meCache = new Map<string, { payload: any; expiresAt: number }>();
   private meCacheTtlMs = Number(process.env.AUTH_ME_CACHE_TTL_MS || 15000);
+
+  private async listEmployeeModulePermissions(companyId: string, userId: string) {
+    return prisma.$queryRaw<Array<{ moduloId: string; isAllowed: boolean }>>(Prisma.sql`
+      SELECT
+        "modulo_id" AS "moduloId",
+        "is_allowed" AS "isAllowed"
+      FROM "employee_module_permissions"
+      WHERE "empresa_id" = ${companyId}
+        AND "user_id" = ${userId}
+    `);
+  }
 
   private buildMeCacheKey(userId: string, role?: AppRole, companyId?: string | null) {
     return `${userId}:${role || 'unknown'}:${companyId || 'none'}`;
@@ -59,16 +71,7 @@ export class AuthService {
           })
         : Promise.resolve([]),
       role === 'FUNCIONARIO_EMPRESA'
-        ? (prisma as any).employeeModulePermission.findMany({
-            where: {
-              companyId,
-              userId,
-            },
-            select: {
-              moduloId: true,
-              isAllowed: true,
-            },
-          })
+        ? this.listEmployeeModulePermissions(companyId, userId)
         : Promise.resolve([]),
     ]);
 

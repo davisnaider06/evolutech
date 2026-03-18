@@ -48,6 +48,7 @@ router.put('/team/members/:memberId', companyController.updateTeamMember.bind(co
 router.delete('/team/members/:memberId', companyController.deleteTeamMember.bind(companyController));
 router.get('/team/permissions', companyController.listTeamMemberPermissions.bind(companyController));
 router.put('/team/permissions/:memberId', companyController.updateTeamMemberPermissions.bind(companyController));
+router.get('/team/modules-diagnostic/:memberId', companyController.diagnoseTeamMemberModules.bind(companyController));
 router.get('/customers/:customerId/history', companyController.getCustomerHistory.bind(companyController));
 router.get('/loyalty/settings', companyController.getLoyaltySettings.bind(companyController));
 router.put('/loyalty/settings', companyController.updateLoyaltySettings.bind(companyController));

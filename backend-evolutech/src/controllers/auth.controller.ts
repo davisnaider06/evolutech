@@ -69,6 +69,12 @@ export class AuthController {
           : null,
       });
     } catch (error: any) {
+      console.error('[auth.controller] /auth/me failed', {
+        userId: req.user?.id,
+        role: req.user?.role,
+        companyId: req.user?.companyId,
+        message: error?.message || 'Erro desconhecido',
+      });
       res.status(500).json({ error: error.message });
     }
   }

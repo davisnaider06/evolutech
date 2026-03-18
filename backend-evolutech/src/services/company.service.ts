@@ -2,7 +2,7 @@ import { prisma } from '../db';
 import { AuthenticatedUser } from '../types';
 import { TABLE_CONFIG } from '../config/tableConfig';
 import bcrypt from 'bcryptjs';
-import { TaskStatus } from '@prisma/client';
+import { Prisma, TaskStatus } from '@prisma/client';
 import * as XLSX from 'xlsx';
 import { PaymentService } from './payment.service';
 import { decryptSecret, encryptSecret } from '../utils/crypto.util';
@@ -61,6 +61,83 @@ export class CompanyService {
       .toLowerCase()
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '');
+  }
+
+  private async findDeniedEmployeeModulePermission(
+    db: typeof prisma,
+    companyId: string,
+    userId: string,
+    moduleIds: string[]
+  ) {
+    if (!moduleIds.length) return null;
+    const rows = await db.$queryRaw<Array<{ moduloId: string }>>(Prisma.sql`
+      SELECT "modulo_id" AS "moduloId"
+      FROM "employee_module_permissions"
+      WHERE "empresa_id" = ${companyId}
+        AND "user_id" = ${userId}
+        AND "is_allowed" = false
+        AND "modulo_id" IN (${Prisma.join(moduleIds)})
+      LIMIT 1
+    `);
+    return rows[0] || null;
+  }
+
+  private async listEmployeeModulePermissionRows(
+    db: typeof prisma,
+    companyId: string,
+    userId: string
+  ) {
+    return db.$queryRaw<Array<{ moduloId: string; isAllowed: boolean }>>(Prisma.sql`
+      SELECT
+        "modulo_id" AS "moduloId",
+        "is_allowed" AS "isAllowed"
+      FROM "employee_module_permissions"
+      WHERE "empresa_id" = ${companyId}
+        AND "user_id" = ${userId}
+    `);
+  }
+
+  private async deleteEmployeeModulePermissions(
+    db: typeof prisma,
+    companyId: string,
+    userId: string
+  ) {
+    await db.$executeRaw(Prisma.sql`
+      DELETE FROM "employee_module_permissions"
+      WHERE "empresa_id" = ${companyId}
+        AND "user_id" = ${userId}
+    `);
+  }
+
+  private async upsertEmployeeModulePermission(
+    db: typeof prisma,
+    payload: { companyId: string; userId: string; moduloId: string; isAllowed: boolean }
+  ) {
+    const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+    await db.$executeRaw(Prisma.sql`
+      INSERT INTO "employee_module_permissions" (
+        "id",
+        "empresa_id",
+        "user_id",
+        "modulo_id",
+        "is_allowed",
+        "created_at",
+        "updated_at"
+      )
+      VALUES (
+        ${id},
+        ${payload.companyId},
+        ${payload.userId},
+        ${payload.moduloId},
+        ${payload.isAllowed},
+        NOW(),
+        NOW()
+      )
+      ON CONFLICT ("empresa_id", "user_id", "modulo_id")
+      DO UPDATE SET
+        "is_allowed" = EXCLUDED."is_allowed",
+        "updated_at" = NOW()
+    `);
   }
 
   private getModuleCacheKey(
@@ -176,15 +253,7 @@ export class CompanyService {
       .filter(Boolean);
     if (!moduleIds.length) return;
 
-    const denied = await (prisma as any).employeeModulePermission.findFirst({
-      where: {
-        companyId,
-        userId: user.id,
-        moduloId: { in: moduleIds },
-        isAllowed: false,
-      },
-      select: { moduloId: true },
-    });
+    const denied = await this.findDeniedEmployeeModulePermission(prisma, companyId, user.id, moduleIds);
 
     if (denied) {
       throw new CompanyServiceError('Seu acesso a este modulo foi desabilitado pelo dono da empresa', 403);
@@ -6532,12 +6601,7 @@ export class CompanyService {
     }
 
     await prisma.$transaction(async (tx) => {
-      await (tx as any).employeeModulePermission.deleteMany({
-        where: {
-          companyId,
-          userId: memberId,
-        },
-      });
+      await this.deleteEmployeeModulePermissions(tx as any, companyId, memberId);
 
       await tx.userRole.deleteMany({
         where: {
@@ -6619,14 +6683,14 @@ export class CompanyService {
         },
         orderBy: { activatedAt: 'asc' },
       }),
-      (prisma as any).employeeModulePermission.findMany({
-        where: { companyId },
-        select: {
-          userId: true,
-          moduloId: true,
-          isAllowed: true,
-        },
-      }),
+      prisma.$queryRaw<Array<{ userId: string; moduloId: string; isAllowed: boolean }>>(Prisma.sql`
+        SELECT
+          "user_id" AS "userId",
+          "modulo_id" AS "moduloId",
+          "is_allowed" AS "isAllowed"
+        FROM "employee_module_permissions"
+        WHERE "empresa_id" = ${companyId}
+      `),
     ]);
 
     const modulesForStaff = companyModules
@@ -6758,23 +6822,11 @@ export class CompanyService {
 
     await prisma.$transaction(async (tx) => {
       for (const entry of normalized) {
-        await (tx as any).employeeModulePermission.upsert({
-          where: {
-            companyId_userId_moduloId: {
-              companyId,
-              userId: memberId,
-              moduloId: entry.moduloId,
-            },
-          },
-          update: {
-            isAllowed: entry.isAllowed,
-          },
-          create: {
-            companyId,
-            userId: memberId,
-            moduloId: entry.moduloId,
-            isAllowed: entry.isAllowed,
-          },
+        await this.upsertEmployeeModulePermission(tx as any, {
+          companyId,
+          userId: memberId,
+          moduloId: entry.moduloId,
+          isAllowed: entry.isAllowed,
         });
       }
 
@@ -6794,6 +6846,121 @@ export class CompanyService {
 
     this.moduleAccessCache.clear();
     return this.listTeamMemberModulePermissions(user);
+  }
+
+  async diagnoseTeamMemberModuleAccess(user: AuthenticatedUser, memberId: string) {
+    this.ensureOwner(user);
+    const companyId = this.ensureOwnerCompanyId(user);
+
+    const membership = await prisma.userRole.findFirst({
+      where: {
+        companyId,
+        userId: memberId,
+        role: 'FUNCIONARIO_EMPRESA',
+      },
+      select: {
+        userId: true,
+        user: {
+          select: {
+            fullName: true,
+            email: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+
+    if (!membership?.user) {
+      throw new CompanyServiceError('Funcionario nao encontrado nesta empresa', 404);
+    }
+
+    const [company, companyModules, permissionRows] = await Promise.all([
+      prisma.company.findUnique({
+        where: { id: companyId },
+        select: {
+          id: true,
+          name: true,
+          sistemaBaseId: true,
+        },
+      }),
+      (prisma as any).companyModule.findMany({
+        where: {
+          companyId,
+          isActive: true,
+          modulo: { status: 'active' },
+        },
+        select: {
+          moduloId: true,
+          allowedRoles: true,
+          modulo: {
+            select: {
+              id: true,
+              codigo: true,
+              nome: true,
+              allowedRoles: true,
+            },
+          },
+        },
+        orderBy: { activatedAt: 'asc' },
+      }),
+      this.listEmployeeModulePermissionRows(prisma, companyId, memberId),
+    ]);
+
+    const sistemaBase = company?.sistemaBaseId
+      ? await prisma.sistemaBase.findUnique({
+          where: { id: company.sistemaBaseId },
+          select: { id: true, nome: true },
+        })
+      : null;
+
+    const deniedMap = new Map(
+      permissionRows
+        .filter((row) => row.isAllowed === false)
+        .map((row) => [row.moduloId, true])
+    );
+
+    const modules = companyModules.map((item: any) => {
+      const allowedRoles =
+        Array.isArray(item.allowedRoles) && item.allowedRoles.length > 0
+          ? item.allowedRoles
+          : Array.isArray(item.modulo.allowedRoles) && item.modulo.allowedRoles.length > 0
+          ? item.modulo.allowedRoles
+          : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'];
+
+      const allowedForEmployee = allowedRoles.includes('FUNCIONARIO_EMPRESA');
+      const blockedByOwner = deniedMap.has(item.modulo.id);
+      return {
+        modulo_id: item.modulo.id,
+        modulo_codigo: item.modulo.codigo,
+        modulo_nome: item.modulo.nome,
+        allowed_roles: allowedRoles,
+        allowed_for_employee: allowedForEmployee,
+        blocked_by_owner: blockedByOwner,
+        effective_access: allowedForEmployee && !blockedByOwner && membership.user.isActive,
+      };
+    });
+
+    return {
+      member: {
+        id: membership.userId,
+        full_name: membership.user.fullName,
+        email: membership.user.email,
+        is_active: membership.user.isActive,
+      },
+      company: {
+        id: company?.id || companyId,
+        name: company?.name || null,
+        sistema_base_id: company?.sistemaBaseId || null,
+        sistema_base_name: sistemaBase?.nome || null,
+      },
+      summary: {
+        total_modules: modules.length,
+        visible_modules: modules.filter((item: any) => item.effective_access).length,
+        blocked_modules: modules.filter((item: any) => item.blocked_by_owner).length,
+        role_allowed_modules: modules.filter((item: any) => item.allowed_for_employee).length,
+      },
+      modules,
+    };
   }
 
   private parseTaskStatus(status?: string): TaskStatus {

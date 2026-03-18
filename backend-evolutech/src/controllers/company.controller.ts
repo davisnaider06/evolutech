@@ -227,6 +227,16 @@ export class CompanyController {
     }
   }
 
+  async diagnoseTeamMemberModules(req: AuthedRequest, res: Response) {
+    try {
+      const { memberId } = req.params;
+      const result = await service.diagnoseTeamMemberModuleAccess(req.user!, memberId);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   async getCustomerHistory(req: AuthedRequest, res: Response) {
     try {
       const { customerId } = req.params;
