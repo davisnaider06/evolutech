@@ -24,6 +24,7 @@ if (COMPANY_PERF_DEBUG) {
 }
 
 router.get('/financeiro/overview', companyController.getFinancialOverview.bind(companyController));
+router.get('/gateways/catalog', companyController.listPaymentGatewayCatalog.bind(companyController));
 router.get('/theme', companyController.getMyTheme.bind(companyController));
 router.put('/theme', companyController.upsertMyTheme.bind(companyController));
 router.get('/reports/overview', companyController.getReportsOverview.bind(companyController));

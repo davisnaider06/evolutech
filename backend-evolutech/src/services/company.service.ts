@@ -6,6 +6,11 @@ import { Prisma, TaskStatus } from '@prisma/client';
 import * as XLSX from 'xlsx';
 import { PaymentService } from './payment.service';
 import { decryptSecret, encryptSecret } from '../utils/crypto.util';
+import {
+  PAYMENT_GATEWAY_CATALOG,
+  PAYMENT_GATEWAY_CATALOG_MAP,
+  SUPPORTED_PAYMENT_GATEWAYS,
+} from '../config/paymentGatewayCatalog';
 
 class CompanyServiceError extends Error {
   statusCode: number;
@@ -5339,6 +5344,9 @@ export class CompanyService {
     });
 
     return gateways.map((gateway: any) => ({
+      support_level:
+        PAYMENT_GATEWAY_CATALOG_MAP.get(String(gateway.provider || '').toLowerCase())?.supportLevel || 'planned',
+      automatic_supported: SUPPORTED_PAYMENT_GATEWAYS.has(String(gateway.provider || '').toLowerCase()),
       id: gateway.id,
       empresa_id: gateway.companyId,
       provedor: gateway.provider,
@@ -5359,6 +5367,10 @@ export class CompanyService {
     }));
   }
 
+  async listPaymentGatewayCatalog() {
+    return PAYMENT_GATEWAY_CATALOG;
+  }
+
   async connectMyPaymentGateway(
     user: AuthenticatedUser,
     data: {
@@ -5374,32 +5386,43 @@ export class CompanyService {
   ) {
     const companyId = this.ensureOwnerCompanyId(user);
     const provider = String(data.provedor || '').trim().toLowerCase();
-    const allowedProviders = new Set(['stripe', 'mercadopago', 'pagbank']);
-    if (!allowedProviders.has(provider)) {
-      throw new CompanyServiceError('Provedor nao suportado. Use stripe, mercadopago ou pagbank', 400);
+    if (!provider) {
+      throw new CompanyServiceError('Provedor obrigatorio', 400);
+    }
+    if (!PAYMENT_GATEWAY_CATALOG_MAP.has(provider)) {
+      throw new CompanyServiceError('Provedor nao encontrado no catalogo de gateways', 400);
     }
 
     const secretKey = String(data.secret_key || '').trim();
+    if (!secretKey) {
+      throw new CompanyServiceError('Informe a secret key', 400);
+    }
     const publicKey = String(data.public_key || '').trim() || null;
     const webhookSecret = String(data.webhook_secret || '').trim() || null;
     const environment = String(data.ambiente || 'sandbox').trim().toLowerCase();
+    const catalogItem = PAYMENT_GATEWAY_CATALOG_MAP.get(provider)!;
+    const automaticSupported = SUPPORTED_PAYMENT_GATEWAYS.has(provider);
 
-    const validation = await this.paymentService.validateGatewayCredentials({
-      provider,
-      environment,
-      publicKey,
-      secretKey,
-    });
+    const validation = automaticSupported
+      ? await this.paymentService.validateGatewayCredentials({
+          provider,
+          environment,
+          publicKey,
+          secretKey,
+        })
+      : null;
 
     const displayName =
       String(data.nome_exibicao || '').trim() ||
-      `${provider.toUpperCase()} ${validation?.accountName ? `- ${validation.accountName}` : ''}`.trim();
+      `${catalogItem.label}${validation?.accountName ? ` - ${validation.accountName}` : ''}`.trim();
 
     const saved = await prisma.$transaction(async (tx) => {
-      await (tx as any).paymentGateway.updateMany({
-        where: { companyId },
-        data: { isActive: false },
-      });
+      if (automaticSupported) {
+        await (tx as any).paymentGateway.updateMany({
+          where: { companyId },
+          data: { isActive: false },
+        });
+      }
 
       const existing = await (tx as any).paymentGateway.findFirst({
         where: { companyId, provider },
@@ -5418,9 +5441,11 @@ export class CompanyService {
             webhookUrl: data.webhook_url || null,
             settings: {
               ...(data.configuracoes as any),
+              supportLevel: catalogItem.supportLevel,
+              automaticSupported,
               accountValidation: validation,
             },
-            isActive: true,
+            isActive: automaticSupported,
           },
         });
       }
@@ -5437,14 +5462,18 @@ export class CompanyService {
           webhookUrl: data.webhook_url || null,
           settings: {
             ...(data.configuracoes as any),
+            supportLevel: catalogItem.supportLevel,
+            automaticSupported,
             accountValidation: validation,
           },
-          isActive: true,
+          isActive: automaticSupported,
         },
       });
     });
 
     return {
+      support_level: catalogItem.supportLevel,
+      automatic_supported: automaticSupported,
       id: saved.id,
       empresa_id: saved.companyId,
       provedor: saved.provider,
@@ -5457,6 +5486,9 @@ export class CompanyService {
       webhook_url: saved.webhookUrl,
       configuracoes: saved.settings,
       validation,
+      message: automaticSupported
+        ? 'Gateway conectado e pronto para uso automatico.'
+        : 'Gateway salvo no catalogo. Integracao automatica ainda nao disponivel para este provedor.',
     };
   }
 
@@ -5465,9 +5497,12 @@ export class CompanyService {
 
     const target = await (prisma as any).paymentGateway.findFirst({
       where: { id: gatewayId, companyId },
-      select: { id: true },
+      select: { id: true, provider: true },
     });
     if (!target) throw new CompanyServiceError('Gateway nao encontrado', 404);
+    if (!SUPPORTED_PAYMENT_GATEWAYS.has(String(target.provider || '').toLowerCase())) {
+      throw new CompanyServiceError('Este gateway esta salvo no catalogo, mas ainda nao possui ativacao automatica', 400);
+    }
 
     await prisma.$transaction(async (tx) => {
       await (tx as any).paymentGateway.updateMany({

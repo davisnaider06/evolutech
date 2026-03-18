@@ -485,8 +485,9 @@ export const companyService = {
       body: JSON.stringify({ days }),
     }),
   listMyGateways: async () => request('/gateways'),
+  listGatewayCatalog: async () => request('/gateways/catalog'),
   connectGateway: async (data: {
-    provedor: 'stripe' | 'mercadopago' | 'pagbank';
+    provedor: string;
     nome_exibicao?: string;
     public_key?: string;
     secret_key: string;

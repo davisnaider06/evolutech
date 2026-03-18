@@ -77,6 +77,15 @@ export class CompanyController {
     }
   }
 
+  async listPaymentGatewayCatalog(_req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.listPaymentGatewayCatalog();
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   async getFinancialOverview(req: AuthedRequest, res: Response) {
     try {
       const result = await service.getFinancialOverview(req.user!, req.query as any);
