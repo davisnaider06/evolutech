@@ -18,6 +18,7 @@ import { Calendar, DollarSign, Package, ShoppingCart, Users } from 'lucide-react
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { companyService } from '@/services/company';
 import { toast } from 'sonner';
 
@@ -163,17 +164,21 @@ const Relatorios: React.FC = () => {
         <div className="grid grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-6">
           <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
           <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
-          <Input
-            list="relatorios-clientes-list"
-            placeholder="Filtrar por cliente"
+          <SearchableSelect
             value={customerFilter}
-            onChange={(event) => setCustomerFilter(event.target.value)}
+            onValueChange={setCustomerFilter}
+            options={customerOptions.map((item) => ({ value: item.label, label: item.label }))}
+            placeholder="Filtrar por cliente"
+            searchPlaceholder="Buscar cliente..."
+            emptyMessage="Nenhum cliente encontrado."
           />
-          <Input
-            list="relatorios-servicos-list"
-            placeholder="Filtrar por servico"
+          <SearchableSelect
             value={serviceFilter}
-            onChange={(event) => setServiceFilter(event.target.value)}
+            onValueChange={setServiceFilter}
+            options={serviceOptions.map((item) => ({ value: item.label, label: item.label }))}
+            placeholder="Filtrar por serviço"
+            searchPlaceholder="Buscar serviço..."
+            emptyMessage="Nenhum serviço encontrado."
           />
           <Input type="date" value={dayFilter} onChange={(event) => setDayFilter(event.target.value)} />
           <select
@@ -202,17 +207,6 @@ const Relatorios: React.FC = () => {
           </div>
         </div>
       </div>
-
-      <datalist id="relatorios-clientes-list">
-        {customerOptions.map((item) => (
-          <option key={item.id} value={item.label} />
-        ))}
-      </datalist>
-      <datalist id="relatorios-servicos-list">
-        {serviceOptions.map((item) => (
-          <option key={item.id} value={item.label} />
-        ))}
-      </datalist>
 
       <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
         {customerFilter ? <span className="rounded-full border border-border px-3 py-1">Cliente: {customerFilter}</span> : null}

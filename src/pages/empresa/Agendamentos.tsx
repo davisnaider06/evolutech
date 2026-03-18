@@ -7,6 +7,7 @@ import { StatusBadge } from '@/components/crud/StatusBadge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -39,6 +40,11 @@ interface AppointmentServiceItem {
 }
 
 interface ProfessionalOption {
+  id: string;
+  name: string;
+}
+
+interface CustomerOption {
   id: string;
   name: string;
 }
@@ -77,6 +83,7 @@ const Agendamentos: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<Appointment[]>([]);
   const [services, setServices] = useState<AppointmentServiceItem[]>([]);
+  const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [serviceLoading, setServiceLoading] = useState(false);
   const [serviceForm, setServiceForm] = useState({ name: '', durationMinutes: 30, price: 0 });
   const [professionals, setProfessionals] = useState<ProfessionalOption[]>([]);
@@ -162,6 +169,26 @@ const Agendamentos: React.FC = () => {
     }
   }, [bookingSlug, selectedProfessionalId, user?.id, user?.role]);
 
+  const fetchCustomers = useCallback(async () => {
+    try {
+      const result = await companyService.list('customers', {
+        page: 1,
+        pageSize: 200,
+        is_active: 'true',
+        orderBy: 'name',
+      });
+      const rows = Array.isArray(result?.data) ? result.data : [];
+      setCustomers(
+        rows.map((item: any) => ({
+          id: item.id,
+          name: item.name,
+        }))
+      );
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao carregar clientes');
+    }
+  }, []);
+
   const fetchAvailability = useCallback(async () => {
     if (!selectedProfessionalId) return;
     try {
@@ -201,6 +228,10 @@ const Agendamentos: React.FC = () => {
   useEffect(() => {
     fetchProfessionals();
   }, [fetchProfessionals]);
+
+  useEffect(() => {
+    fetchCustomers();
+  }, [fetchCustomers]);
 
   useEffect(() => {
     fetchAvailability();
@@ -573,29 +604,35 @@ const Agendamentos: React.FC = () => {
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="customer_name">Cliente *</Label>
-            <Input
-              id="customer_name"
+            <SearchableSelect
               value={formData.customer_name}
-              onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
-              placeholder="Nome do cliente"
+              onValueChange={(value) => setFormData({ ...formData, customer_name: value })}
+              options={customers.map((customer) => ({ value: customer.name, label: customer.name }))}
+              placeholder="Selecionar cliente"
+              searchPlaceholder="Buscar cliente..."
+              emptyMessage="Nenhum cliente encontrado."
             />
           </div>
           <div className="space-y-2">
             <Label htmlFor="service_name">Servico *</Label>
-            <Input
-              id="service_name"
+            <SearchableSelect
               value={formData.service_name}
-              onChange={(e) => setFormData({ ...formData, service_name: e.target.value })}
-              placeholder="Ex: Corte + Barba"
+              onValueChange={(value) => setFormData({ ...formData, service_name: value })}
+              options={services.map((service) => ({ value: service.name, label: service.name }))}
+              placeholder="Selecionar serviço"
+              searchPlaceholder="Buscar serviço..."
+              emptyMessage="Nenhum serviço encontrado."
             />
           </div>
           <div className="space-y-2">
             <Label htmlFor="professional_name">Profissional *</Label>
-            <Input
-              id="professional_name"
+            <SearchableSelect
               value={formData.professional_name}
-              onChange={(e) => setFormData({ ...formData, professional_name: e.target.value })}
-              placeholder="Ex: Dr. Rafael"
+              onValueChange={(value) => setFormData({ ...formData, professional_name: value })}
+              options={professionals.map((professional) => ({ value: professional.name, label: professional.name }))}
+              placeholder="Selecionar profissional"
+              searchPlaceholder="Buscar profissional..."
+              emptyMessage="Nenhum profissional encontrado."
             />
           </div>
           <div className="space-y-2">

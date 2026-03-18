@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { companyService } from '@/services/company';
 
 interface CatalogItem {
@@ -405,17 +406,14 @@ const Pdv: React.FC = () => {
 
             <div className="space-y-2">
               <Label>Cliente (opcional)</Label>
-              <Input
-                list="pdv-customers-list"
+              <SearchableSelect
                 value={customerName}
-                onChange={(event) => setCustomerName(event.target.value)}
-                placeholder="Selecione ou digite para filtrar"
+                onValueChange={setCustomerName}
+                options={customers.map((customer) => ({ value: customer.name, label: customer.name }))}
+                placeholder="Selecionar cliente"
+                searchPlaceholder="Buscar cliente..."
+                emptyMessage="Nenhum cliente encontrado."
               />
-              <datalist id="pdv-customers-list">
-                {customers.map((customer) => (
-                  <option key={customer.id} value={customer.name} />
-                ))}
-              </datalist>
             </div>
 
             <div className="flex items-center justify-between rounded-lg border p-3">

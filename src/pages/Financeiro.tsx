@@ -18,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Company, FinancialMetric } from '@/types/auth';
 import { adminService } from '@/services/admin';
 import { companyService } from '@/services/company';
@@ -209,17 +210,21 @@ const Financeiro: React.FC = () => {
           <div className="grid grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-6">
             <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
             <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
-            <Input
-              list="financeiro-clientes-list"
-              placeholder="Filtrar por cliente"
+            <SearchableSelect
               value={customerFilter}
-              onChange={(event) => setCustomerFilter(event.target.value)}
+              onValueChange={setCustomerFilter}
+              options={customerOptions.map((item) => ({ value: item.label, label: item.label }))}
+              placeholder="Filtrar por cliente"
+              searchPlaceholder="Buscar cliente..."
+              emptyMessage="Nenhum cliente encontrado."
             />
-            <Input
-              list="financeiro-servicos-list"
-              placeholder="Filtrar por servico"
+            <SearchableSelect
               value={serviceFilter}
-              onChange={(event) => setServiceFilter(event.target.value)}
+              onValueChange={setServiceFilter}
+              options={serviceOptions.map((item) => ({ value: item.label, label: item.label }))}
+              placeholder="Filtrar por serviço"
+              searchPlaceholder="Buscar serviço..."
+              emptyMessage="Nenhum serviço encontrado."
             />
             <Input type="date" value={dayFilter} onChange={(event) => setDayFilter(event.target.value)} />
             <select
@@ -246,17 +251,6 @@ const Financeiro: React.FC = () => {
             </div>
           </div>
         </div>
-
-        <datalist id="financeiro-clientes-list">
-          {customerOptions.map((item) => (
-            <option key={item.id} value={item.label} />
-          ))}
-        </datalist>
-        <datalist id="financeiro-servicos-list">
-          {serviceOptions.map((item) => (
-            <option key={item.id} value={item.label} />
-          ))}
-        </datalist>
 
         <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
           {customerFilter ? <Badge variant="outline">Cliente: {customerFilter}</Badge> : null}

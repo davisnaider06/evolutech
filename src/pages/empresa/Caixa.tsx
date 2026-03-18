@@ -122,6 +122,11 @@ interface ManualCashTransaction {
   createdAt: string;
 }
 
+interface CustomerOption {
+  id: string;
+  name: string;
+}
+
 const paymentOptions = [
   { value: 'all', label: 'Todos pagamentos' },
   { value: 'dinheiro', label: 'Dinheiro' },
@@ -209,6 +214,7 @@ const Caixa: React.FC = () => {
   const [manualTotal, setManualTotal] = useState(0);
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
   const [manualSaving, setManualSaving] = useState(false);
+  const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [manualForm, setManualForm] = useState(emptyManualForm);
   const [filters, setFilters] = useState({
     search: '',
@@ -274,6 +280,25 @@ const Caixa: React.FC = () => {
     }
   };
 
+  const loadCustomers = async () => {
+    try {
+      const result = await companyService.list('customers', {
+        page: 1,
+        pageSize: 200,
+        is_active: 'true',
+        orderBy: 'name',
+      });
+      setCustomers(
+        (result?.data || []).map((item: any) => ({
+          id: String(item.id),
+          name: String(item.name || ''),
+        }))
+      );
+    } catch (_error) {
+      setCustomers([]);
+    }
+  };
+
   useEffect(() => {
     loadOverview();
   }, [filters.search, filters.payment_method, filters.item_type, filters.dateFrom, filters.dateTo, filters.referenceDate, page]);
@@ -281,6 +306,10 @@ const Caixa: React.FC = () => {
   useEffect(() => {
     loadManualTransactions();
   }, [filters.dateFrom, filters.dateTo, manualFilters.search, manualFilters.type, manualFilters.category, manualFilters.payment_method, manualPage]);
+
+  useEffect(() => {
+    loadCustomers();
+  }, []);
 
   const manualSummary = useMemo(() => {
     let entradas = 0;
@@ -551,6 +580,7 @@ const Caixa: React.FC = () => {
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
           <Input
+            list="cash-customers-list"
             placeholder="Buscar cliente, item ou pagamento"
             value={filters.search}
             onChange={(event) => {
@@ -609,6 +639,11 @@ const Caixa: React.FC = () => {
             value={filters.referenceDate}
             onChange={(event) => setFilters((prev) => ({ ...prev, referenceDate: event.target.value }))}
           />
+          <datalist id="cash-customers-list">
+            {customers.map((customer) => (
+              <option key={customer.id} value={customer.name} />
+            ))}
+          </datalist>
         </CardContent>
       </Card>
 
