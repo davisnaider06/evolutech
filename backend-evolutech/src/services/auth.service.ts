@@ -183,12 +183,6 @@ export class AuthService {
     if (!isValid) throw new Error('Credenciais invalidas');
 
     const activeRole = user.roles[0];
-    const modules = await this.resolveModulesForRole(
-      activeRole?.role as AppRole | undefined,
-      activeRole?.companyId,
-      activeRole?.company?.sistemaBaseId,
-      user.id
-    );
 
     const tokenPayload: JwtAuthPayload = {
       userId: user.id,
@@ -201,6 +195,9 @@ export class AuthService {
 
     const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 
+    // Pré-aquece o payload completo do /auth/me sem bloquear a resposta do login.
+    void this.getMe(user.id).catch(() => null);
+
     return {
       token,
       user: {
@@ -211,7 +208,7 @@ export class AuthService {
         tenantId: activeRole?.companyId,
         tenantName: activeRole?.company?.name,
         tenantSlug: activeRole?.company?.slug,
-        modules,
+        modules: [],
       },
       company: activeRole?.companyId
         ? {
@@ -219,7 +216,7 @@ export class AuthService {
             name: activeRole?.company?.name,
             slug: activeRole?.company?.slug,
             logo_url: activeRole?.company?.logoUrl || null,
-            modules,
+            modules: [],
           }
         : null,
     };

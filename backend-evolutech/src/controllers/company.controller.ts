@@ -178,6 +178,32 @@ export class CompanyController {
     }
   }
 
+  async updateTeamMember(req: AuthedRequest, res: Response) {
+    try {
+      const { memberId } = req.params;
+      const { fullName, email, password, isActive } = req.body || {};
+      const result = await service.updateTeamMember(req.user!, memberId, {
+        fullName,
+        email,
+        password,
+        isActive,
+      });
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async deleteTeamMember(req: AuthedRequest, res: Response) {
+    try {
+      const { memberId } = req.params;
+      const result = await service.deleteTeamMember(req.user!, memberId);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   async listTeamMemberPermissions(req: AuthedRequest, res: Response) {
     try {
       const result = await service.listTeamMemberModulePermissions(req.user!);

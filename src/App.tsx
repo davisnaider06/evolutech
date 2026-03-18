@@ -330,7 +330,7 @@ const App = () => (
                   <Route
                     path="/empresa/cursos"
                     element={
-                      <AuthGuard allowedRoles={['DONO_EMPRESA']}>
+                      <AuthGuard allowedRoles={['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA']}>
                         <ModuleGuard moduleCode="courses">
                           <Cursos />
                         </ModuleGuard>

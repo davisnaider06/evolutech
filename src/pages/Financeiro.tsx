@@ -24,6 +24,12 @@ import { companyService } from '@/services/company';
 
 interface OwnerFinancialOverview {
   period: { date_from: string; date_to: string };
+  filters?: {
+    customer?: string | null;
+    service?: string | null;
+    day?: string | null;
+    period_group?: 'daily' | 'monthly' | 'yearly';
+  };
   summary: {
     mrr_current: number;
     mrr_previous: number;
@@ -36,6 +42,7 @@ interface OwnerFinancialOverview {
   };
   charts: {
     cashflow_by_day: Array<{ date: string; paid: number; pending: number }>;
+    cashflow_by_period?: Array<{ date: string; label: string; paid: number; pending: number }>;
     payment_methods: Array<{ payment_method: string; total: number }>;
   };
   metrics?: FinancialMetric[];
@@ -43,6 +50,11 @@ interface OwnerFinancialOverview {
 }
 
 const DONUT_COLORS = ['hsl(var(--primary))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))', 'hsl(var(--chart-4))'];
+
+interface FilterOption {
+  id: string;
+  label: string;
+}
 
 interface AdminFinancialOverview {
   metrics: FinancialMetric[];
@@ -57,6 +69,12 @@ const Financeiro: React.FC = () => {
   const [ownerData, setOwnerData] = useState<OwnerFinancialOverview | null>(null);
   const [adminData, setAdminData] = useState<AdminFinancialOverview | null>(null);
   const [periodMonths, setPeriodMonths] = useState('12');
+  const [customerFilter, setCustomerFilter] = useState('');
+  const [serviceFilter, setServiceFilter] = useState('');
+  const [dayFilter, setDayFilter] = useState('');
+  const [periodGroup, setPeriodGroup] = useState<'daily' | 'monthly' | 'yearly'>('daily');
+  const [customerOptions, setCustomerOptions] = useState<FilterOption[]>([]);
+  const [serviceOptions, setServiceOptions] = useState<FilterOption[]>([]);
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN_EVOLUTECH';
   const isOwner = user?.role === 'DONO_EMPRESA';
@@ -88,6 +106,10 @@ const Financeiro: React.FC = () => {
         const response = (await companyService.financialOverview({
           dateFrom,
           dateTo,
+          customer: customerFilter || undefined,
+          service: serviceFilter || undefined,
+          day: dayFilter || undefined,
+          periodGroup,
         })) as OwnerFinancialOverview;
         setOwnerData(response);
         setAdminData(null);
@@ -100,6 +122,46 @@ const Financeiro: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [user?.role]);
+
+  useEffect(() => {
+    if (!isOwner) return;
+
+    const loadFilterOptions = async () => {
+      try {
+        const [customersResult, servicesResult] = await Promise.all([
+          companyService.list('customers', { page: 1, pageSize: 200, is_active: 'true', orderBy: 'name' }),
+          companyService.list('appointment_services', { page: 1, pageSize: 200, is_active: 'true', orderBy: 'name' }),
+        ]);
+
+        setCustomerOptions(
+          (customersResult?.data || []).map((item: any) => ({
+            id: String(item.id || item.name),
+            label: String(item.name || ''),
+          }))
+        );
+        setServiceOptions(
+          (servicesResult?.data || []).map((item: any) => ({
+            id: String(item.id || item.name),
+            label: String(item.name || ''),
+          }))
+        );
+      } catch (_error) {
+        setCustomerOptions([]);
+        setServiceOptions([]);
+      }
+    };
+
+    void loadFilterOptions();
+  }, [isOwner]);
+
+  const clearOwnerFilters = () => {
+    setDateFrom(subDays(new Date(), 180).toISOString().slice(0, 10));
+    setDateTo(new Date().toISOString().slice(0, 10));
+    setCustomerFilter('');
+    setServiceFilter('');
+    setDayFilter('');
+    setPeriodGroup('daily');
+  };
 
   if (!isSuperAdmin && !isOwner) {
     return (
@@ -119,9 +181,9 @@ const Financeiro: React.FC = () => {
 
   if (isOwner && ownerData) {
     const growth = Number(ownerData.summary.mrr_growth_percent || 0);
-    const cashflowSeries = ownerData.charts.cashflow_by_day.map((item) => ({
+    const cashflowSeries = (ownerData.charts.cashflow_by_period || ownerData.charts.cashflow_by_day).map((item: any) => ({
       ...item,
-      label: item.date.slice(5),
+      label: item.label || item.date.slice(5),
     }));
     const methodLabelMap: Record<string, string> = {
       pix: 'PIX',
@@ -144,11 +206,65 @@ const Financeiro: React.FC = () => {
             <h1 className="text-2xl font-bold lg:text-3xl">Financeiro</h1>
             <p className="text-muted-foreground">MRR, LTV e fluxo financeiro da sua empresa</p>
           </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-6">
             <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
             <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
-            <Button onClick={loadData}>Aplicar filtro</Button>
+            <Input
+              list="financeiro-clientes-list"
+              placeholder="Filtrar por cliente"
+              value={customerFilter}
+              onChange={(event) => setCustomerFilter(event.target.value)}
+            />
+            <Input
+              list="financeiro-servicos-list"
+              placeholder="Filtrar por servico"
+              value={serviceFilter}
+              onChange={(event) => setServiceFilter(event.target.value)}
+            />
+            <Input type="date" value={dayFilter} onChange={(event) => setDayFilter(event.target.value)} />
+            <select
+              value={periodGroup}
+              onChange={(event) => setPeriodGroup(event.target.value as 'daily' | 'monthly' | 'yearly')}
+              className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="daily">Diario</option>
+              <option value="monthly">Mensal</option>
+              <option value="yearly">Anual</option>
+            </select>
+            <div className="flex gap-2">
+              <Button onClick={loadData} className="flex-1">Aplicar filtro</Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  clearOwnerFilters();
+                  window.setTimeout(() => void loadData(), 0);
+                }}
+              >
+                Limpar
+              </Button>
+            </div>
           </div>
+        </div>
+
+        <datalist id="financeiro-clientes-list">
+          {customerOptions.map((item) => (
+            <option key={item.id} value={item.label} />
+          ))}
+        </datalist>
+        <datalist id="financeiro-servicos-list">
+          {serviceOptions.map((item) => (
+            <option key={item.id} value={item.label} />
+          ))}
+        </datalist>
+
+        <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
+          {customerFilter ? <Badge variant="outline">Cliente: {customerFilter}</Badge> : null}
+          {serviceFilter ? <Badge variant="outline">Servico: {serviceFilter}</Badge> : null}
+          {dayFilter ? <Badge variant="outline">Dia: {dayFilter}</Badge> : null}
+          <Badge variant="outline">
+            Agrupamento: {periodGroup === 'yearly' ? 'Anual' : periodGroup === 'monthly' ? 'Mensal' : 'Diario'}
+          </Badge>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -205,7 +321,9 @@ const Financeiro: React.FC = () => {
         <div className="grid gap-6 lg:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>Fluxo Diario (pago vs pendente)</CardTitle>
+              <CardTitle>
+                Fluxo {periodGroup === 'yearly' ? 'Anual' : periodGroup === 'monthly' ? 'Mensal' : 'Diario'} (pago vs pendente)
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="h-[320px]">

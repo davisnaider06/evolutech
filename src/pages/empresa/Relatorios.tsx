@@ -23,10 +23,21 @@ import { toast } from 'sonner';
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))', 'hsl(var(--chart-4))'];
 
+interface FilterOption {
+  id: string;
+  label: string;
+}
+
 interface ReportsResponse {
   period: {
     date_from: string;
     date_to: string;
+  };
+  filters?: {
+    customer?: string | null;
+    service?: string | null;
+    day?: string | null;
+    period_group?: 'daily' | 'monthly' | 'yearly';
   };
   summary: {
     customers_total: number;
@@ -39,6 +50,7 @@ interface ReportsResponse {
   };
   charts: {
     revenue_by_day: Array<{ date: string; revenue: number }>;
+    revenue_by_period?: Array<{ date: string; label: string; revenue: number }>;
     orders_by_status: Array<{ status: string; value: number }>;
     appointments_by_status: Array<{ status: string; value: number }>;
     top_items: Array<{ itemType: 'product' | 'service'; itemName: string; quantity: number; revenue: number }>;
@@ -50,6 +62,12 @@ const Relatorios: React.FC = () => {
   const [dateFrom, setDateFrom] = useState(subDays(new Date(), 30).toISOString().slice(0, 10));
   const [dateTo, setDateTo] = useState(new Date().toISOString().slice(0, 10));
   const [data, setData] = useState<ReportsResponse | null>(null);
+  const [customerFilter, setCustomerFilter] = useState('');
+  const [serviceFilter, setServiceFilter] = useState('');
+  const [dayFilter, setDayFilter] = useState('');
+  const [periodGroup, setPeriodGroup] = useState<'daily' | 'monthly' | 'yearly'>('daily');
+  const [customerOptions, setCustomerOptions] = useState<FilterOption[]>([]);
+  const [serviceOptions, setServiceOptions] = useState<FilterOption[]>([]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -57,6 +75,10 @@ const Relatorios: React.FC = () => {
       const response = (await companyService.reportsOverview({
         dateFrom,
         dateTo,
+        customer: customerFilter || undefined,
+        service: serviceFilter || undefined,
+        day: dayFilter || undefined,
+        periodGroup,
       })) as ReportsResponse;
       setData(response);
     } catch (error: any) {
@@ -70,6 +92,44 @@ const Relatorios: React.FC = () => {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    const loadFilterOptions = async () => {
+      try {
+        const [customersResult, servicesResult] = await Promise.all([
+          companyService.list('customers', { page: 1, pageSize: 200, is_active: 'true', orderBy: 'name' }),
+          companyService.list('appointment_services', { page: 1, pageSize: 200, is_active: 'true', orderBy: 'name' }),
+        ]);
+
+        setCustomerOptions(
+          (customersResult?.data || []).map((item: any) => ({
+            id: String(item.id || item.name),
+            label: String(item.name || ''),
+          }))
+        );
+        setServiceOptions(
+          (servicesResult?.data || []).map((item: any) => ({
+            id: String(item.id || item.name),
+            label: String(item.name || ''),
+          }))
+        );
+      } catch (_error) {
+        setCustomerOptions([]);
+        setServiceOptions([]);
+      }
+    };
+
+    void loadFilterOptions();
+  }, []);
+
+  const clearFilters = () => {
+    setDateFrom(subDays(new Date(), 30).toISOString().slice(0, 10));
+    setDateTo(new Date().toISOString().slice(0, 10));
+    setCustomerFilter('');
+    setServiceFilter('');
+    setDayFilter('');
+    setPeriodGroup('daily');
+  };
+
   const formatCurrency = useMemo(
     () =>
       new Intl.NumberFormat('pt-BR', {
@@ -79,9 +139,9 @@ const Relatorios: React.FC = () => {
     []
   );
 
-  const chartRevenueByDay = (data?.charts.revenue_by_day || []).map((item) => ({
+  const chartRevenueByDay = ((data?.charts.revenue_by_period || data?.charts.revenue_by_day) || []).map((item: any) => ({
     ...item,
-    label: item.date.slice(5),
+    label: item.label || item.date.slice(5),
   }));
 
   if (!data && loading) {
@@ -100,13 +160,67 @@ const Relatorios: React.FC = () => {
           <h1 className="text-2xl font-bold lg:text-3xl">Relatorios</h1>
           <p className="text-muted-foreground">Clientes, produtos, pedidos, agendamentos e faturamento por periodo</p>
         </div>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-6">
           <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
           <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
-          <Button onClick={fetchData} disabled={loading}>
-            {loading ? 'Atualizando...' : 'Aplicar filtro'}
-          </Button>
+          <Input
+            list="relatorios-clientes-list"
+            placeholder="Filtrar por cliente"
+            value={customerFilter}
+            onChange={(event) => setCustomerFilter(event.target.value)}
+          />
+          <Input
+            list="relatorios-servicos-list"
+            placeholder="Filtrar por servico"
+            value={serviceFilter}
+            onChange={(event) => setServiceFilter(event.target.value)}
+          />
+          <Input type="date" value={dayFilter} onChange={(event) => setDayFilter(event.target.value)} />
+          <select
+            value={periodGroup}
+            onChange={(event) => setPeriodGroup(event.target.value as 'daily' | 'monthly' | 'yearly')}
+            className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            <option value="daily">Diario</option>
+            <option value="monthly">Mensal</option>
+            <option value="yearly">Anual</option>
+          </select>
+          <div className="flex gap-2">
+            <Button onClick={fetchData} disabled={loading} className="flex-1">
+              {loading ? 'Atualizando...' : 'Aplicar filtro'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                clearFilters();
+                window.setTimeout(() => void fetchData(), 0);
+              }}
+            >
+              Limpar
+            </Button>
+          </div>
         </div>
+      </div>
+
+      <datalist id="relatorios-clientes-list">
+        {customerOptions.map((item) => (
+          <option key={item.id} value={item.label} />
+        ))}
+      </datalist>
+      <datalist id="relatorios-servicos-list">
+        {serviceOptions.map((item) => (
+          <option key={item.id} value={item.label} />
+        ))}
+      </datalist>
+
+      <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
+        {customerFilter ? <span className="rounded-full border border-border px-3 py-1">Cliente: {customerFilter}</span> : null}
+        {serviceFilter ? <span className="rounded-full border border-border px-3 py-1">Servico: {serviceFilter}</span> : null}
+        {dayFilter ? <span className="rounded-full border border-border px-3 py-1">Dia: {dayFilter}</span> : null}
+        <span className="rounded-full border border-border px-3 py-1">
+          Agrupamento: {periodGroup === 'yearly' ? 'Anual' : periodGroup === 'monthly' ? 'Mensal' : 'Diario'}
+        </span>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
@@ -178,7 +292,9 @@ const Relatorios: React.FC = () => {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Faturamento por dia</CardTitle>
+            <CardTitle>
+              Faturamento por {periodGroup === 'yearly' ? 'ano' : periodGroup === 'monthly' ? 'mes' : 'dia'}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-[320px]">

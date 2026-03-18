@@ -63,7 +63,7 @@ const navItems: NavItem[] = [
   { icon: Wallet, label: 'Comissões', path: '/empresa/comissoes', moduleCode: 'commissions' },
   { icon: Gift, label: 'Fidelidade', path: '/empresa/fidelidade', moduleCode: 'loyalty' },
   { icon: Repeat, label: 'Assinaturas', path: '/empresa/assinaturas', moduleCode: 'subscriptions' },
-  { icon: BookOpen, label: 'Cursos', path: '/empresa/cursos', moduleCode: 'courses', ownerOnly: true },
+  { icon: BookOpen, label: 'Cursos', path: '/empresa/cursos', moduleCode: 'courses' },
   { icon: CreditCard, label: 'Gateways', path: '/empresa/gateways', moduleCode: 'finance', ownerOnly: true, alwaysShow: true },
   { icon: BarChart3, label: 'Relatórios', path: '/empresa/relatorios', moduleCode: 'reports' },
   

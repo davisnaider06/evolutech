@@ -73,6 +73,26 @@ app.get('/', (req, res) => {
   res.json({ status: 'Backend Evolutech Modular 🚀' });
 });
 
+app.get('/api/health', async (_req, res) => {
+  const startedAt = Date.now();
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({
+      ok: true,
+      db: 'up',
+      server_time: new Date().toISOString(),
+      latency_ms: Date.now() - startedAt,
+    });
+  } catch (error) {
+    res.status(503).json({
+      ok: false,
+      db: 'down',
+      server_time: new Date().toISOString(),
+      latency_ms: Date.now() - startedAt,
+    });
+  }
+});
+
 const startServer = async () => {
   try {
     await prisma.$connect();

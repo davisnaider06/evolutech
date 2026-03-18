@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { UserPlus, Copy } from 'lucide-react';
+import { UserPlus, Copy, Pencil, Trash2 } from 'lucide-react';
 
 interface TeamMember {
   id: string;
@@ -43,12 +43,15 @@ export default function ConvitesEquipe() {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+  const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null);
   const [credentials, setCredentials] = useState<AccessCredentials | null>(null);
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
     password: '',
+    isActive: true,
   });
 
   const fetchMembers = async () => {
@@ -67,7 +70,33 @@ export default function ConvitesEquipe() {
     fetchMembers();
   }, []);
 
-  const handleCreateMember = async (e: React.FormEvent) => {
+  const resetForm = () => {
+    setEditingMemberId(null);
+    setFormData({
+      fullName: '',
+      email: '',
+      password: '',
+      isActive: true,
+    });
+  };
+
+  const openCreate = () => {
+    resetForm();
+    setIsDialogOpen(true);
+  };
+
+  const openEdit = (member: TeamMember) => {
+    setEditingMemberId(member.id);
+    setFormData({
+      fullName: member.fullName,
+      email: member.email,
+      password: '',
+      isActive: member.isActive,
+    });
+    setIsDialogOpen(true);
+  };
+
+  const handleSaveMember = async (e: React.FormEvent) => {
     e.preventDefault();
     const fullName = formData.fullName.trim();
     const email = formData.email.trim().toLowerCase();
@@ -77,26 +106,52 @@ export default function ConvitesEquipe() {
       return;
     }
 
-    setIsCreating(true);
+    setIsSaving(true);
     try {
-      const result = await companyService.createTeamMember({
-        fullName,
-        email,
-        password: formData.password.trim() || undefined,
-      });
+      if (editingMemberId) {
+        await companyService.updateTeamMember(editingMemberId, {
+          fullName,
+          email,
+          password: formData.password.trim() || undefined,
+          isActive: formData.isActive,
+        });
+        toast.success('Membro atualizado com sucesso');
+      } else {
+        const result = await companyService.createTeamMember({
+          fullName,
+          email,
+          password: formData.password.trim() || undefined,
+        });
+        setCredentials({
+          email: result.credentials.email,
+          temporaryPassword: result.credentials.temporaryPassword,
+        });
+        toast.success('Membro cadastrado com sucesso');
+      }
 
-      setCredentials({
-        email: result.credentials.email,
-        temporaryPassword: result.credentials.temporaryPassword,
-      });
-      toast.success('Membro cadastrado com sucesso');
       setIsDialogOpen(false);
-      setFormData({ fullName: '', email: '', password: '' });
+      resetForm();
       fetchMembers();
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao cadastrar membro');
+      toast.error(error.message || 'Erro ao salvar membro');
     } finally {
-      setIsCreating(false);
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async (member: TeamMember) => {
+    const confirmed = window.confirm(`Excluir ${member.fullName} da equipe?`);
+    if (!confirmed) return;
+
+    setDeletingMemberId(member.id);
+    try {
+      await companyService.deleteTeamMember(member.id);
+      toast.success('Membro removido da equipe');
+      fetchMembers();
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao excluir membro');
+    } finally {
+      setDeletingMemberId(null);
     }
   };
 
@@ -112,23 +167,31 @@ export default function ConvitesEquipe() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Equipe</h1>
-          <p className="text-muted-foreground">Cadastre funcionários e gerencie acessos da sua empresa</p>
+          <p className="text-muted-foreground">Cadastre, edite e remova funcionarios da sua empresa</p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog
+          open={isDialogOpen}
+          onOpenChange={(open) => {
+            setIsDialogOpen(open);
+            if (!open) resetForm();
+          }}
+        >
           <DialogTrigger asChild>
-            <Button className="gap-2">
+            <Button className="gap-2" onClick={openCreate}>
               <UserPlus className="h-4 w-4" />
               Cadastrar Membro
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Cadastrar Novo Funcionário</DialogTitle>
+              <DialogTitle>{editingMemberId ? 'Editar Membro' : 'Cadastrar Novo Funcionario'}</DialogTitle>
               <DialogDescription>
-                O novo usuário será criado com nível de acesso Funcionário.
+                {editingMemberId
+                  ? 'Atualize os dados do funcionario.'
+                  : 'O novo usuario sera criado com nivel de acesso Funcionario.'}
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleCreateMember} className="space-y-4">
+            <form onSubmit={handleSaveMember} className="space-y-4">
               <div className="space-y-2">
                 <Label>Nome</Label>
                 <Input
@@ -149,15 +212,29 @@ export default function ConvitesEquipe() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Senha inicial (opcional)</Label>
+                <Label>{editingMemberId ? 'Nova senha (opcional)' : 'Senha inicial (opcional)'}</Label>
                 <Input
-                  placeholder="Se vazio, gera senha temporária"
+                  placeholder={editingMemberId ? 'Se vazio, mantem a senha atual' : 'Se vazio, gera senha temporaria'}
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 />
               </div>
-              <Button type="submit" className="w-full" disabled={isCreating}>
-                {isCreating ? 'Cadastrando...' : 'Cadastrar Funcionário'}
+
+              {editingMemberId && (
+                <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium">Funcionario ativo</p>
+                    <p className="text-xs text-muted-foreground">Desative para bloquear o acesso sem excluir</p>
+                  </div>
+                  <Switch
+                    checked={formData.isActive}
+                    onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, isActive: checked }))}
+                  />
+                </div>
+              )}
+
+              <Button type="submit" className="w-full" disabled={isSaving}>
+                {isSaving ? 'Salvando...' : editingMemberId ? 'Salvar Alteracoes' : 'Cadastrar Funcionario'}
               </Button>
             </form>
           </DialogContent>
@@ -170,7 +247,7 @@ export default function ConvitesEquipe() {
             <UserPlus className="h-5 w-5" />
             Membros da Equipe
           </CardTitle>
-          <CardDescription>Usuários ativos na sua empresa</CardDescription>
+          <CardDescription>Usuarios vinculados a sua empresa</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -178,18 +255,17 @@ export default function ConvitesEquipe() {
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
             </div>
           ) : members.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">
-              Nenhum membro cadastrado
-            </p>
+            <p className="py-8 text-center text-muted-foreground">Nenhum membro cadastrado</p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Nome</TableHead>
                   <TableHead>Email</TableHead>
-                  <TableHead>Função</TableHead>
+                  <TableHead>Funcao</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Desde</TableHead>
+                  <TableHead className="text-right">Acoes</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -199,7 +275,7 @@ export default function ConvitesEquipe() {
                     <TableCell>{member.email}</TableCell>
                     <TableCell>
                       <Badge variant={member.role === 'DONO_EMPRESA' ? 'default' : 'secondary'}>
-                        {member.role === 'DONO_EMPRESA' ? 'Administrador' : 'Funcionário'}
+                        {member.role === 'DONO_EMPRESA' ? 'Administrador' : 'Funcionario'}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -213,6 +289,25 @@ export default function ConvitesEquipe() {
                     <TableCell className="text-muted-foreground">
                       {new Date(member.createdAt).toLocaleDateString('pt-BR')}
                     </TableCell>
+                    <TableCell className="text-right">
+                      {member.role === 'FUNCIONARIO_EMPRESA' ? (
+                        <div className="flex items-center justify-end gap-2">
+                          <Button variant="outline" size="sm" onClick={() => openEdit(member)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDelete(member)}
+                            disabled={deletingMemberId === member.id}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Dono principal</span>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -224,12 +319,12 @@ export default function ConvitesEquipe() {
       <Dialog open={!!credentials} onOpenChange={() => setCredentials(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Acesso do Funcionário</DialogTitle>
+            <DialogTitle>Acesso do Funcionario</DialogTitle>
             <DialogDescription>Envie esses dados para o novo membro.</DialogDescription>
           </DialogHeader>
           <div className="space-y-2 text-sm">
             <p><strong>Email:</strong> {credentials?.email}</p>
-            <p><strong>Senha temporária:</strong> {credentials?.temporaryPassword}</p>
+            <p><strong>Senha temporaria:</strong> {credentials?.temporaryPassword}</p>
           </div>
           <Button variant="outline" className="gap-2" onClick={copyCredentials}>
             <Copy className="h-4 w-4" />

@@ -146,7 +146,7 @@ const Produtos: React.FC = () => {
     },
     {
       key: 'stockQuantity',
-      label: 'Estoque',
+      label: 'Estoque/Tempo serviço',
       render: (item) => <span className={item.stockQuantity <= 0 ? 'text-destructive font-medium' : ''}>{item.stockQuantity}</span>,
     },
     {

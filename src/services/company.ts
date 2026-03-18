@@ -40,19 +40,43 @@ export const companyService = {
     priority: 'baixa' | 'media' | 'alta' | 'urgente';
     category?: string;
   }) => request('/support/tickets', { method: 'POST', body: JSON.stringify(data) }),
-  financialOverview: async (params?: { dateFrom?: string; dateTo?: string; companyId?: string }) => {
+  financialOverview: async (params?: {
+    dateFrom?: string;
+    dateTo?: string;
+    companyId?: string;
+    customer?: string;
+    service?: string;
+    day?: string;
+    periodGroup?: 'daily' | 'monthly' | 'yearly';
+  }) => {
     const searchParams = new URLSearchParams();
     if (params?.dateFrom) searchParams.set('dateFrom', params.dateFrom);
     if (params?.dateTo) searchParams.set('dateTo', params.dateTo);
     if (params?.companyId) searchParams.set('company_id', params.companyId);
+    if (params?.customer) searchParams.set('customer', params.customer);
+    if (params?.service) searchParams.set('service', params.service);
+    if (params?.day) searchParams.set('day', params.day);
+    if (params?.periodGroup) searchParams.set('period_group', params.periodGroup);
     const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
     return request(`/financeiro/overview${suffix}`);
   },
-  reportsOverview: async (params?: { dateFrom?: string; dateTo?: string; companyId?: string }) => {
+  reportsOverview: async (params?: {
+    dateFrom?: string;
+    dateTo?: string;
+    companyId?: string;
+    customer?: string;
+    service?: string;
+    day?: string;
+    periodGroup?: 'daily' | 'monthly' | 'yearly';
+  }) => {
     const searchParams = new URLSearchParams();
     if (params?.dateFrom) searchParams.set('dateFrom', params.dateFrom);
     if (params?.dateTo) searchParams.set('dateTo', params.dateTo);
     if (params?.companyId) searchParams.set('company_id', params.companyId);
+    if (params?.customer) searchParams.set('customer', params.customer);
+    if (params?.service) searchParams.set('service', params.service);
+    if (params?.day) searchParams.set('day', params.day);
+    if (params?.periodGroup) searchParams.set('period_group', params.periodGroup);
     const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
     return request(`/reports/overview${suffix}`);
   },
@@ -420,6 +444,18 @@ export const companyService = {
     request(`/customers/${encodeURIComponent(customerId)}/history`),
   createTeamMember: async (data: { fullName: string; email: string; password?: string }) =>
     request('/team/members', { method: 'POST', body: JSON.stringify(data) }),
+  updateTeamMember: async (
+    memberId: string,
+    data: { fullName: string; email: string; password?: string; isActive?: boolean }
+  ) =>
+    request(`/team/members/${encodeURIComponent(memberId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  deleteTeamMember: async (memberId: string) =>
+    request(`/team/members/${encodeURIComponent(memberId)}`, {
+      method: 'DELETE',
+    }),
   listTeamPermissions: async () => request('/team/permissions'),
   updateTeamMemberPermissions: async (
     memberId: string,

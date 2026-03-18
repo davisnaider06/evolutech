@@ -477,8 +477,11 @@ export class CompanyService {
 
     const companyId = this.resolveCompanyId(user, data);
     await this.validateModuleAccess(table, user, companyId);
-    if ((table === 'courses' || table === 'course_accesses') && user.role !== 'DONO_EMPRESA') {
-      throw new CompanyServiceError('Apenas DONO_EMPRESA pode gerenciar cursos', 403);
+    if (
+      (table === 'courses' || table === 'course_accesses') &&
+      !['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'].includes(user.role)
+    ) {
+      throw new CompanyServiceError('Apenas usuarios da empresa podem gerenciar cursos', 403);
     }
 
     const payload = { ...data };
@@ -526,8 +529,11 @@ export class CompanyService {
     });
     if (!existing) throw new CompanyServiceError('Registro n�o encontrado', 404);
     if (!this.checkAccess(user, existing.companyId)) throw new CompanyServiceError('Acesso negado', 403);
-    if ((table === 'courses' || table === 'course_accesses') && user.role !== 'DONO_EMPRESA') {
-      throw new CompanyServiceError('Apenas DONO_EMPRESA pode gerenciar cursos', 403);
+    if (
+      (table === 'courses' || table === 'course_accesses') &&
+      !['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'].includes(user.role)
+    ) {
+      throw new CompanyServiceError('Apenas usuarios da empresa podem gerenciar cursos', 403);
     }
 
     if (
@@ -627,8 +633,11 @@ export class CompanyService {
     });
     if (!existing) throw new CompanyServiceError('Registro n�o encontrado', 404);
     if (!this.checkAccess(user, existing.companyId)) throw new CompanyServiceError('Acesso negado', 403);
-    if ((table === 'courses' || table === 'course_accesses') && user.role !== 'DONO_EMPRESA') {
-      throw new CompanyServiceError('Apenas DONO_EMPRESA pode gerenciar cursos', 403);
+    if (
+      (table === 'courses' || table === 'course_accesses') &&
+      !['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'].includes(user.role)
+    ) {
+      throw new CompanyServiceError('Apenas usuarios da empresa podem gerenciar cursos', 403);
     }
 
     if (
@@ -2001,6 +2010,88 @@ export class CompanyService {
     return parsed;
   }
 
+  private parseSpecificDayRange(raw?: string) {
+    const value = String(raw || '').trim();
+    if (!value) return null;
+
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) {
+      throw new CompanyServiceError('day invalido. Use YYYY-MM-DD', 400);
+    }
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const start = new Date(year, month - 1, day, 0, 0, 0, 0);
+    if (Number.isNaN(start.getTime())) {
+      throw new CompanyServiceError('day invalido. Use YYYY-MM-DD', 400);
+    }
+
+    const end = new Date(start);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  }
+
+  private parsePeriodGroup(raw?: string) {
+    const normalized = String(raw || 'daily').trim().toLowerCase();
+    if (normalized === 'monthly' || normalized === 'yearly') {
+      return normalized;
+    }
+    return 'daily';
+  }
+
+  private buildGroupedTimeline(
+    start: Date,
+    end: Date,
+    periodGroup: 'daily' | 'monthly' | 'yearly'
+  ) {
+    const timeline = new Map<string, { label: string; paid: number; pending: number; revenue: number }>();
+
+    if (periodGroup === 'yearly') {
+      const cursor = new Date(start.getFullYear(), 0, 1, 0, 0, 0, 0);
+      const limit = new Date(end.getFullYear(), 0, 1, 0, 0, 0, 0);
+      while (cursor <= limit) {
+        const year = cursor.getFullYear();
+        const key = String(year);
+        timeline.set(key, { label: key, paid: 0, pending: 0, revenue: 0 });
+        cursor.setFullYear(cursor.getFullYear() + 1);
+      }
+      return timeline;
+    }
+
+    if (periodGroup === 'monthly') {
+      const cursor = new Date(start.getFullYear(), start.getMonth(), 1, 0, 0, 0, 0);
+      const limit = new Date(end.getFullYear(), end.getMonth(), 1, 0, 0, 0, 0);
+      while (cursor <= limit) {
+        const year = cursor.getFullYear();
+        const month = cursor.getMonth() + 1;
+        const key = `${year}-${String(month).padStart(2, '0')}`;
+        const label = cursor.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+        timeline.set(key, { label, paid: 0, pending: 0, revenue: 0 });
+        cursor.setMonth(cursor.getMonth() + 1);
+      }
+      return timeline;
+    }
+
+    const cursor = new Date(start);
+    while (cursor <= end) {
+      const key = cursor.toISOString().slice(0, 10);
+      timeline.set(key, { label: key.slice(5), paid: 0, pending: 0, revenue: 0 });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return timeline;
+  }
+
+  private getTimelineKey(date: Date, periodGroup: 'daily' | 'monthly' | 'yearly') {
+    if (periodGroup === 'yearly') {
+      return String(date.getFullYear());
+    }
+    if (periodGroup === 'monthly') {
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    }
+    return date.toISOString().slice(0, 10);
+  }
+
   private getNamedPeriodBounds(referenceDate: Date, period: 'day' | 'week' | 'month' | 'year') {
     const start = new Date(referenceDate);
     const end = new Date(referenceDate);
@@ -2067,11 +2158,24 @@ export class CompanyService {
 
   async getReportsOverview(
     user: AuthenticatedUser,
-    queryParams: { dateFrom?: string; dateTo?: string; company_id?: string; companyId?: string } = {}
+    queryParams: {
+      dateFrom?: string;
+      dateTo?: string;
+      company_id?: string;
+      companyId?: string;
+      customer?: string;
+      service?: string;
+      day?: string;
+      period_group?: string;
+    } = {}
   ) {
     const companyId = this.resolveCompanyId(user, queryParams);
     await this.ensureAnyModuleAccess(user, companyId, ['relatorios', 'reports']);
-    const { start, end } = this.parseDateRange(queryParams, 30);
+    const specificDayRange = this.parseSpecificDayRange(queryParams.day);
+    const { start, end } = specificDayRange || this.parseDateRange(queryParams, 30);
+    const customerFilter = this.normalizeComparableText(queryParams.customer);
+    const serviceFilter = this.normalizeComparableText(queryParams.service);
+    const periodGroup = this.parsePeriodGroup(queryParams.period_group);
 
     const [customersTotal, productsTotal, customersInRangeCount, ordersInRange, appointmentsGroupedByStatus, pdvLogs] =
       await Promise.all([
@@ -2082,7 +2186,7 @@ export class CompanyService {
         }),
         prisma.order.findMany({
           where: { companyId, createdAt: { gte: start, lte: end } },
-          select: { id: true, status: true, total: true, createdAt: true },
+          select: { id: true, status: true, total: true, createdAt: true, customerName: true },
         }),
         (prisma as any).appointment.groupBy({
           by: ['status'],
@@ -2099,11 +2203,50 @@ export class CompanyService {
         }),
       ]);
 
-    const paidOrders = ordersInRange.filter((order) => String(order.status).toLowerCase() === 'paid');
+    const pdvLogMap = new Map<
+      string,
+      {
+        services: string[];
+        items: Array<{ itemType: 'product' | 'service'; itemName: string; quantity: number; revenue: number }>;
+      }
+    >();
+    for (const log of pdvLogs) {
+      const details = (log.details || {}) as any;
+      const orderId = String(details?.orderId || '').trim();
+      if (!orderId) continue;
+      const items = Array.isArray(details?.items) ? details.items : [];
+      pdvLogMap.set(orderId, {
+        services: items
+          .filter((item: any) => String(item?.itemType || '').trim().toLowerCase() === 'service')
+          .map((item: any) => this.normalizeComparableText(item?.itemName))
+          .filter(Boolean),
+        items: items.map((item: any) => ({
+          itemType: item?.itemType === 'service' ? 'service' : 'product',
+          itemName: String(item?.itemName || '').trim(),
+          quantity: Number(item?.quantity || 0),
+          revenue: Number(item?.lineTotal || 0),
+        })),
+      });
+    }
+
+    const filteredOrders = ordersInRange.filter((order) => {
+      if (customerFilter && !this.normalizeComparableText(order.customerName).includes(customerFilter)) {
+        return false;
+      }
+      if (serviceFilter) {
+        const log = pdvLogMap.get(String(order.id));
+        if (!log || !log.services.some((serviceName) => serviceName.includes(serviceFilter))) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    const paidOrders = filteredOrders.filter((order) => String(order.status).toLowerCase() === 'paid');
     const totalRevenue = paidOrders.reduce((sum, order) => sum + this.toNumber(order.total), 0);
 
     const ordersByStatusMap = new Map<string, number>();
-    for (const order of ordersInRange) {
+    for (const order of filteredOrders) {
       const key = String(order.status || 'unknown').toLowerCase();
       ordersByStatusMap.set(key, (ordersByStatusMap.get(key) || 0) + 1);
     }
@@ -2116,31 +2259,28 @@ export class CompanyService {
     );
     const appointmentsTotal = Array.from(appointmentsByStatusMap.values()).reduce((sum, value) => sum + value, 0);
 
-    const dayMap = new Map<string, number>();
-    const dayCursor = new Date(start);
-    while (dayCursor <= end) {
-      const key = dayCursor.toISOString().slice(0, 10);
-      dayMap.set(key, 0);
-      dayCursor.setDate(dayCursor.getDate() + 1);
-    }
+    const timeline = this.buildGroupedTimeline(start, end, periodGroup);
     for (const order of paidOrders) {
-      const key = order.createdAt.toISOString().slice(0, 10);
-      dayMap.set(key, (dayMap.get(key) || 0) + this.toNumber(order.total));
+      const key = this.getTimelineKey(order.createdAt, periodGroup);
+      const current = timeline.get(key);
+      if (!current) continue;
+      current.revenue += this.toNumber(order.total);
+      timeline.set(key, current);
     }
 
     const topItemsMap = new Map<
       string,
       { itemType: 'product' | 'service'; itemName: string; quantity: number; revenue: number }
     >();
-    for (const log of pdvLogs) {
-      const details = (log.details || {}) as any;
-      const items = Array.isArray(details.items) ? details.items : [];
+    for (const order of paidOrders) {
+      const log = pdvLogMap.get(String(order.id));
+      const items = log?.items || [];
       for (const item of items) {
-        const itemType = item?.itemType === 'service' ? 'service' : 'product';
-        const itemName = String(item?.itemName || '').trim();
+        const itemType = item.itemType;
+        const itemName = item.itemName;
         if (!itemName) continue;
-        const quantity = Number(item?.quantity || 0);
-        const revenue = Number(item?.lineTotal || 0);
+        const quantity = Number(item.quantity || 0);
+        const revenue = Number(item.revenue || 0);
         const key = `${itemType}:${itemName}`;
         const current = topItemsMap.get(key);
         if (current) {
@@ -2161,17 +2301,28 @@ export class CompanyService {
         date_from: start.toISOString(),
         date_to: end.toISOString(),
       },
+      filters: {
+        customer: customerFilter ? String(queryParams.customer || '').trim() : null,
+        service: serviceFilter ? String(queryParams.service || '').trim() : null,
+        day: specificDayRange ? String(queryParams.day || '').trim() : null,
+        period_group: periodGroup,
+      },
       summary: {
         customers_total: customersTotal,
         products_total: productsTotal,
         new_customers: customersInRangeCount,
-        orders_total: ordersInRange.length,
+        orders_total: filteredOrders.length,
         paid_orders: paidOrders.length,
         appointments_total: appointmentsTotal,
         revenue_total: totalRevenue,
       },
       charts: {
-        revenue_by_day: Array.from(dayMap.entries()).map(([date, revenue]) => ({ date, revenue })),
+        revenue_by_day: Array.from(timeline.entries()).map(([date, values]) => ({ date, revenue: values.revenue })),
+        revenue_by_period: Array.from(timeline.entries()).map(([date, values]) => ({
+          date,
+          label: values.label,
+          revenue: values.revenue,
+        })),
         orders_by_status: Array.from(ordersByStatusMap.entries()).map(([status, value]) => ({ status, value })),
         appointments_by_status: Array.from(appointmentsByStatusMap.entries()).map(([status, value]) => ({
           status,
@@ -5278,7 +5429,16 @@ export class CompanyService {
 
   async getFinancialOverview(
     user: AuthenticatedUser,
-    queryParams: { dateFrom?: string; dateTo?: string; company_id?: string; companyId?: string } = {}
+    queryParams: {
+      dateFrom?: string;
+      dateTo?: string;
+      company_id?: string;
+      companyId?: string;
+      customer?: string;
+      service?: string;
+      day?: string;
+      period_group?: string;
+    } = {}
   ) {
     const allowedRole = user.role === 'SUPER_ADMIN_EVOLUTECH' || user.role === 'DONO_EMPRESA';
     if (!allowedRole) {
@@ -5296,7 +5456,11 @@ export class CompanyService {
     if (isOwner) {
       await this.ensureAnyModuleAccess(user, companyId, ['financeiro', 'financial']);
     }
-    const { start, end } = this.parseDateRange(queryParams, 180);
+    const specificDayRange = this.parseSpecificDayRange(queryParams.day);
+    const { start, end } = specificDayRange || this.parseDateRange(queryParams, 180);
+    const customerFilter = this.normalizeComparableText(queryParams.customer);
+    const serviceFilter = this.normalizeComparableText(queryParams.service);
+    const periodGroup = this.parsePeriodGroup(queryParams.period_group);
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -5342,7 +5506,7 @@ export class CompanyService {
           status: 'paid',
           createdAt: { gte: start, lte: end },
         },
-        select: { id: true, total: true, createdAt: true },
+        select: { id: true, total: true, createdAt: true, customerName: true },
         orderBy: { createdAt: 'asc' },
       }),
       prisma.order.findMany({
@@ -5351,7 +5515,7 @@ export class CompanyService {
           status: { in: ['pending', 'pending_gateway', 'pending_pix'] },
           createdAt: { gte: start, lte: end },
         },
-        select: { total: true, createdAt: true },
+        select: { id: true, total: true, createdAt: true, customerName: true },
       }),
       (prisma as any).paymentTransaction.findMany({
         where: {
@@ -5367,7 +5531,7 @@ export class CompanyService {
           action: 'PDV_CHECKOUT',
           createdAt: { gte: start, lte: end },
         },
-        select: { details: true },
+        select: { details: true, createdAt: true },
       }),
       prisma.customer.count({
         where: isOwner && companyId ? { companyId } : undefined,
@@ -5471,31 +5635,70 @@ export class CompanyService {
 
     const lifetimeRevenue = this.toNumber(lifetimeRevenueAgg._sum.total);
     const ltv = customersTotalCount > 0 ? lifetimeRevenue / customersTotalCount : 0;
-    const paidRevenueInRange = paidOrdersInRange.reduce((sum, item) => sum + this.toNumber(item.total), 0);
-    const ticketMedio = paidOrdersInRange.length > 0 ? paidRevenueInRange / paidOrdersInRange.length : 0;
-    const pendingAmount = pendingOrdersInRange.reduce((sum, item) => sum + this.toNumber(item.total), 0);
+    const auditLogMap = new Map<
+      string,
+      {
+        paymentMethod: string | null;
+        services: string[];
+      }
+    >();
+    for (const log of auditLogsInRange) {
+      const details = (log.details || {}) as any;
+      const orderId = String(details?.orderId || '').trim();
+      if (!orderId) continue;
+      const items = Array.isArray(details?.items) ? details.items : [];
+      auditLogMap.set(orderId, {
+        paymentMethod: String(details?.paymentMethod || '').trim().toLowerCase() || null,
+        services: items
+          .filter((item: any) => String(item?.itemType || '').trim().toLowerCase() === 'service')
+          .map((item: any) => this.normalizeComparableText(item?.itemName))
+          .filter(Boolean),
+      });
+    }
 
-    const dailyMap = new Map<string, { paid: number; pending: number }>();
-    const cursor = new Date(start);
-    while (cursor <= end) {
-      dailyMap.set(cursor.toISOString().slice(0, 10), { paid: 0, pending: 0 });
-      cursor.setDate(cursor.getDate() + 1);
-    }
-    for (const item of paidOrdersInRange) {
-      const key = item.createdAt.toISOString().slice(0, 10);
-      const current = dailyMap.get(key) || { paid: 0, pending: 0 };
+    const matchesFinancialFilters = (item: {
+      id?: string | null;
+      customerName?: string | null;
+      createdAt: Date;
+    }) => {
+      if (customerFilter && !this.normalizeComparableText(item.customerName).includes(customerFilter)) {
+        return false;
+      }
+      if (serviceFilter) {
+        const log = auditLogMap.get(String(item.id || ''));
+        if (!log || !log.services.some((serviceName) => serviceName.includes(serviceFilter))) {
+          return false;
+        }
+      }
+      return true;
+    };
+
+    const filteredPaidOrdersInRange = paidOrdersInRange.filter(matchesFinancialFilters);
+    const filteredPendingOrdersInRange = pendingOrdersInRange.filter(matchesFinancialFilters);
+    const filteredPaidOrderIds = new Set(filteredPaidOrdersInRange.map((item) => String(item.id)));
+
+    const paidRevenueInRange = filteredPaidOrdersInRange.reduce((sum, item) => sum + this.toNumber(item.total), 0);
+    const ticketMedio = filteredPaidOrdersInRange.length > 0 ? paidRevenueInRange / filteredPaidOrdersInRange.length : 0;
+    const pendingAmount = filteredPendingOrdersInRange.reduce((sum, item) => sum + this.toNumber(item.total), 0);
+
+    const timeline = this.buildGroupedTimeline(start, end, periodGroup);
+    for (const item of filteredPaidOrdersInRange) {
+      const key = this.getTimelineKey(item.createdAt, periodGroup);
+      const current = timeline.get(key);
+      if (!current) continue;
       current.paid += this.toNumber(item.total);
-      dailyMap.set(key, current);
+      timeline.set(key, current);
     }
-    for (const item of pendingOrdersInRange) {
-      const key = item.createdAt.toISOString().slice(0, 10);
-      const current = dailyMap.get(key) || { paid: 0, pending: 0 };
+    for (const item of filteredPendingOrdersInRange) {
+      const key = this.getTimelineKey(item.createdAt, periodGroup);
+      const current = timeline.get(key);
+      if (!current) continue;
       current.pending += this.toNumber(item.total);
-      dailyMap.set(key, current);
+      timeline.set(key, current);
     }
 
     const paidOrdersById = new Map<string, number>();
-    for (const order of paidOrdersInRange as any[]) {
+    for (const order of filteredPaidOrdersInRange as any[]) {
       if (order?.id) paidOrdersById.set(String(order.id), this.toNumber(order.total));
     }
 
@@ -5503,6 +5706,8 @@ export class CompanyService {
     const ordersAlreadyCounted = new Set<string>();
 
     for (const tx of paidTransactionsInRange) {
+      const orderId = String(tx.orderId || '').trim();
+      if (orderId && !filteredPaidOrderIds.has(orderId)) continue;
       const method = String(tx.paymentMethod || 'desconhecido').toLowerCase();
       paymentMethodsMap.set(method, (paymentMethodsMap.get(method) || 0) + this.toNumber(tx.amount));
       if (tx.orderId) {
@@ -5513,6 +5718,7 @@ export class CompanyService {
     for (const log of auditLogsInRange) {
       const details = (log.details || {}) as any;
       const orderId = String(details?.orderId || '').trim();
+      if (orderId && !filteredPaidOrderIds.has(orderId)) continue;
       const paymentMethod = String(details?.paymentMethod || '').trim().toLowerCase();
       if (!orderId || !paymentMethod) continue;
       if (ordersAlreadyCounted.has(orderId)) continue;
@@ -5527,6 +5733,12 @@ export class CompanyService {
         date_from: start.toISOString(),
         date_to: end.toISOString(),
       },
+      filters: {
+        customer: customerFilter ? String(queryParams.customer || '').trim() : null,
+        service: serviceFilter ? String(queryParams.service || '').trim() : null,
+        day: specificDayRange ? String(queryParams.day || '').trim() : null,
+        period_group: periodGroup,
+      },
       summary: {
         mrr_current: mrrCurrent,
         mrr_previous: mrrPrevious,
@@ -5538,8 +5750,14 @@ export class CompanyService {
         customers_total: customersTotalCount,
       },
       charts: {
-        cashflow_by_day: Array.from(dailyMap.entries()).map(([date, values]) => ({
+        cashflow_by_day: Array.from(timeline.entries()).map(([date, values]) => ({
           date,
+          paid: values.paid,
+          pending: values.pending,
+        })),
+        cashflow_by_period: Array.from(timeline.entries()).map(([date, values]) => ({
+          date,
+          label: values.label,
           paid: values.paid,
           pending: values.pending,
         })),
@@ -6112,7 +6330,20 @@ export class CompanyService {
 
     const created = await prisma.$transaction(async (tx) => {
       const existingUser = await tx.user.findUnique({ where: { email } });
+      const existingRoles = existingUser
+        ? await tx.userRole.findMany({
+            where: { userId: existingUser.id },
+            select: { id: true },
+          })
+        : [];
       let targetUser = existingUser;
+
+      if (existingRoles.length > 0) {
+        throw new CompanyServiceError(
+          'Ja existe um usuario com este e-mail. Use outro e-mail ou altere o usuario existente.',
+          409
+        );
+      }
 
       if (!existingUser) {
         const passwordHash = await bcrypt.hash(temporaryPassword, 10);
@@ -6125,13 +6356,11 @@ export class CompanyService {
           },
         });
       } else {
-        const passwordHash = await bcrypt.hash(temporaryPassword, 10);
         targetUser = await tx.user.update({
           where: { id: existingUser.id },
           data: {
-            fullName: fullName || existingUser.fullName,
-            passwordHash,
-            isActive: true,
+            fullName: existingUser.fullName || fullName,
+            passwordHash: existingUser.passwordHash || await bcrypt.hash(temporaryPassword, 10),
           },
         });
       }
@@ -6188,6 +6417,162 @@ export class CompanyService {
         requiresPasswordChange: true,
       },
     };
+  }
+
+  async updateTeamMember(
+    user: AuthenticatedUser,
+    memberId: string,
+    data: { fullName?: string; email?: string; password?: string; isActive?: boolean }
+  ) {
+    this.ensureOwner(user);
+    const companyId = user.companyId;
+    if (!companyId) throw new CompanyServiceError('Company ID obrigatorio', 400);
+
+    const fullName = String(data.fullName || '').trim();
+    const email = String(data.email || '').trim().toLowerCase();
+    const password = String(data.password || '').trim();
+
+    if (!fullName || !email) {
+      throw new CompanyServiceError('Campos obrigatorios: fullName e email', 400);
+    }
+    if (password && password.length < 6) {
+      throw new CompanyServiceError('Senha deve ter ao menos 6 caracteres', 400);
+    }
+
+    const membership = await prisma.userRole.findFirst({
+      where: {
+        userId: memberId,
+        companyId,
+        role: 'FUNCIONARIO_EMPRESA',
+      },
+      include: {
+        user: {
+          select: { id: true, email: true, fullName: true, isActive: true, passwordHash: true, createdAt: true },
+        },
+      },
+    });
+
+    if (!membership?.user) {
+      throw new CompanyServiceError('Funcionario nao encontrado nesta empresa', 404);
+    }
+
+    const emailOwner = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+    if (emailOwner && emailOwner.id !== memberId) {
+      throw new CompanyServiceError('Ja existe outro usuario com este e-mail', 409);
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const payload: any = {
+        fullName,
+        email,
+      };
+      if (data.isActive !== undefined) {
+        payload.isActive = Boolean(data.isActive);
+      }
+      if (password) {
+        payload.passwordHash = await bcrypt.hash(password, 10);
+      }
+
+      const nextUser = await tx.user.update({
+        where: { id: memberId },
+        data: payload,
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: user.id,
+          companyId,
+          action: 'TEAM_MEMBER_UPDATED',
+          resource: 'profiles',
+          details: {
+            memberId,
+            email,
+            isActive: nextUser.isActive,
+            passwordChanged: Boolean(password),
+          },
+        },
+      });
+
+      return nextUser;
+    });
+
+    return {
+      id: updated.id,
+      email: updated.email,
+      fullName: updated.fullName,
+      role: 'FUNCIONARIO_EMPRESA',
+      isActive: updated.isActive,
+      createdAt: updated.createdAt,
+    };
+  }
+
+  async deleteTeamMember(user: AuthenticatedUser, memberId: string) {
+    this.ensureOwner(user);
+    const companyId = user.companyId;
+    if (!companyId) throw new CompanyServiceError('Company ID obrigatorio', 400);
+
+    const membership = await prisma.userRole.findFirst({
+      where: {
+        userId: memberId,
+        companyId,
+        role: 'FUNCIONARIO_EMPRESA',
+      },
+      include: {
+        user: {
+          select: { id: true, email: true, fullName: true },
+        },
+      },
+    });
+
+    if (!membership?.user) {
+      throw new CompanyServiceError('Funcionario nao encontrado nesta empresa', 404);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await (tx as any).employeeModulePermission.deleteMany({
+        where: {
+          companyId,
+          userId: memberId,
+        },
+      });
+
+      await tx.userRole.deleteMany({
+        where: {
+          userId: memberId,
+          companyId,
+          role: 'FUNCIONARIO_EMPRESA',
+        },
+      });
+
+      const remainingRoles = await tx.userRole.count({
+        where: { userId: memberId },
+      });
+
+      if (remainingRoles === 0) {
+        await tx.user.delete({
+          where: { id: memberId },
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          userId: user.id,
+          companyId,
+          action: 'TEAM_MEMBER_DELETED',
+          resource: 'profiles',
+          details: {
+            memberId,
+            memberEmail: membership.user.email,
+            removedUserRecord: remainingRoles === 0,
+          },
+        },
+      });
+    });
+
+    return { success: true };
   }
 
   async listTeamMemberModulePermissions(user: AuthenticatedUser) {

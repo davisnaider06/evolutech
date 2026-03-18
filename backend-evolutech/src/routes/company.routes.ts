@@ -44,6 +44,8 @@ router.delete('/tasks/my/:taskId', companyController.deleteMyTask.bind(companyCo
 router.post('/tasks/my/:taskId/move', companyController.moveMyTask.bind(companyController));
 router.get('/team/members', companyController.listTeamMembers.bind(companyController));
 router.post('/team/members', companyController.createTeamMember.bind(companyController));
+router.put('/team/members/:memberId', companyController.updateTeamMember.bind(companyController));
+router.delete('/team/members/:memberId', companyController.deleteTeamMember.bind(companyController));
 router.get('/team/permissions', companyController.listTeamMemberPermissions.bind(companyController));
 router.put('/team/permissions/:memberId', companyController.updateTeamMemberPermissions.bind(companyController));
 router.get('/customers/:customerId/history', companyController.getCustomerHistory.bind(companyController));
