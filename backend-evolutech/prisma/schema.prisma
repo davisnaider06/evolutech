@@ -57,7 +57,8 @@ model Company {
     courseAccesses          CourseAccess[]
     courses                 Course[]
     collectionsRuns         CollectionAutomationRun[]
-    customerAccounts        CustomerAccount[]
+  customerAccounts        CustomerAccount[]
+  customerServiceHistoryEntries CustomerServiceHistoryEntry[]
   loyaltyProfiles         CustomerLoyaltyProfile[]
   loyaltyTransactions     CustomerLoyaltyTransaction[]
   customerSubscriptions   CustomerSubscription[]
@@ -203,6 +204,7 @@ model Customer {
   updatedAt           DateTime                     @updatedAt @map("updated_at")
   appointments        Appointment[]
   courseAccesses      CourseAccess[]
+  serviceHistoryEntries CustomerServiceHistoryEntry[]
   account             CustomerAccount?
   loyaltyProfile      CustomerLoyaltyProfile?
   loyaltyTransactions CustomerLoyaltyTransaction[]
@@ -488,6 +490,7 @@ model AppointmentService {
   name            String
   description     String?
   durationMinutes Int      @default(30) @map("duration_minutes")
+  recommendedReturnDays Int? @map("recommended_return_days")
   price           Decimal? @db.Decimal(10, 2)
   isActive        Boolean  @default(true) @map("is_active")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamp(6)
@@ -496,6 +499,33 @@ model AppointmentService {
 
   @@index([companyId, isActive], map: "idx_appointment_services_company_active")
   @@map("appointment_services")
+}
+
+model CustomerServiceHistoryEntry {
+  id                String    @id @default(uuid())
+  companyId         String    @map("empresa_id")
+  customerId        String    @map("customer_id")
+  source            String    @default("manual")
+  appointmentId     String?   @map("appointment_id")
+  serviceId         String?   @map("service_id")
+  serviceName       String    @map("service_name")
+  professionalId    String?   @map("professional_id")
+  professionalName  String?   @map("professional_name")
+  serviceDate       DateTime  @map("service_date")
+  amount            Decimal   @default(0) @db.Decimal(10, 2)
+  notes             String?
+  returnInDays      Int?      @map("return_in_days")
+  returnDueAt       DateTime? @map("return_due_at")
+  followUpSentAt    DateTime? @map("follow_up_sent_at")
+  createdByUserId   String?   @map("created_by_user_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  company           Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer          Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, customerId, serviceDate])
+  @@index([companyId, returnDueAt])
+  @@map("customer_service_history_entries")
 }
 
 model AppointmentAvailability {

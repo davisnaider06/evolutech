@@ -21,11 +21,13 @@ import { Button } from '@/components/ui/button';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { companyService } from '@/services/company';
 import { toast } from 'sonner';
+import * as XLSX from 'xlsx';
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))', 'hsl(var(--chart-4))'];
 
 interface FilterOption {
   id: string;
+  value: string;
   label: string;
 }
 
@@ -104,12 +106,14 @@ const Relatorios: React.FC = () => {
         setCustomerOptions(
           (customersResult?.data || []).map((item: any) => ({
             id: String(item.id || item.name),
-            label: String(item.name || ''),
+            value: String(item.name || ''),
+            label: item.phone ? `${String(item.name || '')} - ${String(item.phone)}` : String(item.name || ''),
           }))
         );
         setServiceOptions(
           (servicesResult?.data || []).map((item: any) => ({
             id: String(item.id || item.name),
+            value: String(item.name || ''),
             label: String(item.name || ''),
           }))
         );
@@ -145,6 +149,49 @@ const Relatorios: React.FC = () => {
     label: item.label || item.date.slice(5),
   }));
 
+  const exportExcel = () => {
+    if (!data) {
+      toast.error('Nao ha dados para exportar');
+      return;
+    }
+
+    const workbook = XLSX.utils.book_new();
+    const summaryRows = [
+      { indicador: 'Clientes', valor: Number(data.summary.customers_total || 0) },
+      { indicador: 'Produtos', valor: Number(data.summary.products_total || 0) },
+      { indicador: 'Novos clientes', valor: Number(data.summary.new_customers || 0) },
+      { indicador: 'Pedidos', valor: Number(data.summary.orders_total || 0) },
+      { indicador: 'Pedidos pagos', valor: Number(data.summary.paid_orders || 0) },
+      { indicador: 'Agendamentos', valor: Number(data.summary.appointments_total || 0) },
+      { indicador: 'Faturamento', valor: Number(data.summary.revenue_total || 0) },
+    ];
+    const revenueRows = chartRevenueByDay.map((item: any) => ({
+      periodo: item.label || item.date,
+      faturamento: Number(item.revenue || 0),
+    }));
+    const orderStatusRows = (data.charts.orders_by_status || []).map((item) => ({
+      status: item.status,
+      total: Number(item.value || 0),
+    }));
+    const appointmentStatusRows = (data.charts.appointments_by_status || []).map((item) => ({
+      status: item.status,
+      total: Number(item.value || 0),
+    }));
+    const topItemRows = (data.charts.top_items || []).map((item) => ({
+      tipo: item.itemType,
+      item: item.itemName,
+      quantidade: Number(item.quantity || 0),
+      receita: Number(item.revenue || 0),
+    }));
+
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Resumo');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(revenueRows), 'Faturamento');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(orderStatusRows), 'Pedidos');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(appointmentStatusRows), 'Agendamentos');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(topItemRows), 'Itens');
+    XLSX.writeFile(workbook, `relatorios-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
   if (!data && loading) {
     return (
       <div className="space-y-4">
@@ -167,7 +214,7 @@ const Relatorios: React.FC = () => {
           <SearchableSelect
             value={customerFilter}
             onValueChange={setCustomerFilter}
-            options={customerOptions.map((item) => ({ value: item.label, label: item.label }))}
+            options={customerOptions.map((item) => ({ value: item.value, label: item.label }))}
             placeholder="Filtrar por cliente"
             searchPlaceholder="Buscar cliente..."
             emptyMessage="Nenhum cliente encontrado."
@@ -175,7 +222,7 @@ const Relatorios: React.FC = () => {
           <SearchableSelect
             value={serviceFilter}
             onValueChange={setServiceFilter}
-            options={serviceOptions.map((item) => ({ value: item.label, label: item.label }))}
+            options={serviceOptions.map((item) => ({ value: item.value, label: item.label }))}
             placeholder="Filtrar por serviço"
             searchPlaceholder="Buscar serviço..."
             emptyMessage="Nenhum serviço encontrado."
@@ -191,6 +238,9 @@ const Relatorios: React.FC = () => {
             <option value="yearly">Anual</option>
           </select>
           <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={exportExcel}>
+              Exportar Excel
+            </Button>
             <Button onClick={fetchData} disabled={loading} className="flex-1">
               {loading ? 'Atualizando...' : 'Aplicar filtro'}
             </Button>

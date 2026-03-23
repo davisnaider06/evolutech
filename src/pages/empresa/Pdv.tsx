@@ -40,6 +40,7 @@ interface PdvOrder {
 interface CustomerOption {
   id: string;
   name: string;
+  phone?: string | null;
 }
 
 interface LoyaltyPreview {
@@ -137,6 +138,7 @@ const Pdv: React.FC = () => {
         (result?.data || []).map((item: any) => ({
           id: String(item.id),
           name: String(item.name || ''),
+          phone: item.phone ? String(item.phone) : null,
         }))
       );
     } catch (_error) {
@@ -409,7 +411,10 @@ const Pdv: React.FC = () => {
               <SearchableSelect
                 value={customerName}
                 onValueChange={setCustomerName}
-                options={customers.map((customer) => ({ value: customer.name, label: customer.name }))}
+                options={customers.map((customer) => ({
+                  value: customer.name,
+                  label: customer.phone ? `${customer.name} - ${customer.phone}` : customer.name,
+                }))}
                 placeholder="Selecionar cliente"
                 searchPlaceholder="Buscar cliente..."
                 emptyMessage="Nenhum cliente encontrado."

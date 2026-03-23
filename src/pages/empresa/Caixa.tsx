@@ -419,6 +419,66 @@ const Caixa: React.FC = () => {
     toast.success('Relatorio exportado');
   };
 
+  const exportDailyReport = () => {
+    if (!overview || overview.entries.length === 0) {
+      toast.error('Nao ha dados para exportar no relatorio diario');
+      return;
+    }
+
+    const detailRows = overview.entries.flatMap((entry) =>
+      entry.items.map((item) => ({
+        hora: new Date(entry.paid_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        cliente: entry.customer_name,
+        tipo: formatItemType(item.item_type),
+        servico_ou_produto: item.item_name,
+        forma_pagamento: formatPaymentMethod(entry.payment_method),
+        quantidade: Number(item.quantity || 0),
+        valor_item: Number(item.total_price || 0),
+        valor_venda: Number(entry.total || 0),
+      }))
+    );
+
+    const paymentSummaryRows = (overview.selected_period.payment_methods || []).map((item) => ({
+      forma_pagamento: formatPaymentMethod(item.payment_method),
+      total: Number(item.total || 0),
+    }));
+
+    const attendanceRows = overview.entries
+      .filter((entry) => entry.item_types.includes('service'))
+      .map((entry) => ({
+        hora: new Date(entry.paid_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        cliente: entry.customer_name,
+        servicos: entry.items
+          .filter((item) => item.item_type === 'service')
+          .map((item) => item.item_name)
+          .join(', '),
+        forma_pagamento: formatPaymentMethod(entry.payment_method),
+        total: Number(entry.total || 0),
+      }));
+
+    const productRows = overview.entries
+      .filter((entry) => entry.item_types.includes('product'))
+      .flatMap((entry) =>
+        entry.items
+          .filter((item) => item.item_type === 'product')
+          .map((item) => ({
+            cliente: entry.customer_name,
+            produto: item.item_name,
+            forma_pagamento: formatPaymentMethod(entry.payment_method),
+            quantidade: Number(item.quantity || 0),
+            total: Number(item.total_price || 0),
+          }))
+      );
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(detailRows), 'Detalhe do dia');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(attendanceRows), 'Atendimentos');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(productRows), 'Produtos');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(paymentSummaryRows), 'Pagamentos');
+    XLSX.writeFile(workbook, `relatorio-diario-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success('Relatorio diario exportado');
+  };
+
   const openCreateManualDialog = () => {
     setManualForm(emptyManualForm);
     setManualDialogOpen(true);
@@ -495,6 +555,9 @@ const Caixa: React.FC = () => {
       <PageHeader title="Caixa" description="Recebimentos de vendas separados das movimentacoes manuais.">
         <Button variant="outline" onClick={exportExcel}>
           Exportar
+        </Button>
+        <Button variant="outline" onClick={exportDailyReport}>
+          Exportar diario
         </Button>
         <Button onClick={openCreateManualDialog}>
           Nova movimentacao manual

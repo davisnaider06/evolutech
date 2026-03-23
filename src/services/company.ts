@@ -442,6 +442,47 @@ export const companyService = {
   listTeamMembers: async () => request('/team/members'),
   customerHistory: async (customerId: string) =>
     request(`/customers/${encodeURIComponent(customerId)}/history`),
+  listCustomerHistoryEntries: async (customerId: string) =>
+    request(`/customers/${encodeURIComponent(customerId)}/history-entries`),
+  createCustomerHistoryEntry: async (
+    customerId: string,
+    data: {
+      service_id?: string;
+      service_name: string;
+      professional_id?: string;
+      professional_name?: string;
+      service_date: string;
+      amount?: number;
+      notes?: string;
+      return_in_days?: number | null;
+    }
+  ) =>
+    request(`/customers/${encodeURIComponent(customerId)}/history-entries`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  deleteCustomerHistoryEntry: async (customerId: string, entryId: string) =>
+    request(`/customers/${encodeURIComponent(customerId)}/history-entries/${encodeURIComponent(entryId)}`, {
+      method: 'DELETE',
+    }),
+  listCustomerFollowUps: async (params?: {
+    search?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    status?: 'all' | 'upcoming' | 'today' | 'overdue' | 'sent';
+    page?: number;
+    pageSize?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.dateFrom) searchParams.set('dateFrom', params.dateFrom);
+    if (params?.dateTo) searchParams.set('dateTo', params.dateTo);
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return request(`/customers/follow-ups${suffix}`);
+  },
   createTeamMember: async (data: { fullName: string; email: string; password?: string }) =>
     request('/team/members', { method: 'POST', body: JSON.stringify(data) }),
   updateTeamMember: async (

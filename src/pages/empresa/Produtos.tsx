@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
 import { companyService } from '@/services/company';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
@@ -22,6 +23,7 @@ interface Product {
   sku: string | null;
   price: number;
   stockQuantity: number;
+  recommendedReturnDays?: number | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -33,6 +35,7 @@ interface ProductFormData {
   sku: string;
   price: number;
   stockQuantity: number;
+  recommendedReturnDays: number;
   isActive: boolean;
 }
 
@@ -42,6 +45,7 @@ const defaultFormData: ProductFormData = {
   sku: '',
   price: 0,
   stockQuantity: 0,
+  recommendedReturnDays: 0,
   isActive: true,
 };
 
@@ -92,6 +96,7 @@ const Produtos: React.FC = () => {
         sku: item.description || null,
         price: Number(item.price || 0),
         stockQuantity: Number(item.durationMinutes || 0),
+        recommendedReturnDays: Number(item.recommendedReturnDays || 0),
         isActive: Boolean(item.isActive),
         createdAt: item.createdAt,
         updatedAt: item.updatedAt,
@@ -170,6 +175,7 @@ const Produtos: React.FC = () => {
       sku: product.sku || '',
       price: Number(product.price || 0),
       stockQuantity: Number(product.stockQuantity || 0),
+      recommendedReturnDays: Number(product.recommendedReturnDays || 0),
       isActive: product.isActive,
     });
     setIsFormOpen(true);
@@ -200,6 +206,7 @@ const Produtos: React.FC = () => {
                   name: formData.name.trim(),
                   description: formData.sku.trim() || null,
                   durationMinutes: Math.max(1, Number(formData.stockQuantity || 30)),
+                  recommendedReturnDays: Math.max(0, Number(formData.recommendedReturnDays || 0)) || null,
                   price: Number(formData.price || 0),
                   isActive: formData.isActive,
                 };
@@ -235,6 +242,7 @@ const Produtos: React.FC = () => {
             name: formData.name.trim(),
             description: formData.sku.trim() || null,
             durationMinutes: Math.max(1, Number(formData.stockQuantity || 30)),
+            recommendedReturnDays: Math.max(0, Number(formData.recommendedReturnDays || 0)) || null,
             price: Number(formData.price || 0),
             isActive: formData.isActive,
           };
@@ -385,6 +393,28 @@ const Produtos: React.FC = () => {
     }
   };
 
+  const handleExportProductsExcel = () => {
+    if (data.length === 0) {
+      toast.error('Nao ha produtos para exportar');
+      return;
+    }
+
+    const rows = data.map((item) => ({
+      nome: item.name,
+      tipo: item.type === 'service' ? 'Servico' : 'Produto',
+      sku_ou_descricao: item.sku || '',
+      preco: Number(item.price || 0),
+      estoque_ou_tempo_servico: Number(item.stockQuantity || 0),
+      status: item.isActive ? 'Ativo' : 'Inativo',
+      criado_em: item.createdAt,
+    }));
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), 'Produtos');
+    XLSX.writeFile(workbook, `produtos-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success('Produtos exportados');
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -392,7 +422,11 @@ const Produtos: React.FC = () => {
         description="Cadastro de produtos e controle de estoque"
         buttonLabel="Novo Produto"
         onButtonClick={handleNew}
-      />
+      >
+        <Button type="button" variant="outline" onClick={handleExportProductsExcel}>
+          Exportar Excel
+        </Button>
+      </PageHeader>
 
       <div className="flex items-center gap-3">
         <Label
@@ -526,6 +560,21 @@ const Produtos: React.FC = () => {
               onChange={(e) => setFormData((prev) => ({ ...prev, stockQuantity: Number(e.target.value) || 0 }))}
             />
           </div>
+
+          {formData.type === 'service' ? (
+            <div className="space-y-2">
+              <Label htmlFor="recommendedReturnDays">Retorno sugerido (dias)</Label>
+              <Input
+                id="recommendedReturnDays"
+                type="number"
+                min="0"
+                value={formData.recommendedReturnDays}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, recommendedReturnDays: Number(e.target.value) || 0 }))
+                }
+              />
+            </div>
+          ) : null}
 
           <div className="flex items-center space-x-2 pt-7">
             <Switch

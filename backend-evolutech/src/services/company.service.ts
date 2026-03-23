@@ -5113,7 +5113,7 @@ export class CompanyService {
     });
     if (!customer) throw new CompanyServiceError('Cliente nao encontrado', 404);
 
-    const [appointments, orders] = await Promise.all([
+    const [appointments, orders, manualEntries] = await Promise.all([
       (prisma as any).appointment.findMany({
         where: {
           companyId,
@@ -5151,6 +5151,26 @@ export class CompanyService {
         },
         orderBy: { createdAt: 'desc' },
       }),
+      (prisma as any).customerServiceHistoryEntry.findMany({
+        where: { companyId, customerId: customer.id },
+        select: {
+          id: true,
+          source: true,
+          appointmentId: true,
+          serviceId: true,
+          serviceName: true,
+          professionalId: true,
+          professionalName: true,
+          serviceDate: true,
+          amount: true,
+          notes: true,
+          returnInDays: true,
+          returnDueAt: true,
+          followUpSentAt: true,
+          createdAt: true,
+        },
+        orderBy: { serviceDate: 'desc' },
+      }),
     ]);
 
     const appointmentServiceIds = Array.from(
@@ -5177,7 +5197,7 @@ export class CompanyService {
                 ...(appointmentServiceNames.length ? [{ name: { in: appointmentServiceNames } }] : []),
               ],
             },
-            select: { id: true, name: true, price: true },
+            select: { id: true, name: true, price: true, recommendedReturnDays: true },
           })
         : [];
 
@@ -5189,6 +5209,16 @@ export class CompanyService {
         this.normalizeComparableText(item.name),
         Number(item.price || 0),
       ])
+    );
+    const serviceReturnDaysById = new Map<string, number>(
+      (servicesData as any[])
+        .filter((item: any) => Number(item.recommendedReturnDays || 0) > 0)
+        .map((item: any) => [String(item.id), Number(item.recommendedReturnDays || 0)])
+    );
+    const serviceReturnDaysByName = new Map<string, number>(
+      (servicesData as any[])
+        .filter((item: any) => Number(item.recommendedReturnDays || 0) > 0)
+        .map((item: any) => [this.normalizeComparableText(item.name), Number(item.recommendedReturnDays || 0)])
     );
 
     const normalizeStatusSafe = (value: unknown) => {
@@ -5207,6 +5237,10 @@ export class CompanyService {
       const byName = servicePriceByName.get(this.normalizeComparableText(item.serviceName));
       return sum + this.toNumber(byId ?? byName ?? 0);
     }, 0);
+    const manualTotalSpent = (manualEntries as any[]).reduce(
+      (sum: number, item: any) => sum + this.toNumber(item.amount),
+      0
+    );
 
     const paidOrders = orders.filter((item) => String(item.status || '').toLowerCase() === 'paid');
     const paidOrdersSpent = paidOrders.reduce((sum, item) => sum + this.toNumber(item.total), 0);
@@ -5225,16 +5259,80 @@ export class CompanyService {
         });
       }
     }
+    for (const item of manualEntries as any[]) {
+      const normalizedName = this.normalizeComparableText(item.professionalName);
+      if (!normalizedName) continue;
+      const current = favoriteProfessionalMap.get(normalizedName);
+      if (current) {
+        current.count += 1;
+      } else {
+        favoriteProfessionalMap.set(normalizedName, {
+          name: String(item.professionalName || '').trim(),
+          count: 1,
+        });
+      }
+    }
     const favoriteProfessional = Array.from(favoriteProfessionalMap.values()).sort((a, b) => b.count - a.count)[0] || null;
 
-    const sortedAppointmentsAsc = [...(appointments as any[])].sort(
-      (a: any, b: any) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
+    const mergedServiceHistory = [
+      ...(appointments as any[]).map((item: any) => {
+        const byId = item.serviceId ? servicePriceById.get(String(item.serviceId)) : undefined;
+        const byName = servicePriceByName.get(this.normalizeComparableText(item.serviceName));
+        const returnDays =
+          (item.serviceId ? serviceReturnDaysById.get(String(item.serviceId)) : undefined) ??
+          serviceReturnDaysByName.get(this.normalizeComparableText(item.serviceName)) ??
+          null;
+        const serviceDate = new Date(item.scheduledAt);
+        const returnDueAt =
+          Number(returnDays || 0) > 0
+            ? new Date(serviceDate.getTime() + Number(returnDays) * 24 * 60 * 60 * 1000).toISOString()
+            : null;
+
+        return {
+          history_id: `appointment:${item.id}`,
+          source: 'appointment',
+          appointment_id: item.id,
+          service_id: item.serviceId || null,
+          service_name: item.serviceName || null,
+          professional_id: item.professionalId || null,
+          professional_name: item.professionalName || null,
+          scheduled_at: item.scheduledAt,
+          service_date: item.scheduledAt,
+          status: normalizeStatusSafe(item.status),
+          price: this.toNumber(byId ?? byName ?? 0),
+          notes: null,
+          return_in_days: returnDays,
+          return_due_at: returnDueAt,
+          follow_up_sent_at: null,
+        };
+      }),
+      ...(manualEntries as any[]).map((item: any) => ({
+        history_id: item.id,
+        source: String(item.source || 'manual').trim().toLowerCase() || 'manual',
+        appointment_id: item.appointmentId || null,
+        service_id: item.serviceId || null,
+        service_name: item.serviceName || null,
+        professional_id: item.professionalId || null,
+        professional_name: item.professionalName || null,
+        scheduled_at: item.serviceDate,
+        service_date: item.serviceDate,
+        status: 'retroativo',
+        price: this.toNumber(item.amount),
+        notes: item.notes || null,
+        return_in_days: item.returnInDays != null ? Number(item.returnInDays) : null,
+        return_due_at: item.returnDueAt ? new Date(item.returnDueAt).toISOString() : null,
+        follow_up_sent_at: item.followUpSentAt ? new Date(item.followUpSentAt).toISOString() : null,
+      })),
+    ].sort((a, b) => new Date(b.service_date).getTime() - new Date(a.service_date).getTime());
+
+    const sortedServicesAsc = [...mergedServiceHistory].sort(
+      (a, b) => new Date(a.service_date).getTime() - new Date(b.service_date).getTime()
     );
-    const firstAppointmentAt = sortedAppointmentsAsc[0]?.scheduledAt
-      ? new Date(sortedAppointmentsAsc[0].scheduledAt)
+    const firstAppointmentAt = sortedServicesAsc[0]?.service_date
+      ? new Date(sortedServicesAsc[0].service_date)
       : null;
-    const lastAppointmentAt = sortedAppointmentsAsc[sortedAppointmentsAsc.length - 1]?.scheduledAt
-      ? new Date(sortedAppointmentsAsc[sortedAppointmentsAsc.length - 1].scheduledAt)
+    const lastAppointmentAt = sortedServicesAsc[sortedServicesAsc.length - 1]?.service_date
+      ? new Date(sortedServicesAsc[sortedServicesAsc.length - 1].service_date)
       : null;
 
     let activeMonths = 0;
@@ -5246,13 +5344,18 @@ export class CompanyService {
         (lastAppointmentAt.getFullYear() - firstAppointmentAt.getFullYear()) * 12 +
         (lastAppointmentAt.getMonth() - firstAppointmentAt.getMonth()) +
         1;
-      averageAppointmentsPerMonth = activeMonths > 0 ? appointments.length / activeMonths : appointments.length;
+      averageAppointmentsPerMonth =
+        activeMonths > 0 ? mergedServiceHistory.length / activeMonths : mergedServiceHistory.length;
       const dayMs = 24 * 60 * 60 * 1000;
       daysSinceLastAppointment = Math.max(
         0,
         Math.floor((Date.now() - lastAppointmentAt.getTime()) / dayMs)
       );
     }
+
+    const nextFollowUp = mergedServiceHistory
+      .filter((item) => item.return_due_at)
+      .sort((a, b) => new Date(a.return_due_at as string).getTime() - new Date(b.return_due_at as string).getTime())[0] || null;
 
     return {
       customer: {
@@ -5265,13 +5368,13 @@ export class CompanyService {
         created_at: customer.createdAt,
       },
       summary: {
-        total_services: appointments.length,
-        completed_services: completedAppointments.length,
+        total_services: mergedServiceHistory.length,
+        completed_services: completedAppointments.length + (manualEntries as any[]).length,
         total_orders: orders.length,
         paid_orders: paidOrders.length,
-        total_spent: paidOrdersSpent > 0 ? paidOrdersSpent : appointmentTotalSpent,
+        total_spent: paidOrdersSpent > 0 ? paidOrdersSpent : appointmentTotalSpent + manualTotalSpent,
         total_spent_orders: paidOrdersSpent,
-        total_spent_services: appointmentTotalSpent,
+        total_spent_services: appointmentTotalSpent + manualTotalSpent,
       },
       frequency: {
         first_appointment_at: firstAppointmentAt ? firstAppointmentAt.toISOString() : null,
@@ -5286,20 +5389,14 @@ export class CompanyService {
             attendance_count: favoriteProfessional.count,
           }
         : null,
-      services_history: (appointments as any[]).slice(0, 30).map((item: any) => {
-        const byId = item.serviceId ? servicePriceById.get(String(item.serviceId)) : undefined;
-        const byName = servicePriceByName.get(this.normalizeComparableText(item.serviceName));
-        return {
-          appointment_id: item.id,
-          service_id: item.serviceId || null,
-          service_name: item.serviceName || null,
-          professional_id: item.professionalId || null,
-          professional_name: item.professionalName || null,
-          scheduled_at: item.scheduledAt,
-          status: normalizeStatusSafe(item.status),
-          price: this.toNumber(byId ?? byName ?? 0),
-        };
-      }),
+      follow_up: nextFollowUp
+        ? {
+            service_name: nextFollowUp.service_name,
+            due_at: nextFollowUp.return_due_at,
+            return_in_days: nextFollowUp.return_in_days,
+          }
+        : null,
+      services_history: mergedServiceHistory.slice(0, 30),
       orders_history: orders.slice(0, 30).map((item) => ({
         order_id: item.id,
         status: item.status,
@@ -5308,6 +5405,305 @@ export class CompanyService {
         updated_at: item.updatedAt,
       })),
     };
+  }
+
+  async listCustomerServiceHistoryEntries(
+    user: AuthenticatedUser,
+    customerId: string,
+    queryParams: { company_id?: string; companyId?: string } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, ['customers', 'clientes']);
+
+    const customer = await prisma.customer.findFirst({
+      where: { id: customerId, companyId },
+      select: { id: true },
+    });
+    if (!customer) throw new CompanyServiceError('Cliente nao encontrado', 404);
+
+    const rows = await (prisma as any).customerServiceHistoryEntry.findMany({
+      where: { companyId, customerId },
+      orderBy: { serviceDate: 'desc' },
+    });
+
+    return rows.map((item: any) => ({
+      id: item.id,
+      source: item.source,
+      appointment_id: item.appointmentId || null,
+      service_id: item.serviceId || null,
+      service_name: item.serviceName,
+      professional_id: item.professionalId || null,
+      professional_name: item.professionalName || null,
+      service_date: item.serviceDate,
+      amount: this.toNumber(item.amount),
+      notes: item.notes || null,
+      return_in_days: item.returnInDays != null ? Number(item.returnInDays) : null,
+      return_due_at: item.returnDueAt || null,
+      follow_up_sent_at: item.followUpSentAt || null,
+      created_at: item.createdAt,
+    }));
+  }
+
+  async createCustomerServiceHistoryEntry(
+    user: AuthenticatedUser,
+    customerId: string,
+    payload: {
+      company_id?: string;
+      companyId?: string;
+      service_id?: string;
+      service_name?: string;
+      professional_id?: string;
+      professional_name?: string;
+      service_date?: string;
+      amount?: number;
+      notes?: string;
+      return_in_days?: number | null;
+    } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, payload);
+    await this.ensureAnyModuleAccess(user, companyId, ['customers', 'clientes']);
+
+    const customer = await prisma.customer.findFirst({
+      where: { id: customerId, companyId },
+      select: { id: true },
+    });
+    if (!customer) throw new CompanyServiceError('Cliente nao encontrado', 404);
+
+    const serviceId = String(payload.service_id || '').trim() || null;
+    const rawServiceName = String(payload.service_name || '').trim();
+    const serviceDateRaw = String(payload.service_date || '').trim();
+    const amount = this.toNumber(payload.amount);
+    const notes = String(payload.notes || '').trim() || null;
+    const returnInDaysRaw = payload.return_in_days == null ? null : Number(payload.return_in_days);
+
+    if (!rawServiceName) {
+      throw new CompanyServiceError('service_name obrigatorio', 400);
+    }
+    if (!serviceDateRaw) {
+      throw new CompanyServiceError('service_date obrigatorio', 400);
+    }
+    const serviceDate = new Date(serviceDateRaw);
+    if (Number.isNaN(serviceDate.getTime())) {
+      throw new CompanyServiceError('service_date invalido', 400);
+    }
+    if (amount < 0) {
+      throw new CompanyServiceError('amount nao pode ser negativo', 400);
+    }
+    const returnInDays =
+      returnInDaysRaw != null && Number.isFinite(returnInDaysRaw) && returnInDaysRaw > 0
+        ? Math.round(returnInDaysRaw)
+        : null;
+    const returnDueAt =
+      returnInDays != null
+        ? new Date(serviceDate.getTime() + returnInDays * 24 * 60 * 60 * 1000)
+        : null;
+
+    const created = await (prisma as any).customerServiceHistoryEntry.create({
+      data: {
+        companyId,
+        customerId,
+        source: 'manual',
+        serviceId,
+        serviceName: rawServiceName,
+        professionalId: String(payload.professional_id || '').trim() || null,
+        professionalName: String(payload.professional_name || '').trim() || null,
+        serviceDate,
+        amount,
+        notes,
+        returnInDays,
+        returnDueAt,
+        createdByUserId: user.id,
+      },
+    });
+
+    return {
+      id: created.id,
+      service_name: created.serviceName,
+      service_date: created.serviceDate,
+      return_due_at: created.returnDueAt,
+    };
+  }
+
+  async deleteCustomerServiceHistoryEntry(
+    user: AuthenticatedUser,
+    customerId: string,
+    entryId: string,
+    queryParams: { company_id?: string; companyId?: string } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, ['customers', 'clientes']);
+
+    const existing = await (prisma as any).customerServiceHistoryEntry.findFirst({
+      where: { id: entryId, companyId, customerId },
+      select: { id: true },
+    });
+    if (!existing) {
+      throw new CompanyServiceError('Historico retroativo nao encontrado', 404);
+    }
+
+    await (prisma as any).customerServiceHistoryEntry.delete({ where: { id: entryId } });
+    return { success: true };
+  }
+
+  async listCustomerFollowUps(
+    user: AuthenticatedUser,
+    queryParams: {
+      company_id?: string;
+      companyId?: string;
+      search?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      status?: string;
+      page?: number;
+      pageSize?: number;
+    } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, ['customers', 'clientes']);
+
+    const search = this.normalizeComparableText(queryParams.search);
+    const statusFilter = String(queryParams.status || 'all').trim().toLowerCase();
+    const page = Math.max(1, Number(queryParams.page || 1));
+    const pageSize = Math.min(100, Math.max(1, Number(queryParams.pageSize || 20)));
+    const dayRange = queryParams.dateFrom || queryParams.dateTo ? this.parseDateRange(queryParams as any, 30) : null;
+    const now = new Date();
+
+    const [manualEntries, appointments] = await Promise.all([
+      (prisma as any).customerServiceHistoryEntry.findMany({
+        where: { companyId, returnDueAt: { not: null } },
+        select: {
+          id: true,
+          source: true,
+          serviceName: true,
+          professionalName: true,
+          serviceDate: true,
+          amount: true,
+          notes: true,
+          returnInDays: true,
+          returnDueAt: true,
+          followUpSentAt: true,
+          customer: { select: { id: true, name: true, phone: true, email: true } },
+        },
+        orderBy: { returnDueAt: 'asc' },
+      }),
+      (prisma as any).appointment.findMany({
+        where: { companyId },
+        select: {
+          id: true,
+          customerId: true,
+          customerName: true,
+          serviceId: true,
+          serviceName: true,
+          professionalName: true,
+          scheduledAt: true,
+          status: true,
+          customer: { select: { id: true, name: true, phone: true, email: true } },
+        },
+        orderBy: { scheduledAt: 'desc' },
+      }),
+    ]);
+
+    const relevantServiceIds = Array.from(
+      new Set(
+        (appointments as any[])
+          .map((item: any) => String(item.serviceId || '').trim())
+          .filter(Boolean)
+      )
+    );
+    const services = relevantServiceIds.length
+      ? await (prisma as any).appointmentService.findMany({
+          where: { companyId, id: { in: relevantServiceIds } },
+          select: { id: true, name: true, recommendedReturnDays: true },
+        })
+      : [];
+    const serviceReturnDaysById = new Map<string, number>(
+      (services as any[])
+        .filter((item: any) => Number(item.recommendedReturnDays || 0) > 0)
+        .map((item: any) => [String(item.id), Number(item.recommendedReturnDays || 0)])
+    );
+
+    const autoFollowUps = (appointments as any[])
+      .filter((item: any) => this.normalizeAppointmentStatus(String(item.status || ''), 'pendente') === 'concluido')
+      .map((item: any) => {
+        const returnInDays = item.serviceId ? serviceReturnDaysById.get(String(item.serviceId)) : undefined;
+        if (!returnInDays || returnInDays <= 0) return null;
+        const serviceDate = new Date(item.scheduledAt);
+        const returnDueAt = new Date(serviceDate.getTime() + returnInDays * 24 * 60 * 60 * 1000);
+        return {
+          id: `appointment:${item.id}`,
+          source: 'appointment',
+          customer_id: item.customer?.id || item.customerId || null,
+          customer_name: item.customer?.name || item.customerName || 'Cliente',
+          customer_phone: item.customer?.phone || null,
+          customer_email: item.customer?.email || null,
+          service_name: item.serviceName || 'Servico',
+          professional_name: item.professionalName || null,
+          service_date: serviceDate.toISOString(),
+          return_in_days: returnInDays,
+          return_due_at: returnDueAt.toISOString(),
+          follow_up_sent_at: null,
+          amount: 0,
+          notes: null,
+        };
+      })
+      .filter(Boolean) as any[];
+
+    const manualFollowUps = (manualEntries as any[]).map((item: any) => ({
+      id: item.id,
+      source: String(item.source || 'manual').trim().toLowerCase() || 'manual',
+      customer_id: item.customer?.id || null,
+      customer_name: item.customer?.name || 'Cliente',
+      customer_phone: item.customer?.phone || null,
+      customer_email: item.customer?.email || null,
+      service_name: item.serviceName || 'Servico',
+      professional_name: item.professionalName || null,
+      service_date: item.serviceDate instanceof Date ? item.serviceDate.toISOString() : item.serviceDate,
+      return_in_days: item.returnInDays != null ? Number(item.returnInDays) : null,
+      return_due_at: item.returnDueAt instanceof Date ? item.returnDueAt.toISOString() : item.returnDueAt,
+      follow_up_sent_at:
+        item.followUpSentAt instanceof Date ? item.followUpSentAt.toISOString() : item.followUpSentAt || null,
+      amount: this.toNumber(item.amount),
+      notes: item.notes || null,
+    }));
+
+    const rows = [...manualFollowUps, ...autoFollowUps]
+      .filter((item) => {
+        if (!item.return_due_at) return false;
+        const dueAt = new Date(item.return_due_at);
+        if (dayRange && (dueAt < dayRange.start || dueAt > dayRange.end)) return false;
+        const computedStatus =
+          item.follow_up_sent_at
+            ? 'sent'
+            : dueAt < now
+              ? 'overdue'
+              : dueAt.toDateString() === now.toDateString()
+                ? 'today'
+                : 'upcoming';
+        if (statusFilter !== 'all' && computedStatus !== statusFilter) return false;
+        if (search) {
+          const haystack = this.normalizeComparableText(
+            `${item.customer_name} ${item.customer_phone || ''} ${item.service_name} ${item.professional_name || ''}`
+          );
+          if (!haystack.includes(search)) return false;
+        }
+        return true;
+      })
+      .map((item) => {
+        const dueAt = new Date(item.return_due_at as string);
+        const status =
+          item.follow_up_sent_at
+            ? 'sent'
+            : dueAt < now
+              ? 'overdue'
+              : dueAt.toDateString() === now.toDateString()
+                ? 'today'
+                : 'upcoming';
+        return { ...item, status };
+      })
+      .sort((a, b) => new Date(a.return_due_at as string).getTime() - new Date(b.return_due_at as string).getTime());
+
+    const paged = rows.slice((page - 1) * pageSize, page * pageSize);
+    return { data: paged, total: rows.length, page, pageSize };
   }
 
   private generateTemporaryPassword() {

@@ -347,6 +347,45 @@ export class CompanyController {
     }
   }
 
+  async listCustomerServiceHistoryEntries(req: AuthedRequest, res: Response) {
+    try {
+      const { customerId } = req.params;
+      const result = await service.listCustomerServiceHistoryEntries(req.user!, customerId, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async createCustomerServiceHistoryEntry(req: AuthedRequest, res: Response) {
+    try {
+      const { customerId } = req.params;
+      const result = await service.createCustomerServiceHistoryEntry(req.user!, customerId, req.body || {});
+      return res.status(201).json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async deleteCustomerServiceHistoryEntry(req: AuthedRequest, res: Response) {
+    try {
+      const { customerId, entryId } = req.params;
+      const result = await service.deleteCustomerServiceHistoryEntry(req.user!, customerId, entryId, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async listCustomerFollowUps(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.listCustomerFollowUps(req.user!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   async getCashOverview(req: AuthedRequest, res: Response) {
     try {
       const result = await service.getCashOverview(req.user!, req.query as any);

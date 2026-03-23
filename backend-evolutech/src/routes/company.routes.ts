@@ -51,6 +51,10 @@ router.get('/team/permissions', companyController.listTeamMemberPermissions.bind
 router.put('/team/permissions/:memberId', companyController.updateTeamMemberPermissions.bind(companyController));
 router.get('/team/modules-diagnostic/:memberId', companyController.diagnoseTeamMemberModules.bind(companyController));
 router.get('/customers/:customerId/history', companyController.getCustomerHistory.bind(companyController));
+router.get('/customers/:customerId/history-entries', companyController.listCustomerServiceHistoryEntries.bind(companyController));
+router.post('/customers/:customerId/history-entries', companyController.createCustomerServiceHistoryEntry.bind(companyController));
+router.delete('/customers/:customerId/history-entries/:entryId', companyController.deleteCustomerServiceHistoryEntry.bind(companyController));
+router.get('/customers/follow-ups', companyController.listCustomerFollowUps.bind(companyController));
 router.get('/loyalty/settings', companyController.getLoyaltySettings.bind(companyController));
 router.put('/loyalty/settings', companyController.updateLoyaltySettings.bind(companyController));
 router.get('/loyalty/customers/:customerId', companyController.getCustomerLoyaltyProfile.bind(companyController));

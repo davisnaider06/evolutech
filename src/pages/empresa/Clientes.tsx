@@ -7,8 +7,17 @@ import { StatusBadge } from '@/components/crud/StatusBadge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { companyService } from '@/services/company';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -65,12 +74,21 @@ interface CustomerHistoryResponse {
     attendance_count: number;
   } | null;
   services_history: Array<{
-    appointment_id: string;
+    history_id?: string;
+    source?: string;
+    appointment_id: string | null;
+    service_id?: string | null;
     service_name: string | null;
+    professional_id?: string | null;
     professional_name: string | null;
     scheduled_at: string;
+    service_date?: string;
     status: string;
     price: number;
+    notes?: string | null;
+    return_in_days?: number | null;
+    return_due_at?: string | null;
+    follow_up_sent_at?: string | null;
   }>;
   orders_history: Array<{
     order_id: string;
@@ -79,6 +97,11 @@ interface CustomerHistoryResponse {
     created_at: string;
     updated_at: string;
   }>;
+  follow_up?: {
+    service_name: string | null;
+    due_at: string | null;
+    return_in_days: number | null;
+  } | null;
 }
 
 interface CustomerLoyaltyProfileResponse {
@@ -93,12 +116,52 @@ interface CustomerLoyaltyProfileResponse {
   };
 }
 
+interface HistoryEntryFormData {
+  service_id: string;
+  service_name: string;
+  professional_id: string;
+  professional_name: string;
+  service_date: string;
+  amount: string;
+  notes: string;
+  return_in_days: string;
+}
+
+interface FollowUpItem {
+  id: string;
+  source: string;
+  status: 'upcoming' | 'today' | 'overdue' | 'sent';
+  customer_id: string | null;
+  customer_name: string;
+  customer_phone: string | null;
+  customer_email: string | null;
+  service_name: string;
+  professional_name: string | null;
+  service_date: string;
+  return_in_days: number | null;
+  return_due_at: string;
+  follow_up_sent_at: string | null;
+  amount: number;
+  notes: string | null;
+}
+
 const defaultFormData: CustomerFormData = {
   name: '',
   email: '',
   phone: '',
   document: '',
   isActive: true,
+};
+
+const emptyHistoryEntryForm: HistoryEntryFormData = {
+  service_id: '',
+  service_name: '',
+  professional_id: '',
+  professional_name: '',
+  service_date: new Date().toISOString().slice(0, 10),
+  amount: '',
+  notes: '',
+  return_in_days: '',
 };
 
 const Clientes: React.FC = () => {
@@ -116,6 +179,16 @@ const Clientes: React.FC = () => {
   const [historyData, setHistoryData] = useState<CustomerHistoryResponse | null>(null);
   const [historyLoyalty, setHistoryLoyalty] = useState<CustomerLoyaltyProfileResponse | null>(null);
   const [historyTarget, setHistoryTarget] = useState<Customer | null>(null);
+  const [historyEntryDialogOpen, setHistoryEntryDialogOpen] = useState(false);
+  const [historyEntrySaving, setHistoryEntrySaving] = useState(false);
+  const [historyEntryForm, setHistoryEntryForm] = useState<HistoryEntryFormData>(emptyHistoryEntryForm);
+  const [serviceOptions, setServiceOptions] = useState<Array<{ id: string; name: string; recommendedReturnDays?: number | null }>>([]);
+  const [professionalOptions, setProfessionalOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [followUps, setFollowUps] = useState<FollowUpItem[]>([]);
+  const [followUpsLoading, setFollowUpsLoading] = useState(true);
+  const [followUpSearch, setFollowUpSearch] = useState('');
+  const [followUpStatus, setFollowUpStatus] =
+    useState<'all' | 'upcoming' | 'today' | 'overdue' | 'sent'>('all');
 
   const totalPages = useMemo(() => Math.ceil(totalCount / pagination.pageSize), [totalCount, pagination.pageSize]);
 
@@ -140,6 +213,58 @@ const Clientes: React.FC = () => {
   useEffect(() => {
     fetchCustomers();
   }, [pagination.page, pagination.pageSize, filters.search, filters.is_active]);
+
+  const loadSupportData = async () => {
+    try {
+      const [servicesResult, teamResult] = await Promise.all([
+        companyService.list('appointment_services', { page: 1, pageSize: 300, is_active: 'true', orderBy: 'name' }),
+        companyService.listTeamMembers(),
+      ]);
+      setServiceOptions(
+        (servicesResult?.data || []).map((item: any) => ({
+          id: String(item.id),
+          name: String(item.name || ''),
+          recommendedReturnDays:
+            item.recommendedReturnDays != null ? Number(item.recommendedReturnDays) : null,
+        }))
+      );
+      setProfessionalOptions(
+        (Array.isArray(teamResult) ? teamResult : []).map((item: any) => ({
+          id: String(item.id),
+          name: String(item.full_name || item.fullName || ''),
+        }))
+      );
+    } catch (_error) {
+      setServiceOptions([]);
+      setProfessionalOptions([]);
+    }
+  };
+
+  const loadFollowUps = async () => {
+    try {
+      setFollowUpsLoading(true);
+      const result = await companyService.listCustomerFollowUps({
+        search: followUpSearch || undefined,
+        status: followUpStatus,
+        page: 1,
+        pageSize: 8,
+      });
+      setFollowUps(Array.isArray(result?.data) ? result.data : []);
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao carregar retornos do CRM');
+      setFollowUps([]);
+    } finally {
+      setFollowUpsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSupportData();
+  }, []);
+
+  useEffect(() => {
+    loadFollowUps();
+  }, [followUpSearch, followUpStatus]);
 
   const columns: Column<Customer>[] = [
     { key: 'name', label: 'Nome' },
@@ -243,6 +368,72 @@ const Clientes: React.FC = () => {
     }
   };
 
+  const openHistoryEntryDialog = (customer?: Customer | null) => {
+    if (customer) setHistoryTarget(customer);
+    setHistoryEntryForm(emptyHistoryEntryForm);
+    setHistoryEntryDialogOpen(true);
+  };
+
+  const handleCreateHistoryEntry = async () => {
+    if (!historyTarget?.id) {
+      toast.error('Selecione um cliente para registrar o historico');
+      return;
+    }
+    if (!historyEntryForm.service_name.trim() || !historyEntryForm.service_date) {
+      toast.error('Informe o servico e a data do atendimento');
+      return;
+    }
+
+    setHistoryEntrySaving(true);
+    try {
+      await companyService.createCustomerHistoryEntry(historyTarget.id, {
+        service_id: historyEntryForm.service_id || undefined,
+        service_name: historyEntryForm.service_name.trim(),
+        professional_id: historyEntryForm.professional_id || undefined,
+        professional_name: historyEntryForm.professional_name.trim() || undefined,
+        service_date: historyEntryForm.service_date,
+        amount: Number(historyEntryForm.amount || 0),
+        notes: historyEntryForm.notes.trim() || undefined,
+        return_in_days: historyEntryForm.return_in_days ? Number(historyEntryForm.return_in_days) : null,
+      });
+      toast.success('Historico retroativo adicionado');
+      setHistoryEntryDialogOpen(false);
+      await Promise.all([handleViewHistory(historyTarget), loadFollowUps()]);
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao adicionar historico retroativo');
+    } finally {
+      setHistoryEntrySaving(false);
+    }
+  };
+
+  const handleDeleteHistoryEntry = async (entryId: string) => {
+    if (!historyTarget?.id) return;
+    if (!window.confirm('Deseja excluir este historico retroativo?')) return;
+    try {
+      await companyService.deleteCustomerHistoryEntry(historyTarget.id, entryId);
+      toast.success('Historico retroativo excluido');
+      await Promise.all([handleViewHistory(historyTarget), loadFollowUps()]);
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao excluir historico retroativo');
+    }
+  };
+
+  const handleSendFollowUp = async (item: FollowUpItem) => {
+    if (!item.customer_phone) {
+      toast.error('Cliente sem telefone cadastrado');
+      return;
+    }
+    try {
+      await companyService.sendWhatsApp({
+        phone: item.customer_phone,
+        message: `Oi, ${item.customer_name}! Tudo bem? Estamos passando para lembrar do seu retorno de ${item.service_name}. Pela nossa agenda, o ideal seria voltar por volta de ${formatDateTime(item.return_due_at)}. Se quiser, podemos organizar seu proximo atendimento.`,
+      });
+      toast.success('Mensagem enviada no WhatsApp');
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao enviar WhatsApp');
+    }
+  };
+
   const toMoney = (value: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0));
 
@@ -263,6 +454,77 @@ const Clientes: React.FC = () => {
         buttonLabel="Novo Cliente"
         onButtonClick={handleNew}
       />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Retornos do CRM</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Clientes com retorno previsto para hoje, atrasados ou proximos. Os retornos automáticos usam o prazo configurado no servico.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <Input
+              placeholder="Buscar por nome, telefone ou servico"
+              value={followUpSearch}
+              onChange={(e) => setFollowUpSearch(e.target.value)}
+            />
+            <select
+              value={followUpStatus}
+              onChange={(e) => setFollowUpStatus(e.target.value as any)}
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="all">Todos os retornos</option>
+              <option value="overdue">Atrasados</option>
+              <option value="today">Para hoje</option>
+              <option value="upcoming">Proximos</option>
+              <option value="sent">Ja enviados</option>
+            </select>
+            <Button type="button" variant="outline" onClick={() => loadFollowUps()}>
+              Atualizar retornos
+            </Button>
+          </div>
+
+          {followUpsLoading ? (
+            <div className="text-sm text-muted-foreground">Carregando retornos...</div>
+          ) : followUps.length === 0 ? (
+            <div className="text-sm text-muted-foreground">Nenhum retorno encontrado no filtro atual.</div>
+          ) : (
+            <div className="space-y-2">
+              {followUps.map((item) => (
+                <div key={item.id} className="flex flex-col gap-3 rounded border p-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="font-medium">
+                      {item.customer_name}
+                      {item.customer_phone ? ` - ${item.customer_phone}` : ''}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {item.service_name} - retorno {formatDateTime(item.return_due_at)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {item.professional_name || 'Profissional nao informado'} - origem {item.source === 'manual' ? 'retroativa' : 'agendamento'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full border px-3 py-1 text-xs">
+                      {item.status === 'overdue'
+                        ? 'Atrasado'
+                        : item.status === 'today'
+                          ? 'Hoje'
+                          : item.status === 'sent'
+                            ? 'Enviado'
+                            : 'Proximo'}
+                    </span>
+                    <Button type="button" variant="outline" onClick={() => handleSendFollowUp(item)} disabled={!item.customer_phone}>
+                      Enviar WhatsApp
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <SearchFilters
         searchValue={filters.search || ''}
@@ -378,6 +640,11 @@ const Clientes: React.FC = () => {
             <DialogDescription>
               {historyTarget?.name || 'Cliente'}: servicos, frequencia, barbeiro favorito e valor total gasto.
             </DialogDescription>
+            <div className="pt-2">
+              <Button type="button" size="sm" onClick={() => openHistoryEntryDialog(historyTarget)}>
+                Adicionar historico retroativo
+              </Button>
+            </div>
           </DialogHeader>
 
           {historyLoading ? (
@@ -526,6 +793,115 @@ const Clientes: React.FC = () => {
               </Card>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={historyEntryDialogOpen} onOpenChange={setHistoryEntryDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Historico retroativo do cliente</DialogTitle>
+            <DialogDescription>
+              Lance atendimentos antigos para enriquecer o CRM e gerar a previsao de retorno.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Cliente</Label>
+              <Input value={historyTarget?.name || ''} disabled />
+            </div>
+            <div className="space-y-2">
+              <Label>Servico</Label>
+              <SearchableSelect
+                value={historyEntryForm.service_id}
+                onValueChange={(value) => {
+                  const selected = serviceOptions.find((item) => item.id === value);
+                  setHistoryEntryForm((prev) => ({
+                    ...prev,
+                    service_id: value,
+                    service_name: selected?.name || prev.service_name,
+                    return_in_days:
+                      selected?.recommendedReturnDays != null ? String(selected.recommendedReturnDays) : prev.return_in_days,
+                  }));
+                }}
+                options={serviceOptions.map((item) => ({
+                  value: item.id,
+                  label:
+                    item.recommendedReturnDays != null ? `${item.name} - retorno ${item.recommendedReturnDays} dias` : item.name,
+                }))}
+                placeholder="Selecionar servico"
+                searchPlaceholder="Buscar servico..."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Nome do servico</Label>
+              <Input
+                value={historyEntryForm.service_name}
+                onChange={(e) => setHistoryEntryForm((prev) => ({ ...prev, service_name: e.target.value }))}
+                placeholder="Ex: Corte + barba"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Profissional</Label>
+              <SearchableSelect
+                value={historyEntryForm.professional_id}
+                onValueChange={(value) => {
+                  const selected = professionalOptions.find((item) => item.id === value);
+                  setHistoryEntryForm((prev) => ({
+                    ...prev,
+                    professional_id: value,
+                    professional_name: selected?.name || '',
+                  }));
+                }}
+                options={professionalOptions.map((item) => ({ value: item.id, label: item.name }))}
+                placeholder="Selecionar profissional"
+                searchPlaceholder="Buscar profissional..."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Data do atendimento</Label>
+              <Input
+                type="date"
+                value={historyEntryForm.service_date}
+                onChange={(e) => setHistoryEntryForm((prev) => ({ ...prev, service_date: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Valor</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={historyEntryForm.amount}
+                onChange={(e) => setHistoryEntryForm((prev) => ({ ...prev, amount: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Retorno em dias</Label>
+              <Input
+                type="number"
+                min="0"
+                value={historyEntryForm.return_in_days}
+                onChange={(e) => setHistoryEntryForm((prev) => ({ ...prev, return_in_days: e.target.value }))}
+                placeholder="Ex: 15"
+              />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Observacoes</Label>
+              <Input
+                value={historyEntryForm.notes}
+                onChange={(e) => setHistoryEntryForm((prev) => ({ ...prev, notes: e.target.value }))}
+                placeholder="Detalhes do atendimento antigo"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setHistoryEntryDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={handleCreateHistoryEntry} disabled={historyEntrySaving}>
+              {historyEntrySaving ? 'Salvando...' : 'Salvar historico'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

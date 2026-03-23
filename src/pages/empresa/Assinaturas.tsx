@@ -51,7 +51,7 @@ const Assinaturas: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [subscriptions, setSubscriptions] = useState<CustomerSubscription[]>([]);
-  const [customers, setCustomers] = useState<Array<{ id: string; name: string }>>([]);
+  const [customers, setCustomers] = useState<Array<{ id: string; name: string; phone?: string | null }>>([]);
   const [savingPlan, setSavingPlan] = useState(false);
   const [savingSubscription, setSavingSubscription] = useState(false);
   const [usage, setUsage] = useState<SubscriptionUsage[]>([]);
@@ -91,7 +91,7 @@ const Assinaturas: React.FC = () => {
       setPlans(Array.isArray(plansData) ? plansData : []);
       setSubscriptions(Array.isArray(subscriptionsData) ? subscriptionsData : []);
       const list = Array.isArray(customersResult?.data) ? customersResult.data : [];
-      setCustomers(list.map((item: any) => ({ id: item.id, name: item.name })));
+      setCustomers(list.map((item: any) => ({ id: item.id, name: item.name, phone: item.phone || null })));
     } catch (error: any) {
       toast.error(error?.message || 'Erro ao carregar assinaturas');
     } finally {
@@ -343,7 +343,7 @@ const Assinaturas: React.FC = () => {
               <option value="">Selecione</option>
               {customers.map((customer) => (
                 <option key={customer.id} value={customer.id}>
-                  {customer.name}
+                  {customer.phone ? `${customer.name} - ${customer.phone}` : customer.name}
                 </option>
               ))}
             </select>

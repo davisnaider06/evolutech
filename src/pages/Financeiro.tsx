@@ -22,6 +22,8 @@ import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Company, FinancialMetric } from '@/types/auth';
 import { adminService } from '@/services/admin';
 import { companyService } from '@/services/company';
+import * as XLSX from 'xlsx';
+import { toast } from 'sonner';
 
 interface OwnerFinancialOverview {
   period: { date_from: string; date_to: string };
@@ -54,6 +56,7 @@ const DONUT_COLORS = ['hsl(var(--primary))', 'hsl(var(--chart-2))', 'hsl(var(--c
 
 interface FilterOption {
   id: string;
+  value: string;
   label: string;
 }
 
@@ -137,12 +140,14 @@ const Financeiro: React.FC = () => {
         setCustomerOptions(
           (customersResult?.data || []).map((item: any) => ({
             id: String(item.id || item.name),
-            label: String(item.name || ''),
+            value: String(item.name || ''),
+            label: item.phone ? `${String(item.name || '')} - ${String(item.phone)}` : String(item.name || ''),
           }))
         );
         setServiceOptions(
           (servicesResult?.data || []).map((item: any) => ({
             id: String(item.id || item.name),
+            value: String(item.name || ''),
             label: String(item.name || ''),
           }))
         );
@@ -162,6 +167,46 @@ const Financeiro: React.FC = () => {
     setServiceFilter('');
     setDayFilter('');
     setPeriodGroup('daily');
+  };
+
+  const exportExcel = () => {
+    if (isOwner && ownerData) {
+      const workbook = XLSX.utils.book_new();
+      const summaryRows = [
+        { indicador: 'MRR atual', valor: Number(ownerData.summary.mrr_current || 0) },
+        { indicador: 'MRR anterior', valor: Number(ownerData.summary.mrr_previous || 0) },
+        { indicador: 'Crescimento %', valor: Number(ownerData.summary.mrr_growth_percent || 0) },
+        { indicador: 'LTV', valor: Number(ownerData.summary.ltv || 0) },
+        { indicador: 'Ticket medio', valor: Number(ownerData.summary.ticket_medio || 0) },
+        { indicador: 'Receita no periodo', valor: Number(ownerData.summary.revenue_in_period || 0) },
+        { indicador: 'Pendencias', valor: Number(ownerData.summary.pending_amount || 0) },
+        { indicador: 'Clientes totais', valor: Number(ownerData.summary.customers_total || 0) },
+      ];
+      const cashflowRows = (ownerData.charts.cashflow_by_period || ownerData.charts.cashflow_by_day || []).map((item: any) => ({
+        data: item.label || item.date,
+        pago: Number(item.paid || 0),
+        pendente: Number(item.pending || 0),
+      }));
+      const methodRows = (ownerData.charts.payment_methods || []).map((item) => ({
+        forma_pagamento: item.payment_method,
+        total: Number(item.total || 0),
+      }));
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Resumo');
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(cashflowRows), 'Fluxo');
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(methodRows), 'Pagamentos');
+      XLSX.writeFile(workbook, `financeiro-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      return;
+    }
+
+    if (isSuperAdmin && adminData) {
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(adminData.metrics || []), 'Metricas');
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(adminData.companies || []), 'Empresas');
+      XLSX.writeFile(workbook, `financeiro-admin-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      return;
+    }
+
+    toast.error('Nao ha dados para exportar');
   };
 
   if (!isSuperAdmin && !isOwner) {
@@ -213,7 +258,7 @@ const Financeiro: React.FC = () => {
             <SearchableSelect
               value={customerFilter}
               onValueChange={setCustomerFilter}
-              options={customerOptions.map((item) => ({ value: item.label, label: item.label }))}
+              options={customerOptions.map((item) => ({ value: item.value, label: item.label }))}
               placeholder="Filtrar por cliente"
               searchPlaceholder="Buscar cliente..."
               emptyMessage="Nenhum cliente encontrado."
@@ -221,7 +266,7 @@ const Financeiro: React.FC = () => {
             <SearchableSelect
               value={serviceFilter}
               onValueChange={setServiceFilter}
-              options={serviceOptions.map((item) => ({ value: item.label, label: item.label }))}
+              options={serviceOptions.map((item) => ({ value: item.value, label: item.label }))}
               placeholder="Filtrar por serviço"
               searchPlaceholder="Buscar serviço..."
               emptyMessage="Nenhum serviço encontrado."
@@ -237,6 +282,9 @@ const Financeiro: React.FC = () => {
               <option value="yearly">Anual</option>
             </select>
             <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={exportExcel}>
+                Exportar Excel
+              </Button>
               <Button onClick={loadData} className="flex-1">Aplicar filtro</Button>
               <Button
                 type="button"
@@ -403,14 +451,19 @@ const Financeiro: React.FC = () => {
           <h1 className="text-2xl font-bold lg:text-3xl">Financeiro</h1>
           <p className="text-muted-foreground">Visao financeira consolidada da plataforma</p>
         </div>
-        <Input
-          type="number"
-          min={3}
-          max={24}
-          className="w-40"
-          value={periodMonths}
-          onChange={(event) => setPeriodMonths(event.target.value)}
-        />
+        <div className="flex gap-2">
+          <Input
+            type="number"
+            min={3}
+            max={24}
+            className="w-40"
+            value={periodMonths}
+            onChange={(event) => setPeriodMonths(event.target.value)}
+          />
+          <Button type="button" variant="outline" onClick={exportExcel}>
+            Exportar Excel
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">

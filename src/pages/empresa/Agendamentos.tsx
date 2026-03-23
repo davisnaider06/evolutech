@@ -47,6 +47,7 @@ interface ProfessionalOption {
 interface CustomerOption {
   id: string;
   name: string;
+  phone?: string | null;
 }
 
 interface AvailabilityRow {
@@ -182,6 +183,7 @@ const Agendamentos: React.FC = () => {
         rows.map((item: any) => ({
           id: item.id,
           name: item.name,
+          phone: item.phone || null,
         }))
       );
     } catch (error: any) {
@@ -607,7 +609,10 @@ const Agendamentos: React.FC = () => {
             <SearchableSelect
               value={formData.customer_name}
               onValueChange={(value) => setFormData({ ...formData, customer_name: value })}
-              options={customers.map((customer) => ({ value: customer.name, label: customer.name }))}
+              options={customers.map((customer) => ({
+                value: customer.name,
+                label: customer.phone ? `${customer.name} - ${customer.phone}` : customer.name,
+              }))}
               placeholder="Selecionar cliente"
               searchPlaceholder="Buscar cliente..."
               emptyMessage="Nenhum cliente encontrado."
