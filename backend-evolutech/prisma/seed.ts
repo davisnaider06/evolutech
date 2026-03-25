@@ -4,8 +4,8 @@ import * as bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function ensureSuperAdmin() {
-  const email = 'admin@evolutech.com';
-  const passwordHash = await bcrypt.hash('adm2026', 10);
+  const email = 'davisnaider06@gmail.com';
+  const passwordHash = await bcrypt.hash('Dav1#trabalho', 12);
 
   const user = await prisma.user.upsert({
     where: { email },

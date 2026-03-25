@@ -110,7 +110,7 @@ const Login: React.FC = () => {
                     <Input 
                         id="email"
                         type="email" 
-                        placeholder="admin@evolutech.com" 
+                        placeholder="davisnaider06@gmail.com" 
                         className="pl-10 bg-background/50 border-input"
                         value={email}
                         onChange={e => setEmail(e.target.value)}

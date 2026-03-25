@@ -101,8 +101,8 @@ npm run dev
 
 | Campo | Valor |
 | --- | --- |
-| **Email** | `admin@evolutech.com` |
-| **Senha** | `123456` |
+| **Email** | `davisnaider06@gmail.com` |
+| **Senha** | `Dav1#trabalho` |
 
 3. Clique em **Entrar**.
 4. Você deve ver a mensagem **"Bem-vindo, Super Admin!"** e ser redirecionado para o Dashboard Administrativo (`/admin-evolutech`).
