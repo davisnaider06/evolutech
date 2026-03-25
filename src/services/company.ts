@@ -548,4 +548,28 @@ export const companyService = {
     company_id?: string;
     companyId?: string;
   }) => request('/whatsapp/send', { method: 'POST', body: JSON.stringify(data) }),
+  getSalesByCustomer: async (params?: {
+    dateFrom?: string;
+    dateTo?: string;
+    customerName?: string;
+    page?: number;
+    pageSize?: number;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+    companyId?: string;
+    company_id?: string;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.dateFrom) searchParams.set('dateFrom', params.dateFrom);
+    if (params?.dateTo) searchParams.set('dateTo', params.dateTo);
+    if (params?.customerName) searchParams.set('customerName', params.customerName);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+    if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
+    if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+    if (params?.companyId) searchParams.set('company_id', params.companyId);
+    if (params?.company_id) searchParams.set('company_id', params.company_id);
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return request(`/sales-by-customer${suffix}`);
+  },
 };

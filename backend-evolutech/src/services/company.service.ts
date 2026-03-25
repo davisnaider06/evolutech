@@ -53,6 +53,7 @@ export class CompanyService {
     'commissions_owner',
     'comissoes_dono',
   ]);
+  private companyDefaultModuleAliases = new Set(['support', 'suporte']);
   private defaultCompanyAllowedRoles = ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'];
 
   private toNumber(value: unknown): number {
@@ -362,9 +363,19 @@ export class CompanyService {
     return role === 'SUPER_ADMIN_EVOLUTECH' || role === 'ADMIN_EVOLUTECH';
   }
 
+  private isCompanyUserRole(role: AuthenticatedUser['role']) {
+    return role === 'DONO_EMPRESA' || role === 'FUNCIONARIO_EMPRESA';
+  }
+
   private ensureOwnerCompanyRole(user: AuthenticatedUser) {
     if (user.role !== 'DONO_EMPRESA') {
       throw new CompanyServiceError('Apenas DONO_EMPRESA pode executar esta acao', 403);
+    }
+  }
+
+  private ensureCompanySupportActor(user: AuthenticatedUser, companyId: string) {
+    if (!this.isCompanyUserRole(user.role) || !user.companyId || user.companyId !== companyId) {
+      throw new CompanyServiceError('Apenas usuarios da empresa podem abrir chamados de suporte', 403);
     }
   }
 
@@ -956,6 +967,7 @@ export class CompanyService {
     const companyPlan = await this.getCompanyPlan(companyId);
 
     if (this.hasOwnerDefaultAccess(user, moduleCodes)) return;
+    if (this.hasCompanyDefaultAccess(user, moduleCodes)) return;
     const cached = this.getCachedModuleAccess(companyId, moduleCodes, user.role, user.id);
     if (cached === true) return;
 
@@ -996,6 +1008,80 @@ export class CompanyService {
     return moduleCodes.some((code) =>
       this.ownerDefaultModuleAliases.has(String(code || '').trim().toLowerCase())
     );
+  }
+
+  private hasCompanyDefaultAccess(user: AuthenticatedUser, moduleCodes: string[]) {
+    if (!this.isCompanyUserRole(user.role)) return false;
+    return moduleCodes.some((code) =>
+      this.companyDefaultModuleAliases.has(String(code || '').trim().toLowerCase())
+    );
+  }
+
+  private async notifySupportTicketCreatedByEmail(ticket: {
+    id: string;
+    companyId: string;
+    title: string;
+    description: string;
+    priority: string;
+    category?: string | null;
+    createdAt: Date;
+    company?: { id: string; name: string; slug: string } | null;
+    createdByUser?: { id: string; fullName: string; email: string } | null;
+  }) {
+    const apiKey = String(process.env.RESEND_API_KEY || '').trim();
+    const toEmail = String(process.env.SUPPORT_NOTIFICATION_EMAIL || '').trim();
+    const fromEmail = String(process.env.SUPPORT_FROM_EMAIL || 'Evolutech <onboarding@resend.dev>').trim();
+
+    if (!apiKey || !toEmail) {
+      console.info('[support-email] skipped: missing RESEND_API_KEY or SUPPORT_NOTIFICATION_EMAIL');
+      return;
+    }
+
+    const escapeHtml = (value: string) =>
+      String(value || '').replace(/[<>&]/g, (char) => {
+        if (char === '<') return '&lt;';
+        if (char === '>') return '&gt;';
+        return '&amp;';
+      });
+
+    const companyName = ticket.company?.name || ticket.companyId;
+    const openerName = ticket.createdByUser?.fullName || ticket.createdByUser?.email || 'Usuario da empresa';
+    const openerEmail = ticket.createdByUser?.email || '-';
+    const category = ticket.category || 'Nao informada';
+    const createdAt = ticket.createdAt instanceof Date
+      ? ticket.createdAt.toLocaleString('pt-BR')
+      : String(ticket.createdAt || '');
+
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [toEmail],
+        subject: `[Suporte] ${companyName} - ${ticket.title}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #111827;">
+            <h2 style="margin-bottom: 12px;">Novo chamado de suporte</h2>
+            <p><strong>Empresa:</strong> ${escapeHtml(companyName)}</p>
+            <p><strong>Chamado:</strong> ${escapeHtml(ticket.title)}</p>
+            <p><strong>Prioridade:</strong> ${escapeHtml(ticket.priority)}</p>
+            <p><strong>Categoria:</strong> ${escapeHtml(category)}</p>
+            <p><strong>Aberto por:</strong> ${escapeHtml(openerName)} (${escapeHtml(openerEmail)})</p>
+            <p><strong>Data:</strong> ${escapeHtml(createdAt)}</p>
+            <hr style="margin: 16px 0;" />
+            <p style="white-space: pre-wrap;">${escapeHtml(ticket.description)}</p>
+          </div>
+        `,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(`Falha ao enviar email de suporte: ${response.status} ${errorText}`.trim());
+    }
   }
 
   async getLoyaltySettings(user: AuthenticatedUser, queryParams: { company_id?: string; companyId?: string } = {}) {
@@ -6710,7 +6796,7 @@ export class CompanyService {
   ) {
     const companyId = this.resolveCompanyId(user, payload);
     await this.ensureAnyModuleAccess(user, companyId, ['support']);
-    this.ensureOwnerCompanyRole(user);
+    this.ensureCompanySupportActor(user, companyId);
 
     const title = String(payload.title || '').trim();
     const description = String(payload.description || '').trim();
@@ -6740,9 +6826,9 @@ export class CompanyService {
       },
     });
 
-    await prisma.auditLog.create({
-      data: {
-        userId: user.id,
+      await prisma.auditLog.create({
+        data: {
+          userId: user.id,
         companyId,
         action: 'SUPPORT_TICKET_CREATED',
         resource: 'support_tickets',
@@ -6751,12 +6837,38 @@ export class CompanyService {
           title,
           priority,
           category,
+          },
         },
-      },
-    });
+      });
 
-    return {
-      id: created.id,
+      try {
+        await this.notifySupportTicketCreatedByEmail({
+          id: created.id,
+          companyId: created.companyId,
+          title: created.title,
+          description: created.description,
+          priority: created.priority,
+          category: created.category,
+          createdAt: created.createdAt,
+          company: created.company ? { id: created.company.id, name: created.company.name, slug: created.company.slug } : null,
+          createdByUser: created.createdByUser
+            ? {
+                id: created.createdByUser.id,
+                fullName: created.createdByUser.fullName,
+                email: created.createdByUser.email,
+              }
+            : null,
+        });
+      } catch (error) {
+        console.error('[support-email] ticket created but email notification failed', {
+          ticketId: created.id,
+          companyId,
+          error: error instanceof Error ? error.message : error,
+        });
+      }
+
+      return {
+        id: created.id,
       company_id: created.companyId,
       title: created.title,
       description: created.description,
@@ -8110,6 +8222,184 @@ export class CompanyService {
       professional_id: created.professionalId,
       scheduled_at: created.scheduledAt,
       status: created.status,
+    };
+  }
+
+  async getSalesByCustomer(
+    user: AuthenticatedUser,
+    queryParams: {
+      dateFrom?: string;
+      dateTo?: string;
+      company_id?: string;
+      companyId?: string;
+      customerName?: string;
+      page?: number;
+      pageSize?: number;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+    } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, ['relatorios', 'reports', 'vendas', 'sales', 'pedidos']);
+    
+    const { start, end } = this.parseDateRange(queryParams, 30);
+    const customerNameFilter = this.normalizeComparableText(queryParams.customerName);
+    const page = Math.max(1, Number(queryParams.page || 1));
+    const pageSize = Math.min(100, Math.max(1, Number(queryParams.pageSize || 20)));
+    const sortBy = String(queryParams.sortBy || 'createdAt').trim();
+    const sortOrder = queryParams.sortOrder === 'asc' ? 'asc' : 'desc';
+
+    // Fetch all orders in range with their payment status
+    const allOrders = await prisma.order.findMany({
+      where: {
+        companyId,
+        createdAt: { gte: start, lte: end },
+      },
+      select: {
+        id: true,
+        customerName: true,
+        total: true,
+        status: true,
+        createdAt: true,
+      },
+    });
+
+    // Fetch audit logs with PDV checkout details
+    const pdvLogs = await prisma.auditLog.findMany({
+      where: {
+        companyId,
+        action: 'PDV_CHECKOUT',
+        createdAt: { gte: start, lte: end },
+      },
+      select: { details: true },
+    });
+
+    // Map PDV logs by orderId
+    const pdvLogMap = new Map<
+      string,
+      Array<{ itemType: 'product' | 'service'; itemName: string; quantity: number; lineTotal: number }>
+    >();
+    for (const log of pdvLogs) {
+      const details = (log.details || {}) as any;
+      const orderId = String(details?.orderId || '').trim();
+      if (!orderId) continue;
+      const items = Array.isArray(details?.items) ? details.items : [];
+      pdvLogMap.set(orderId, items.map((item: any) => ({
+        itemType: item?.itemType === 'service' ? 'service' : 'product',
+        itemName: String(item?.itemName || '').trim(),
+        quantity: Number(item?.quantity || 0),
+        lineTotal: Number(item?.lineTotal || 0),
+      })));
+    }
+
+    // Filter orders by customerName if provided
+    let filteredOrders = allOrders;
+    if (customerNameFilter) {
+      filteredOrders = allOrders.filter((order) =>
+        this.normalizeComparableText(order.customerName).includes(customerNameFilter)
+      );
+    }
+
+    // Build sales list with items
+    const salesList: Array<{
+      orderId: string;
+      customerName: string;
+      itemType: 'product' | 'service';
+      itemName: string;
+      quantity: number;
+      amount: number;
+      saleDate: Date;
+      orderStatus: string;
+    }> = [];
+
+    for (const order of filteredOrders) {
+      const items = pdvLogMap.get(order.id) || [];
+      if (items.length === 0) continue; // Skip orders without items
+
+      for (const item of items) {
+        salesList.push({
+          orderId: order.id,
+          customerName: order.customerName || 'N/A',
+          itemType: item.itemType,
+          itemName: item.itemName,
+          quantity: item.quantity,
+          amount: Number(item.lineTotal || 0),
+          saleDate: order.createdAt,
+          orderStatus: order.status,
+        });
+      }
+    }
+
+    // Sort the list
+    const sortKey = sortBy === 'customerName' ? 'customerName' : 'saleDate';
+    salesList.sort((a, b) => {
+      let aVal: any = sortKey === 'customerName' ? a.customerName : a.saleDate;
+      let bVal: any = sortKey === 'customerName' ? b.customerName : b.saleDate;
+      
+      if (typeof aVal === 'string') {
+        aVal = aVal.toLowerCase();
+        bVal = (bVal as string).toLowerCase();
+      }
+      
+      if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    // Paginate
+    const totalCount = salesList.length;
+    const paginatedSales = salesList.slice((page - 1) * pageSize, page * pageSize);
+
+    // Group by customer for summary
+    const customerSummary = new Map<string, { totalAmount: number; totalItems: number; saleCount: number }>();
+    for (const sale of salesList) {
+      const existing = customerSummary.get(sale.customerName) || { totalAmount: 0, totalItems: 0, saleCount: 0 };
+      existing.totalAmount += sale.amount;
+      existing.totalItems += sale.quantity;
+      
+      // Count unique orders per customer
+      const customerSales = salesList.filter(s => s.customerName === sale.customerName);
+      existing.saleCount = new Set(customerSales.map(s => s.orderId)).size;
+      
+      customerSummary.set(sale.customerName, existing);
+    }
+
+    return {
+      period: {
+        date_from: start.toISOString(),
+        date_to: end.toISOString(),
+      },
+      filters: {
+        customerName: customerNameFilter ? String(queryParams.customerName || '').trim() : null,
+      },
+      pagination: {
+        page,
+        pageSize,
+        totalCount,
+        totalPages: Math.ceil(totalCount / pageSize),
+      },
+      summary: {
+        totalSales: salesList.length,
+        totalAmount: salesList.reduce((sum, s) => sum + s.amount, 0),
+        totalCustomers: customerSummary.size,
+        averagePerCustomer: salesList.length > 0 ? salesList.reduce((sum, s) => sum + s.amount, 0) / customerSummary.size : 0,
+      },
+      data: paginatedSales.map(sale => ({
+        order_id: sale.orderId,
+        customer_name: sale.customerName,
+        item_type: sale.itemType,
+        item_name: sale.itemName,
+        quantity: sale.quantity,
+        amount: Number(sale.amount.toFixed(2)),
+        sale_date: sale.saleDate.toISOString(),
+        order_status: sale.orderStatus,
+      })),
+      customer_summary: Array.from(customerSummary.entries()).map(([customerName, summary]) => ({
+        customer_name: customerName,
+        total_sales: summary.saleCount,
+        total_items: summary.totalItems,
+        total_amount: Number(summary.totalAmount.toFixed(2)),
+      })),
     };
   }
 }

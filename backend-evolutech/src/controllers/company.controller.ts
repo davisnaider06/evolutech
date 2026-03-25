@@ -776,4 +776,13 @@ export class CompanyController {
       return this.handleError(error, res);
     }
   }
+
+  async getSalesByCustomer(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.getSalesByCustomer(req.user!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
 }

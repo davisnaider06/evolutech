@@ -8,6 +8,7 @@ import { StatusBadge } from '@/components/crud/StatusBadge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
   SelectContent,
@@ -18,6 +19,7 @@ import {
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ShoppingCart, DollarSign, Package } from 'lucide-react';
+import SalesByCustomerReport from '@/components/crud/SalesByCustomerReport';
 
 interface Order {
   id: string;
@@ -74,6 +76,7 @@ const Pedidos: React.FC = () => {
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [formData, setFormData] = useState<Partial<Order>>(defaultOrder);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeTab, setActiveTab] = useState('lista');
 
   const {
     data,
@@ -175,36 +178,49 @@ const Pedidos: React.FC = () => {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Pedidos"
-        description="Gerencie os pedidos e vendas da sua empresa"
-        buttonLabel="Novo Pedido"
-        onButtonClick={handleNew}
+        title="Vendas e Pedidos"
+        description="Gerencie os pedidos e visualize relatórios de vendas"
+        buttonLabel={activeTab === 'lista' ? 'Novo Pedido' : undefined}
+        onButtonClick={activeTab === 'lista' ? handleNew : undefined}
       />
 
-      <SearchFilters
-        searchValue={filters.search || ''}
-        onSearchChange={(value) => setFilters({ ...filters, search: value })}
-        searchPlaceholder="Buscar por cliente..."
-        statusOptions={statusOptions}
-        statusValue={filters.status}
-        onStatusChange={(value) => setFilters({ ...filters, status: value === 'all' ? undefined : value })}
-        showClear={!!filters.search || !!filters.status}
-        onClear={() => setFilters({})}
-      />
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList>
+          <TabsTrigger value="lista">Lista de Pedidos</TabsTrigger>
+          <TabsTrigger value="relatorio">Relatório de Vendas</TabsTrigger>
+        </TabsList>
 
-      <DataTable
-        columns={columns}
-        data={data}
-        loading={loading}
-        totalCount={totalCount}
-        page={pagination.page}
-        pageSize={pagination.pageSize}
-        onPageChange={(page) => setPagination({ ...pagination, page })}
-        onPageSizeChange={(pageSize) => setPagination({ ...pagination, pageSize, page: 1 })}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-        emptyMessage="Nenhum pedido encontrado"
-      />
+        <TabsContent value="lista" className="space-y-6">
+          <SearchFilters
+            searchValue={filters.search || ''}
+            onSearchChange={(value) => setFilters({ ...filters, search: value })}
+            searchPlaceholder="Buscar por cliente..."
+            statusOptions={statusOptions}
+            statusValue={filters.status}
+            onStatusChange={(value) => setFilters({ ...filters, status: value === 'all' ? undefined : value })}
+            showClear={!!filters.search || !!filters.status}
+            onClear={() => setFilters({})}
+          />
+
+          <DataTable
+            columns={columns}
+            data={data}
+            loading={loading}
+            totalCount={totalCount}
+            page={pagination.page}
+            pageSize={pagination.pageSize}
+            onPageChange={(page) => setPagination({ ...pagination, page })}
+            onPageSizeChange={(pageSize) => setPagination({ ...pagination, pageSize, page: 1 })}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            emptyMessage="Nenhum pedido encontrado"
+          />
+        </TabsContent>
+
+        <TabsContent value="relatorio" className="space-y-6">
+          <SalesByCustomerReport activeTab={activeTab} />
+        </TabsContent>
+      </Tabs>
 
       <FormDialog
         open={isFormOpen}

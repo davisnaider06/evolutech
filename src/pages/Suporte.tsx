@@ -82,7 +82,7 @@ export default function Suporte() {
   });
 
   const isEvolutech = user?.role === 'SUPER_ADMIN_EVOLUTECH' || user?.role === 'ADMIN_EVOLUTECH';
-  const isOwner = user?.role === 'DONO_EMPRESA';
+  const isCompanyUser = user?.role === 'DONO_EMPRESA' || user?.role === 'FUNCIONARIO_EMPRESA';
 
   const stats = useMemo(
     () => ({
@@ -167,7 +167,7 @@ export default function Suporte() {
             {isEvolutech ? 'Gerencie os tickets enviados pelas empresas' : 'Abra e acompanhe seus tickets de suporte'}
           </p>
         </div>
-        {isOwner && (
+        {isCompanyUser && (
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={resetForm} className="gap-2">

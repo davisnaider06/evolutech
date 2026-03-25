@@ -15,6 +15,9 @@ const OWNER_DEFAULT_MODULES = [
   { codigo: 'gateways', nome: 'Gateways' },
   { codigo: 'commissions_owner', nome: 'Comissoes' },
 ];
+const COMPANY_DEFAULT_MODULES = [
+  { codigo: 'support', nome: 'Suporte', allowed_roles: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] as string[] },
+];
 
 type JwtAuthPayload = {
   userId: string;
@@ -141,6 +144,24 @@ export class AuthService {
             icone: null,
             is_pro: false,
             allowed_roles: ['DONO_EMPRESA'],
+          });
+        }
+      }
+    }
+
+    if (role === 'DONO_EMPRESA' || role === 'FUNCIONARIO_EMPRESA') {
+      for (const moduleItem of COMPANY_DEFAULT_MODULES) {
+        const hasCode = Array.from(moduleMap.values()).some(
+          (item) => String(item.codigo || '').toLowerCase() === moduleItem.codigo
+        );
+        if (!hasCode) {
+          moduleMap.set(`company-default-${moduleItem.codigo}`, {
+            id: `company-default-${moduleItem.codigo}`,
+            codigo: moduleItem.codigo,
+            nome: moduleItem.nome,
+            icone: null,
+            is_pro: false,
+            allowed_roles: moduleItem.allowed_roles,
           });
         }
       }

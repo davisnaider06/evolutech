@@ -58,6 +58,7 @@ async function ensureBaseCatalog() {
     { nome: 'Comissoes Dono', codigo: 'comissoes_dono', descricao: 'Gestao de comissoes pelo dono', isCore: false, preco: 29.9 },
     { nome: 'Comissoes Staff', codigo: 'commissions_staff', descricao: 'Consulta de comissoes pelo funcionario', isCore: false, preco: 0 },
     { nome: 'Permissoes de Equipe', codigo: 'permissions', descricao: 'Gestao de permissoes dos funcionarios por modulo', isCore: true, preco: 0 },
+    { nome: 'Suporte', codigo: 'support', descricao: 'Abertura e acompanhamento de chamados com a Evolutech', isCore: true, preco: 0 },
     { nome: 'Cobranca e Inadimplencia', codigo: 'collections', descricao: 'Gestao de cobrancas, vencimentos e recuperacao', isCore: false, preco: 59.9 },
     { nome: 'Portal Cliente', codigo: 'customer_portal', descricao: 'Portal de login para cliente final', isCore: false, preco: 39.9 },
     { nome: 'Cursos', codigo: 'courses', descricao: 'Gestao e venda de cursos', isCore: false, preco: 79.9 }
@@ -121,6 +122,7 @@ async function ensureBaseCatalog() {
     'comissoes_dono',
     'commissions_staff',
     'permissions',
+    'support',
     'collections',
     'customer_portal',
     'courses',
@@ -133,7 +135,7 @@ async function ensureBaseCatalog() {
     data: moduloRecords.map((modulo) => ({
       sistemaBaseId: barbearia.id,
       moduloId: modulo.id,
-          isMandatory: ['dashboard', 'clientes', 'agendamentos', 'customer_portal', 'permissions'].includes(modulo.codigo)
+          isMandatory: ['dashboard', 'clientes', 'agendamentos', 'customer_portal', 'permissions', 'support'].includes(modulo.codigo)
         })),
     skipDuplicates: true
   });

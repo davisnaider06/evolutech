@@ -91,6 +91,7 @@ router.get('/gateways', companyController.listMyPaymentGateways.bind(companyCont
 router.post('/gateways/connect', companyController.connectMyPaymentGateway.bind(companyController));
 router.post('/gateways/:gatewayId/activate', companyController.activateMyPaymentGateway.bind(companyController));
 router.delete('/gateways/:gatewayId', companyController.deleteMyPaymentGateway.bind(companyController));
+router.get('/sales-by-customer', companyController.getSalesByCustomer.bind(companyController));
 router.post('/products/import', companyController.importProducts.bind(companyController));
 router.post('/whatsapp/send', companyController.sendWhatsApp.bind(companyController));
 
