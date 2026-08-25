@@ -24,7 +24,8 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 const EMPRESA = 'Felipe Barber';
-const SENHA_PADRAO = 'Barber@2026';
+const SENHA_PADRAO = 'Barber@2026';   // equipe: dono e barbeiros
+const SENHA_CLIENTE = 'Cliente@2026'; // clientes finais, no portal
 
 // ---------------------------------------------------------------
 // Helpers de data. Tudo relativo a hoje, para a demo nunca "vencer".
@@ -372,6 +373,38 @@ async function montar() {
   }
   console.log(`clientes: ${clientesDef.length} (com carteira, sumidos e 1 desativado)`);
 
+  // --- Contas do portal do cliente -----------------------------
+  // Sem isso o cliente final nao consegue entrar em /cliente/<slug>/login.
+  // Criadas so para clientes ativos: cliente desativado nao deve logar.
+  const senhaClienteHash = await bcrypt.hash(SENHA_CLIENTE, 10);
+  let contasCriadas = 0;
+  for (const def of clientesDef) {
+    if (def.inativoHa) continue;
+    const cliente = clientes[def.name];
+    const email = cliente.email;
+    const existente = await prisma.customerAccount.findFirst({
+      where: { companyId, customerId: cliente.id },
+    });
+    if (existente) {
+      await prisma.customerAccount.update({
+        where: { id: existente.id },
+        data: { email, passwordHash: senhaClienteHash, isActive: true },
+      });
+    } else {
+      await prisma.customerAccount.create({
+        data: {
+          companyId,
+          customerId: cliente.id,
+          email,
+          passwordHash: senhaClienteHash,
+          isActive: true,
+        },
+      });
+    }
+    contasCriadas += 1;
+  }
+  console.log(`contas do portal do cliente: ${contasCriadas}`);
+
   // --- Planos de mensalidade -----------------------------------
   const planosDef = [
     { name: 'Mensal 2 Cortes', interval: 'monthly', price: 90, includedServices: 2, isUnlimited: false },
@@ -538,6 +571,34 @@ async function montar() {
   }
   console.log('ajustes de comissao: lancados por dia, com motivo');
 
+  // --- Vendas fechadas (pedidos) -------------------------------
+  // Sem isso o faturamento do mes fica zerado no painel e nos relatorios.
+  await prisma.order.deleteMany({ where: { companyId } });
+  const nomesClientes = Object.keys(clientes);
+  const pedidos = [];
+  for (let i = 0; i < 26; i += 1) {
+    const dia = diasAtras(i);
+    // Domingo a barbearia esta fechada.
+    if (dia.getDay() === 0) continue;
+    // Dois a tres fechamentos por dia, com ticket variando.
+    const qtd = 2 + (i % 2);
+    for (let j = 0; j < qtd; j += 1) {
+      const cliente = clientes[nomesClientes[(i + j) % nomesClientes.length]];
+      const base = [45, 70, 35, 90, 115, 180][(i + j) % 6];
+      pedidos.push({
+        companyId,
+        customerName: cliente.name,
+        total: base,
+        status: 'paid',
+        createdAt: emHoras(dia, 10 + ((i + j) % 8), 0),
+        updatedAt: emHoras(dia, 10 + ((i + j) % 8), 0),
+      });
+    }
+  }
+  await prisma.order.createMany({ data: pedidos });
+  const faturamento = pedidos.reduce((soma, p) => soma + p.total, 0);
+  console.log(`pedidos pagos: ${pedidos.length} (faturamento de R$ ${faturamento.toFixed(2)})`);
+
   // --- Caixa ---------------------------------------------------
   await prisma.cashTransaction.deleteMany({ where: { companyId } });
   const caixa = [
@@ -571,8 +632,11 @@ async function montar() {
   console.log(`  Barbeiro: diego@felipebarber.com`);
   console.log(`  Senha (todos): ${SENHA_PADRAO}`);
   console.log('');
-  console.log(`  Link publico de agendamento: /agendar/${company.slug}`);
-  console.log(`  Portal do cliente:           /cliente/${company.slug}/login`);
+  console.log(`  Portal do cliente: /cliente/${company.slug}/login`);
+  console.log(`  Ex.: joao@email.com  |  thiago@email.com (mensalista)`);
+  console.log(`  Senha (todos os clientes): ${SENHA_CLIENTE}`);
+  console.log('');
+  console.log(`  Link publico (sem login): /agendar/${company.slug}`);
   console.log('===============================================');
 }
 
