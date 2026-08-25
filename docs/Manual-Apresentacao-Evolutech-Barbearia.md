@@ -258,3 +258,16 @@ Com este fluxo, a barbearia recebe:
 3. Portal moderno para o cliente final.
 4. Venda de servicos, planos e cursos no mesmo ecossistema.
 
+
+---
+
+## 13) Levantamento tecnico e lacunas (25/08/2026)
+
+O documento `docs/Levantamento-Funcionalidades-e-Gaps.md` complementa este manual com:
+
+- Levantamento completo de todas as funcionalidades do sistema (admin, empresa, portal do cliente, canais publicos e integracoes).
+- Secao "O sistema aplicado a barbearias": traducao de cada conceito da barbearia para o objeto correspondente no sistema, jornadas de cliente / barbeiro / dono e configuracao recomendada.
+- Analise item a item do `Levantamento_de_Requisitos.pdf` (referencia Booksy e App Barber), com o que ja esta pronto, o que esta parcial e o que falta.
+- Mapeamento de implementacao das lacunas, com arquivos afetados, esforco estimado e ordem de execucao.
+
+Ao apresentar para o cliente, use **este** manual. Use o levantamento tecnico para planejar sprint e responder perguntas sobre o que ainda nao existe.

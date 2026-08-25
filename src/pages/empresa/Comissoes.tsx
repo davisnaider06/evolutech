@@ -35,6 +35,19 @@ type CommissionOverviewItem = {
   amount_paid?: number;
   amount_pending?: number;
   paid_at?: string | null;
+  /** Detalhamento dia a dia dos ajustes do mes. date null = ajuste do mes inteiro. */
+  adjustments_by_day?: Array<{ date: string | null; total: number; reasons: string[] }>;
+};
+
+type CommissionAdjustment = {
+  id: string;
+  professional_id: string;
+  professional_name: string | null;
+  ref_date: string | null;
+  amount: number;
+  reason: string | null;
+  created_by_name: string | null;
+  created_at: string;
 };
 
 const currentMonth = () => {
@@ -58,6 +71,10 @@ const Comissoes: React.FC = () => {
   const [productPct, setProductPct] = useState('10');
   const [monthlyFixed, setMonthlyFixed] = useState('0');
   const [adjustmentAmount, setAdjustmentAmount] = useState('');
+  // Dia do ajuste. Vazio = ajuste do mes inteiro (comportamento antigo).
+  const [adjustmentDate, setAdjustmentDate] = useState('');
+  const [adjustments, setAdjustments] = useState<CommissionAdjustment[]>([]);
+  const [adjustmentsLoading, setAdjustmentsLoading] = useState(false);
   const [adjustmentReason, setAdjustmentReason] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingAdjustment, setSavingAdjustment] = useState(false);
@@ -102,6 +119,40 @@ const Comissoes: React.FC = () => {
     loadData();
   }, [loadData]);
 
+  // Trava o seletor de dia dentro do mes em analise, para o ajuste
+  // nao cair num mes que nao esta na tela.
+  const lastDayOfMonth = useMemo(() => {
+    const [year, monthNumber] = month.split('-').map((value) => Number(value));
+    if (!year || !monthNumber) return undefined;
+    const last = new Date(year, monthNumber, 0).getDate();
+    return `${month}-${String(last).padStart(2, '0')}`;
+  }, [month]);
+
+  // Extrato diario de ajustes do profissional selecionado.
+  const loadAdjustments = useCallback(async () => {
+    if (!selectedProfessionalId) {
+      setAdjustments([]);
+      return;
+    }
+    setAdjustmentsLoading(true);
+    try {
+      const result = await companyService.listCommissionAdjustments({
+        month,
+        professionalId: selectedProfessionalId,
+      });
+      setAdjustments(Array.isArray(result?.data) ? result.data : []);
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao carregar ajustes');
+      setAdjustments([]);
+    } finally {
+      setAdjustmentsLoading(false);
+    }
+  }, [month, selectedProfessionalId]);
+
+  useEffect(() => {
+    loadAdjustments();
+  }, [loadAdjustments]);
+
   useEffect(() => {
     syncProfileForm(selectedProfile);
   }, [selectedProfile, syncProfileForm]);
@@ -142,17 +193,28 @@ const Comissoes: React.FC = () => {
       await companyService.createCommissionAdjustment({
         professional_id: selectedProfessionalId,
         month,
+        ref_date: adjustmentDate || undefined,
         amount: Number(adjustmentAmount),
         reason: adjustmentReason || undefined,
       });
       setAdjustmentAmount('');
       setAdjustmentReason('');
-      toast.success('Ajuste mensal registrado');
-      await loadData();
+      toast.success(adjustmentDate ? 'Ajuste do dia registrado' : 'Ajuste mensal registrado');
+      await Promise.all([loadData(), loadAdjustments()]);
     } catch (error: any) {
       toast.error(error?.message || 'Erro ao registrar ajuste');
     } finally {
       setSavingAdjustment(false);
+    }
+  };
+
+  const handleDeleteAdjustment = async (adjustmentId: string) => {
+    try {
+      await companyService.deleteCommissionAdjustment(adjustmentId);
+      toast.success('Ajuste removido');
+      await Promise.all([loadData(), loadAdjustments()]);
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao remover ajuste');
     }
   };
 
@@ -275,10 +337,24 @@ const Comissoes: React.FC = () => {
       {isOwner ? (
       <Card>
         <CardHeader>
-          <CardTitle>Ajuste mensal</CardTitle>
-          <CardDescription>Bonus ou desconto manual no fechamento do mes.</CardDescription>
+          <CardTitle>Ajuste de comissao</CardTitle>
+          <CardDescription>
+            Bonus ou desconto manual. Informe o dia para lancar em uma data especifica,
+            ou deixe vazio para aplicar no fechamento do mes inteiro.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-4">
+        <CardContent className="grid gap-3 md:grid-cols-5">
+          <div className="space-y-1">
+            <Label>Dia</Label>
+            <Input
+              type="date"
+              value={adjustmentDate}
+              min={`${month}-01`}
+              max={lastDayOfMonth}
+              onChange={(e) => setAdjustmentDate(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">Vazio = mes inteiro</p>
+          </div>
           <div className="space-y-1">
             <Label>Valor (+/-)</Label>
             <Input
@@ -293,12 +369,69 @@ const Comissoes: React.FC = () => {
             <Label>Motivo</Label>
             <Input value={adjustmentReason} onChange={(e) => setAdjustmentReason(e.target.value)} placeholder="Opcional" />
           </div>
-          <Button onClick={handleAddAdjustment} disabled={savingAdjustment || !selectedProfessionalId}>
+          <Button
+            className="self-end"
+            onClick={handleAddAdjustment}
+            disabled={savingAdjustment || !selectedProfessionalId}
+          >
             {savingAdjustment ? 'Aplicando...' : 'Aplicar ajuste'}
           </Button>
         </CardContent>
       </Card>
       ) : null}
+
+      {/* Extrato dia a dia dos ajustes do mes. */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Historico de ajustes do mes</CardTitle>
+          <CardDescription>
+            Cada aumento ou desconto lancado, com o dia e o motivo.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {adjustmentsLoading ? (
+            <p className="text-sm text-muted-foreground">Carregando...</p>
+          ) : !selectedProfessionalId ? (
+            <p className="text-sm text-muted-foreground">Selecione um profissional.</p>
+          ) : adjustments.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum ajuste lancado neste mes.</p>
+          ) : (
+            <div className="space-y-2">
+              {adjustments.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between gap-3 rounded border p-2 text-sm"
+                >
+                  <div>
+                    <p className="font-medium">
+                      {item.ref_date
+                        ? new Date(`${item.ref_date}T12:00:00`).toLocaleDateString('pt-BR')
+                        : 'Mes inteiro'}
+                      {' - '}
+                      <span className={item.amount < 0 ? 'text-destructive' : 'text-emerald-600'}>
+                        {toMoney(item.amount)}
+                      </span>
+                    </p>
+                    <p className="text-muted-foreground">
+                      {item.reason || 'Sem motivo informado'}
+                      {item.created_by_name ? ` - por ${item.created_by_name}` : ''}
+                    </p>
+                  </div>
+                  {isOwner && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleDeleteAdjustment(item.id)}
+                    >
+                      Remover
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

@@ -38,6 +38,63 @@ export class CompanyController {
     }
   }
 
+  // --- Agenda em grade (timeline por barbeiro) ---
+  async getAgendaBoard(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.getAgendaBoard(req.user!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  // --- Bloqueios de agenda ---
+  async listAppointmentBlocks(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.listAppointmentBlocks(req.user!, req.query as any);
+      return res.json({ data: result });
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async createAppointmentBlock(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.createAppointmentBlock(req.user!, req.body || {});
+      return res.status(201).json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async deleteAppointmentBlock(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.deleteAppointmentBlock(req.user!, req.params.blockId);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  // --- Ajustes de comissao (com detalhamento diario) ---
+  async listCommissionAdjustments(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.listCommissionAdjustments(req.user!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async deleteCommissionAdjustment(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.deleteCommissionAdjustment(req.user!, req.params.adjustmentId);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   async create(req: AuthedRequest, res: Response) {
     try {
       const { table } = req.params;

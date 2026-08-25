@@ -1,6 +1,7 @@
 import { prisma } from '../db';
 import { AuthenticatedCustomer } from '../types';
 import { PaymentService } from './payment.service';
+import { getBlockedIntervals, isIntervalBlocked } from '../utils/appointment-blocks.util';
 
 class CustomerPortalError extends Error {
   statusCode: number;
@@ -504,6 +505,21 @@ export class CustomerPortalService {
 
     const dayStart = new Date(scheduledAt);
     dayStart.setHours(0, 0, 0, 0);
+
+    // O horario pode estar dentro da janela semanal mas bloqueado pontualmente.
+    const blockedIntervals = await getBlockedIntervals(
+      context.companyId,
+      professional.userId,
+      dayStart
+    );
+    const requestedStartMs = scheduledAt.getTime();
+    const requestedEndMs = requestedStartMs + Number(service.durationMinutes || 30) * 60 * 1000;
+    if (isIntervalBlocked(blockedIntervals, requestedStartMs, requestedEndMs)) {
+      throw new CustomerPortalError(
+        'Horario indisponivel: o profissional bloqueou esse periodo',
+        409
+      );
+    }
     const dayEnd = new Date(scheduledAt);
     dayEnd.setHours(23, 59, 59, 999);
     const booked = await (prisma as any).appointment.findMany({
@@ -663,6 +679,13 @@ export class CustomerPortalService {
       bookedServices.map((item: any) => [item.id, Number(item.durationMinutes || 30)])
     );
 
+    // Bloqueios de agenda do barbeiro neste dia (almoco, folga, medico).
+    const blockedIntervals = await getBlockedIntervals(
+      context.companyId,
+      professional.userId,
+      startDate
+    );
+
     const now = new Date();
     const slotDuration = Number(service.durationMinutes || 30);
     const overlaps = (aStart: number, aEnd: number, bStart: number, bEnd: number) =>
@@ -678,6 +701,7 @@ export class CustomerPortalService {
         const slotEnd = new Date(slotStart);
         slotEnd.setMinutes(slotEnd.getMinutes() + slotDuration);
         if (slotStart <= now) continue;
+        if (isIntervalBlocked(blockedIntervals, slotStart.getTime(), slotEnd.getTime())) continue;
 
         const blocked = booked.some((item: any) => {
           const bookedStart = new Date(item.scheduledAt);

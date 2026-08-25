@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { appointmentsService } from '@/services/appointments';
 import { useAuth } from '@/contexts/AuthContext';
 import { companyService } from '@/services/company';
+import { AgendaBoard } from '@/components/agenda/AgendaBoard';
 
 interface Appointment {
   id: string;
@@ -79,6 +80,9 @@ const Agendamentos: React.FC = () => {
   const { user, company } = useAuth();
   const bookingSlug = user?.tenantSlug || company?.slug;
   const [isFormOpen, setIsFormOpen] = useState(false);
+  // 'board' = grade por barbeiro (padrao da operacao); 'list' = tabela com busca.
+  const [viewMode, setViewMode] = useState<'board' | 'list'>('board');
+  const [boardRefresh, setBoardRefresh] = useState(0);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -346,6 +350,7 @@ const Agendamentos: React.FC = () => {
       await appointmentsService.removeInternal(appointment.id);
       toast.success('Agendamento removido');
       fetchAppointments();
+      setBoardRefresh((prev) => prev + 1);
     } catch (error: any) {
       toast.error(error.message || 'Erro ao excluir agendamento');
     }
@@ -368,6 +373,7 @@ const Agendamentos: React.FC = () => {
       }
       setIsFormOpen(false);
       fetchAppointments();
+      setBoardRefresh((prev) => prev + 1);
     } catch (error: any) {
       toast.error(error.message || 'Erro ao salvar agendamento');
     } finally {
@@ -396,6 +402,41 @@ const Agendamentos: React.FC = () => {
         buttonLabel="Novo Agendamento"
         onButtonClick={handleNew}
       />
+
+      {/* Grade x lista: a grade e a visao do dia a dia da barbearia,
+          a lista serve para busca e edicao em massa. */}
+      <div className="flex gap-2">
+        <Button
+          variant={viewMode === 'board' ? 'default' : 'outline'}
+          onClick={() => setViewMode('board')}
+        >
+          Agenda do dia
+        </Button>
+        <Button
+          variant={viewMode === 'list' ? 'default' : 'outline'}
+          onClick={() => setViewMode('list')}
+        >
+          Lista
+        </Button>
+      </div>
+
+      {viewMode === 'board' && (
+        <AgendaBoard
+          refreshToken={boardRefresh}
+          onSelectAppointment={(appointment) => {
+            // A grade ja traz tudo o que o formulario precisa.
+            setEditingAppointment({ id: appointment.id } as Appointment);
+            setFormData({
+              customer_name: appointment.customer_name || '',
+              service_name: appointment.service_name || '',
+              professional_name: appointment.professional_name || '',
+              scheduled_at: new Date(appointment.scheduled_at).toISOString().slice(0, 16),
+              status: appointment.status || 'pendente',
+            });
+            setIsFormOpen(true);
+          }}
+        />
+      )}
 
       <Card>
         <CardHeader>
@@ -556,6 +597,8 @@ const Agendamentos: React.FC = () => {
         </Button>
       </div>
 
+      {viewMode === 'list' && (
+      <>
       <SearchFilters
         searchValue={search}
         onSearchChange={(value) => {
@@ -593,6 +636,8 @@ const Agendamentos: React.FC = () => {
         onDelete={handleDelete}
         emptyMessage="Nenhum agendamento encontrado"
       />
+      </>
+      )}
 
       <FormDialog
         open={isFormOpen}

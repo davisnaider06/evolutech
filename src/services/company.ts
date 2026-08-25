@@ -100,9 +100,20 @@ export const companyService = {
   createCommissionAdjustment: async (data: {
     professional_id: string;
     month: string;
+    /** Dia especifico do ajuste (AAAA-MM-DD). Vazio = ajuste do mes inteiro. */
+    ref_date?: string;
     amount: number;
     reason?: string;
   }) => request('/commissions/adjustments', { method: 'POST', body: JSON.stringify(data) }),
+  listCommissionAdjustments: async (params?: { month?: string; professionalId?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.month) searchParams.set('month', params.month);
+    if (params?.professionalId) searchParams.set('professional_id', params.professionalId);
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return request(`/commissions/adjustments${suffix}`);
+  },
+  deleteCommissionAdjustment: async (adjustmentId: string) =>
+    request(`/commissions/adjustments/${adjustmentId}`, { method: 'DELETE' }),
   listCommissionPayouts: async (params?: { month?: string; professionalId?: string }) => {
     const searchParams = new URLSearchParams();
     if (params?.month) searchParams.set('month', params.month);
@@ -211,13 +222,54 @@ export const companyService = {
       method: data.id ? 'PUT' : 'POST',
       body: JSON.stringify(data),
     }),
-  listCustomerSubscriptions: async (params?: { customerId?: string; status?: string }) => {
+  listCustomerSubscriptions: async (params?: {
+    customerId?: string;
+    status?: string;
+    professionalId?: string;
+    /** 'mine' = so os mensalistas do barbeiro logado. */
+    scope?: 'mine';
+  }) => {
     const searchParams = new URLSearchParams();
     if (params?.customerId) searchParams.set('customer_id', params.customerId);
     if (params?.status) searchParams.set('status', params.status);
+    if (params?.professionalId) searchParams.set('professional_id', params.professionalId);
+    if (params?.scope) searchParams.set('scope', params.scope);
     const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
     return request(`/subscriptions/customers${suffix}`);
   },
+
+  // --- Agenda em grade e bloqueios de horario ---
+  getAgendaBoard: async (params?: { date?: string; professionalId?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.date) searchParams.set('date', params.date);
+    if (params?.professionalId) searchParams.set('professional_id', params.professionalId);
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return request(`/appointments/board${suffix}`);
+  },
+  listAppointmentBlocks: async (params?: {
+    professionalId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.professionalId) searchParams.set('professional_id', params.professionalId);
+    if (params?.dateFrom) searchParams.set('dateFrom', params.dateFrom);
+    if (params?.dateTo) searchParams.set('dateTo', params.dateTo);
+    const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return request(`/appointments/blocks${suffix}`);
+  },
+  createAppointmentBlock: async (data: {
+    professional_id?: string;
+    start_at: string;
+    end_at: string;
+    reason?: string;
+    is_recurring?: boolean;
+    weekday?: number;
+    start_time?: string;
+    end_time?: string;
+  }) => request('/appointments/blocks', { method: 'POST', body: JSON.stringify(data) }),
+  deleteAppointmentBlock: async (blockId: string) =>
+    request(`/appointments/blocks/${blockId}`, { method: 'DELETE' }),
   listSubscriptionUsage: async (params?: {
     customerId?: string;
     subscriptionId?: string;
@@ -274,6 +326,8 @@ export const companyService = {
     amount?: number;
     notes?: string;
     status?: 'active' | 'pending' | 'expired' | 'canceled' | 'suspended';
+    /** Barbeiro dono da mensalidade. Vazio = herda o barbeiro do cliente. */
+    professional_id?: string;
   }) =>
     request(`/subscriptions/customers`, {
       method: data.id ? 'PUT' : 'POST',

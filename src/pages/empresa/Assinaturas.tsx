@@ -30,6 +30,9 @@ type CustomerSubscription = {
   remaining_services: number | null;
   amount: number;
   auto_renew: boolean;
+  /** Barbeiro dono da mensalidade (N mensalidades -> 1 barbeiro). */
+  professional_id: string | null;
+  professional_name: string | null;
 };
 
 type SubscriptionUsage = {
@@ -51,7 +54,10 @@ const Assinaturas: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [subscriptions, setSubscriptions] = useState<CustomerSubscription[]>([]);
-  const [customers, setCustomers] = useState<Array<{ id: string; name: string; phone?: string | null }>>([]);
+  const [customers, setCustomers] = useState<
+    Array<{ id: string; name: string; phone?: string | null; preferredProfessionalId?: string }>
+  >([]);
+  const [professionals, setProfessionals] = useState<Array<{ id: string; name: string }>>([]);
   const [savingPlan, setSavingPlan] = useState(false);
   const [savingSubscription, setSavingSubscription] = useState(false);
   const [usage, setUsage] = useState<SubscriptionUsage[]>([]);
@@ -77,21 +83,37 @@ const Assinaturas: React.FC = () => {
     auto_renew: true,
     status: 'active' as 'active' | 'pending' | 'expired' | 'canceled' | 'suspended',
     start_at: new Date().toISOString().slice(0, 10),
+    professional_id: '',
   });
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [plansData, subscriptionsData, customersResult] = await Promise.all([
+      const [plansData, subscriptionsData, customersResult, teamResult] = await Promise.all([
         companyService.listSubscriptionPlans(),
         companyService.listCustomerSubscriptions(),
         companyService.list('customers', { page: 1, pageSize: 200, is_active: 'true' }),
+        companyService.listTeamMembers(),
       ]);
 
       setPlans(Array.isArray(plansData) ? plansData : []);
       setSubscriptions(Array.isArray(subscriptionsData) ? subscriptionsData : []);
       const list = Array.isArray(customersResult?.data) ? customersResult.data : [];
-      setCustomers(list.map((item: any) => ({ id: item.id, name: item.name, phone: item.phone || null })));
+      setCustomers(
+        list.map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          phone: item.phone || null,
+          // Guardado para pre-selecionar o barbeiro ao escolher o cliente.
+          preferredProfessionalId: item.preferred_professional_id || '',
+        }))
+      );
+      setProfessionals(
+        (Array.isArray(teamResult) ? teamResult : []).map((item: any) => ({
+          id: String(item.id),
+          name: String(item.full_name || item.fullName || ''),
+        }))
+      );
     } catch (error: any) {
       toast.error(error?.message || 'Erro ao carregar assinaturas');
     } finally {
@@ -189,6 +211,18 @@ const Assinaturas: React.FC = () => {
     setSubscriptionForm((prev) => ({ ...prev, amount: selectedPlanPrice }));
   }, [selectedPlanPrice, subscriptionForm.plan_id]);
 
+  // Ao escolher o cliente, o barbeiro dele ja vem preenchido.
+  // O dono pode trocar, mas o padrao segue a carteira — que e o esperado numa barbearia.
+  useEffect(() => {
+    if (!subscriptionForm.customer_id) return;
+    const customer = customers.find((item) => item.id === subscriptionForm.customer_id);
+    if (!customer) return;
+    setSubscriptionForm((prev) => ({
+      ...prev,
+      professional_id: prev.professional_id || customer.preferredProfessionalId || '',
+    }));
+  }, [subscriptionForm.customer_id, customers]);
+
   const handleSaveSubscription = async () => {
     if (!subscriptionForm.customer_id || !subscriptionForm.plan_id) {
       toast.error('Selecione cliente e plano');
@@ -203,6 +237,7 @@ const Assinaturas: React.FC = () => {
         auto_renew: subscriptionForm.auto_renew,
         status: subscriptionForm.status,
         start_at: subscriptionForm.start_at,
+        professional_id: subscriptionForm.professional_id || undefined,
       });
       toast.success('Assinatura vinculada');
       setSubscriptionForm((prev) => ({
@@ -211,6 +246,7 @@ const Assinaturas: React.FC = () => {
         plan_id: '',
         amount: 0,
         status: 'active',
+        professional_id: '',
       }));
       await loadData();
       await loadUsage();
@@ -364,6 +400,23 @@ const Assinaturas: React.FC = () => {
             </select>
           </div>
           <div className="space-y-1">
+            <Label>Barbeiro</Label>
+            <select
+              value={subscriptionForm.professional_id}
+              onChange={(e) =>
+                setSubscriptionForm((p) => ({ ...p, professional_id: e.target.value }))
+              }
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">Herdar do cliente</option>
+              {professionals.map((professional) => (
+                <option key={professional.id} value={professional.id}>
+                  {professional.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
             <Label>Inicio</Label>
             <Input
               type="date"
@@ -439,6 +492,9 @@ const Assinaturas: React.FC = () => {
                   <p className="text-muted-foreground">
                     {item.status} - Inicio {new Date(item.start_at).toLocaleDateString('pt-BR')} - Fim{' '}
                     {new Date(item.end_at).toLocaleDateString('pt-BR')}
+                  </p>
+                  <p className="text-muted-foreground">
+                    Barbeiro: {item.professional_name || 'nao definido'}
                   </p>
                 </div>
                 <div className="text-right">

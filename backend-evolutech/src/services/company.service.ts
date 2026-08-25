@@ -11,6 +11,7 @@ import {
   PAYMENT_GATEWAY_CATALOG_MAP,
   SUPPORTED_PAYMENT_GATEWAYS,
 } from '../config/paymentGatewayCatalog';
+import { getBlockedIntervals, isIntervalBlocked } from '../utils/appointment-blocks.util';
 
 class CompanyServiceError extends Error {
   statusCode: number;
@@ -307,6 +308,8 @@ export class CompanyService {
       appointments: prisma.appointment,
       appointment_services: (prisma as any).appointmentService,
       appointment_availability: (prisma as any).appointmentAvailability,
+      // appointment_blocks NAO entra aqui de proposito: o CRUD generico nao sabe
+      // que um barbeiro so pode mexer no proprio bloqueio. Use /appointments/blocks.
       orders: prisma.order,
       cash_transactions: (prisma as any).cashTransaction,
       courses: (prisma as any).course,
@@ -510,6 +513,40 @@ export class CompanyService {
       where.professionalId = user.id;
     }
 
+    // Carteira de clientes por barbeiro (gap 15) e inatividade (gap 9).
+    if (table === 'customers') {
+      const scope = String(queryParams.scope || '').trim().toLowerCase();
+      const requestedProfessional = String(queryParams.professional_id || '').trim();
+
+      if (scope === 'mine') {
+        // "Meus clientes": o dono precisa dizer de quem; o funcionario e sempre ele mesmo.
+        const targetId = user.role === 'FUNCIONARIO_EMPRESA' ? user.id : requestedProfessional;
+        if (!targetId) {
+          throw new CompanyServiceError(
+            'Para scope=mine informe professional_id ou acesse como funcionario',
+            400
+          );
+        }
+        where.preferredProfessionalId = targetId;
+      } else if (requestedProfessional) {
+        where.preferredProfessionalId = requestedProfessional;
+      } else if (String(queryParams.unassigned || '') === 'true') {
+        where.preferredProfessionalId = null;
+      }
+
+      // inactive_days=60 -> quem nao vem ha 60 dias ou nunca veio.
+      // Vai em AND para nao se misturar com o OR da busca textual.
+      const inactiveDays = Number(queryParams.inactive_days || 0);
+      if (Number.isFinite(inactiveDays) && inactiveDays > 0) {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - inactiveDays);
+        where.AND = [
+          ...(where.AND || []),
+          { OR: [{ lastVisitAt: { lt: cutoff } }, { lastVisitAt: null }] },
+        ];
+      }
+    }
+
     if (search && config.searchFields.length > 0) {
       where.OR = config.searchFields.map((field) => ({
         [field]: { contains: search, mode: 'insensitive' },
@@ -549,11 +586,46 @@ export class CompanyService {
         take: pageSize,
         skip: (page - 1) * pageSize,
         orderBy: { [orderBy]: orderDirection },
+        ...(table === 'customers'
+          ? { include: { preferredProfessional: { select: { id: true, fullName: true } } } }
+          : {}),
       }),
       model.count({ where }),
     ]);
 
+    if (table === 'customers') {
+      return {
+        data: (data as any[]).map((item) => this.decorateCustomer(item)),
+        total,
+        page,
+        pageSize,
+      };
+    }
+
     return { data, total, page, pageSize };
+  }
+
+  // Acrescenta ao cliente os campos derivados que a tela precisa:
+  // quem e o barbeiro dele, ha quantos dias nao aparece e ha quantos esta desativado.
+  private decorateCustomer(item: any) {
+    if (!item) return item;
+    const now = Date.now();
+    const daysSince = (value: any) => {
+      if (!value) return null;
+      const time = new Date(value).getTime();
+      if (Number.isNaN(time)) return null;
+      return Math.max(0, Math.floor((now - time) / 86400000));
+    };
+
+    return {
+      ...item,
+      preferred_professional_id: item.preferredProfessionalId || null,
+      preferred_professional_name: item.preferredProfessional?.fullName || null,
+      last_visit_at: item.lastVisitAt || null,
+      deactivated_at: item.deactivatedAt || null,
+      days_since_last_visit: daysSince(item.lastVisitAt),
+      days_inactive: item.isActive ? null : daysSince(item.deactivatedAt),
+    };
   }
 
   async createRecord(table: string, user: AuthenticatedUser, data: any) {
@@ -596,6 +668,23 @@ export class CompanyService {
       if (this.toNumber(payload.amount) <= 0) {
         throw new CompanyServiceError('amount deve ser maior que zero', 400);
       }
+    }
+
+    if (table === 'customers') {
+      await this.applyCustomerProfessionalPayload(payload, companyId);
+      // Barbeiro que cadastra um cliente ja fica como barbeiro dele, salvo indicacao contraria.
+      // Trata undefined e null: o formulario manda string vazia quando nada foi escolhido.
+      if (!payload.preferredProfessionalId && user.role === 'FUNCIONARIO_EMPRESA') {
+        payload.preferredProfessionalId = user.id;
+      }
+      // Cliente nasce ativo salvo indicacao contraria; se nascer inativo, ja carimba a data.
+      payload.deactivatedAt = payload.isActive === false ? new Date() : null;
+
+      const created = await model.create({
+        data: payload,
+        include: { preferredProfessional: { select: { id: true, fullName: true } } },
+      });
+      return this.decorateCustomer(created);
     }
 
     return model.create({ data: payload });
@@ -699,10 +788,91 @@ export class CompanyService {
 
     delete payload.type;
 
+    // Agendamento concluido conta como visita e, se o cliente ainda nao tem
+    // barbeiro de referencia, adota o profissional que o atendeu.
+    if (table === 'appointments' && payload.status === 'concluido') {
+      const appointment = await prisma.appointment.findUnique({
+        where: { id },
+        select: { customerId: true, professionalId: true, scheduledAt: true },
+      });
+      if (appointment?.customerId) {
+        const customer = await prisma.customer.findUnique({
+          where: { id: appointment.customerId },
+          select: { preferredProfessionalId: true },
+        });
+        const professionalId = payload.professionalId || appointment.professionalId || null;
+        await prisma.customer.update({
+          where: { id: appointment.customerId },
+          data: {
+            lastVisitAt: appointment.scheduledAt || new Date(),
+            ...(customer && !customer.preferredProfessionalId && professionalId
+              ? { preferredProfessionalId: professionalId }
+              : {}),
+          },
+        });
+      }
+    }
+
+    if (table === 'customers') {
+      await this.applyCustomerProfessionalPayload(payload, existing.companyId);
+
+      // Carimba/limpa a data de desativacao quando o status do cliente muda.
+      if (payload.isActive !== undefined) {
+        const current = await prisma.customer.findUnique({
+          where: { id },
+          select: { isActive: true, deactivatedAt: true },
+        });
+        const nextActive = Boolean(payload.isActive);
+        if (current && current.isActive && !nextActive) {
+          payload.deactivatedAt = new Date();
+        } else if (nextActive) {
+          payload.deactivatedAt = null;
+        }
+      }
+
+      const updated = await model.update({
+        where: { id },
+        data: payload,
+        include: { preferredProfessional: { select: { id: true, fullName: true } } },
+      });
+      return this.decorateCustomer(updated);
+    }
+
     return model.update({
       where: { id },
       data: payload,
     });
+  }
+
+  // Normaliza preferred_professional_id vindo do front e garante que o barbeiro
+  // informado pertence mesmo a esta empresa (evita vincular cliente a alguem de fora).
+  private async applyCustomerProfessionalPayload(payload: any, companyId: string) {
+    const raw =
+      payload.preferred_professional_id !== undefined
+        ? payload.preferred_professional_id
+        : payload.preferredProfessionalId;
+    delete payload.preferred_professional_id;
+
+    if (raw === undefined) return;
+
+    const professionalId = String(raw || '').trim();
+    if (!professionalId) {
+      payload.preferredProfessionalId = null;
+      return;
+    }
+
+    const professional = await prisma.userRole.findFirst({
+      where: {
+        companyId,
+        userId: professionalId,
+        role: { in: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+      },
+      select: { userId: true },
+    });
+    if (!professional) {
+      throw new CompanyServiceError('Profissional nao encontrado nesta empresa', 404);
+    }
+    payload.preferredProfessionalId = professionalId;
   }
 
   async deleteRecord(table: string, id: string, user: AuthenticatedUser) {
@@ -881,6 +1051,367 @@ export class CompanyService {
       end_time: item.endTime,
       is_active: item.isActive,
     }));
+  }
+
+  // ---------------------------------------------------------------
+  // Agenda em grade (timeline por barbeiro) — gap 17
+  // Devolve, para um dia, cada barbeiro com sua janela de trabalho,
+  // seus bloqueios e seus agendamentos, tudo em minutos desde a meia-noite,
+  // para o front so precisar posicionar os blocos.
+  // ---------------------------------------------------------------
+  async getAgendaBoard(
+    user: AuthenticatedUser,
+    queryParams: { date?: string; company_id?: string; professional_id?: string } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, ['appointments', 'agendamentos']);
+
+    const dateRaw = String(queryParams.date || '').trim();
+    const base = dateRaw ? new Date(`${dateRaw}T00:00:00`) : new Date();
+    if (Number.isNaN(base.getTime())) {
+      throw new CompanyServiceError('date invalido. Use AAAA-MM-DD', 400);
+    }
+    const dayStart = new Date(base);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(base);
+    dayEnd.setHours(23, 59, 59, 999);
+    const weekday = dayStart.getDay();
+
+    // Funcionario ve so a propria coluna; dono ve a barbearia inteira.
+    const requested = String(queryParams.professional_id || '').trim();
+    const professionalFilter = user.role === 'FUNCIONARIO_EMPRESA' ? user.id : requested;
+
+    const professionals = await prisma.userRole.findMany({
+      where: {
+        companyId,
+        role: { in: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+        user: { isActive: true },
+        ...(professionalFilter ? { userId: professionalFilter } : {}),
+      },
+      select: { userId: true, role: true, user: { select: { fullName: true } } },
+    });
+
+    const professionalIds = professionals.map((item) => item.userId);
+    if (professionalIds.length === 0) {
+      return {
+        date: dayStart.toISOString().slice(0, 10),
+        weekday,
+        day_start_minutes: 8 * 60,
+        day_end_minutes: 18 * 60,
+        columns: [],
+      };
+    }
+
+    const [availability, appointments, services] = await Promise.all([
+      (prisma as any).appointmentAvailability.findMany({
+        where: { companyId, professionalId: { in: professionalIds }, weekday, isActive: true },
+        orderBy: { startTime: 'asc' },
+      }),
+      (prisma as any).appointment.findMany({
+        where: {
+          companyId,
+          professionalId: { in: professionalIds },
+          scheduledAt: { gte: dayStart, lte: dayEnd },
+        },
+        orderBy: { scheduledAt: 'asc' },
+      }),
+      (prisma as any).appointmentService.findMany({
+        where: { companyId },
+        select: { id: true, name: true, durationMinutes: true, price: true },
+      }),
+    ]);
+
+    const serviceById = new Map<string, any>(
+      (services as any[]).map((item: any) => [item.id, item])
+    );
+
+    const minutesFromDayStart = (value: Date) => {
+      const date = new Date(value);
+      return date.getHours() * 60 + date.getMinutes();
+    };
+
+    const columns = [];
+    let earliest = 24 * 60;
+    let latest = 0;
+
+    for (const professional of professionals) {
+      const windows = (availability as any[])
+        .filter((item: any) => item.professionalId === professional.userId)
+        .map((item: any) => ({
+          start_minutes: this.timeStringToMinutes(item.startTime),
+          end_minutes: this.timeStringToMinutes(item.endTime),
+          start_time: item.startTime,
+          end_time: item.endTime,
+        }));
+
+      const blocks = (
+        await getBlockedIntervals(companyId, professional.userId, dayStart)
+      ).map((item) => ({
+        start_minutes: minutesFromDayStart(new Date(item.startMs)),
+        end_minutes: minutesFromDayStart(new Date(item.endMs)),
+        reason: item.reason,
+      }));
+
+      const items = (appointments as any[])
+        .filter((item: any) => item.professionalId === professional.userId)
+        .map((item: any) => {
+          const service = item.serviceId ? serviceById.get(String(item.serviceId)) : null;
+          const duration = Number(service?.durationMinutes || 30);
+          const startMinutes = minutesFromDayStart(item.scheduledAt);
+          return {
+            id: item.id,
+            customer_id: item.customerId || null,
+            customer_name: item.customerName,
+            service_id: item.serviceId || null,
+            service_name: item.serviceName || service?.name || null,
+            status: item.status,
+            scheduled_at: item.scheduledAt,
+            start_minutes: startMinutes,
+            end_minutes: startMinutes + duration,
+            duration_minutes: duration,
+            price: this.toNumber(service?.price),
+          };
+        });
+
+      for (const window of windows) {
+        earliest = Math.min(earliest, window.start_minutes);
+        latest = Math.max(latest, window.end_minutes);
+      }
+      for (const item of items) {
+        earliest = Math.min(earliest, item.start_minutes);
+        latest = Math.max(latest, item.end_minutes);
+      }
+
+      columns.push({
+        professional_id: professional.userId,
+        professional_name: professional.user.fullName,
+        role: professional.role,
+        windows,
+        blocks,
+        appointments: items,
+        // Numeros do dia para o cabecalho da coluna.
+        summary: {
+          appointments: items.length,
+          booked_minutes: items.reduce((sum, item) => sum + item.duration_minutes, 0),
+          available_minutes: windows.reduce(
+            (sum, item) => sum + (item.end_minutes - item.start_minutes),
+            0
+          ),
+        },
+      });
+    }
+
+    // Se ninguem trabalha nesse dia, cai numa janela padrao para a grade nao ficar vazia.
+    if (earliest > latest) {
+      earliest = 8 * 60;
+      latest = 18 * 60;
+    }
+
+    return {
+      date: dayStart.toISOString().slice(0, 10),
+      weekday,
+      // Uma folga de 30 min de cada lado deixa a grade respirar.
+      day_start_minutes: Math.max(0, earliest - 30),
+      day_end_minutes: Math.min(24 * 60, latest + 30),
+      columns,
+    };
+  }
+
+  // ---------------------------------------------------------------
+  // Bloqueios de agenda (almoco, folga, medico) — gap 13
+  // Regra de acesso: o barbeiro gerencia os proprios bloqueios,
+  // o dono gerencia os de qualquer barbeiro da empresa.
+  // ---------------------------------------------------------------
+
+  private resolveBlockProfessionalId(
+    user: AuthenticatedUser,
+    companyId: string,
+    requestedId?: string
+  ) {
+    const requested = String(requestedId || '').trim();
+    if (user.role === 'FUNCIONARIO_EMPRESA') return user.id;
+    if (!requested) {
+      throw new CompanyServiceError('professional_id obrigatorio', 400);
+    }
+    return requested;
+  }
+
+  async listAppointmentBlocks(
+    user: AuthenticatedUser,
+    queryParams: {
+      company_id?: string;
+      professional_id?: string;
+      dateFrom?: string;
+      dateTo?: string;
+    } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, ['appointments', 'agendamentos']);
+
+    const requested = String(queryParams.professional_id || '').trim();
+    const professionalId = user.role === 'FUNCIONARIO_EMPRESA' ? user.id : requested;
+
+    const where: any = { companyId };
+    if (professionalId) where.professionalId = professionalId;
+
+    if (queryParams.dateFrom || queryParams.dateTo) {
+      // Traz o bloqueio que cruza a janela pedida, nao apenas o que comeca nela.
+      if (queryParams.dateTo) {
+        const to = new Date(queryParams.dateTo);
+        to.setHours(23, 59, 59, 999);
+        where.startAt = { lte: to };
+      }
+      if (queryParams.dateFrom) {
+        const from = new Date(queryParams.dateFrom);
+        from.setHours(0, 0, 0, 0);
+        where.endAt = { gte: from };
+      }
+    }
+
+    const rows = await (prisma as any).appointmentBlock.findMany({
+      where,
+      include: { professional: { select: { id: true, fullName: true } } },
+      orderBy: [{ startAt: 'asc' }],
+    });
+
+    return rows.map((item: any) => ({
+      id: item.id,
+      company_id: item.companyId,
+      professional_id: item.professionalId,
+      professional_name: item.professional?.fullName || null,
+      start_at: item.startAt,
+      end_at: item.endAt,
+      reason: item.reason || null,
+      is_recurring: Boolean(item.isRecurring),
+      weekday: item.weekday ?? null,
+      start_time: item.startTime || null,
+      end_time: item.endTime || null,
+      is_active: Boolean(item.isActive),
+      created_at: item.createdAt,
+    }));
+  }
+
+  async createAppointmentBlock(
+    user: AuthenticatedUser,
+    payload: {
+      company_id?: string;
+      professional_id?: string;
+      start_at?: string;
+      end_at?: string;
+      reason?: string;
+      is_recurring?: boolean;
+      weekday?: number;
+      start_time?: string;
+      end_time?: string;
+    }
+  ) {
+    const companyId = this.resolveCompanyId(user, payload);
+    await this.ensureAnyModuleAccess(user, companyId, ['appointments', 'agendamentos']);
+
+    const professionalId = this.resolveBlockProfessionalId(user, companyId, payload.professional_id);
+
+    const professional = await prisma.userRole.findFirst({
+      where: {
+        companyId,
+        userId: professionalId,
+        role: { in: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+      },
+      select: { userId: true },
+    });
+    if (!professional) {
+      throw new CompanyServiceError('Profissional nao encontrado nesta empresa', 404);
+    }
+
+    const isRecurring = payload.is_recurring === true;
+
+    const startAt = new Date(String(payload.start_at || ''));
+    const endAt = new Date(String(payload.end_at || ''));
+    if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) {
+      throw new CompanyServiceError('start_at e end_at obrigatorios', 400);
+    }
+    if (endAt.getTime() <= startAt.getTime()) {
+      throw new CompanyServiceError('end_at deve ser maior que start_at', 400);
+    }
+
+    let weekday: number | null = null;
+    let startTime: string | null = null;
+    let endTime: string | null = null;
+
+    if (isRecurring) {
+      weekday = Number(payload.weekday);
+      if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) {
+        throw new CompanyServiceError(
+          'weekday deve ser entre 0 (domingo) e 6 (sabado) para bloqueio recorrente',
+          400
+        );
+      }
+      startTime = String(payload.start_time || '').trim();
+      endTime = String(payload.end_time || '').trim();
+      const startMin = this.timeStringToMinutes(startTime);
+      const endMin = this.timeStringToMinutes(endTime);
+      if (endMin <= startMin) {
+        throw new CompanyServiceError('end_time deve ser maior que start_time', 400);
+      }
+    }
+
+    const created = await (prisma as any).appointmentBlock.create({
+      data: {
+        companyId,
+        professionalId,
+        startAt,
+        endAt,
+        reason: String(payload.reason || '').trim() || null,
+        isRecurring,
+        weekday,
+        startTime,
+        endTime,
+        isActive: true,
+        createdByUserId: user.id,
+      },
+      include: { professional: { select: { id: true, fullName: true } } },
+    });
+
+    return {
+      id: created.id,
+      company_id: created.companyId,
+      professional_id: created.professionalId,
+      professional_name: created.professional?.fullName || null,
+      start_at: created.startAt,
+      end_at: created.endAt,
+      reason: created.reason || null,
+      is_recurring: Boolean(created.isRecurring),
+      weekday: created.weekday ?? null,
+      start_time: created.startTime || null,
+      end_time: created.endTime || null,
+      is_active: Boolean(created.isActive),
+      created_at: created.createdAt,
+    };
+  }
+
+  async deleteAppointmentBlock(user: AuthenticatedUser, blockId: string) {
+    const id = String(blockId || '').trim();
+    if (!id) throw new CompanyServiceError('id obrigatorio', 400);
+
+    const existing = await (prisma as any).appointmentBlock.findUnique({
+      where: { id },
+      select: { id: true, companyId: true, professionalId: true },
+    });
+    if (!existing) throw new CompanyServiceError('Bloqueio nao encontrado', 404);
+    if (!this.checkAccess(user, existing.companyId)) {
+      throw new CompanyServiceError('Acesso negado', 403);
+    }
+    await this.ensureAnyModuleAccess(user, existing.companyId, ['appointments', 'agendamentos']);
+
+    // Barbeiro nao apaga bloqueio de colega.
+    if (
+      user.role === 'FUNCIONARIO_EMPRESA' &&
+      String(existing.professionalId) !== String(user.id)
+    ) {
+      throw new CompanyServiceError('Acesso negado ao bloqueio de outro profissional', 403);
+    }
+
+    await (prisma as any).appointmentBlock.delete({ where: { id } });
+    return { success: true, id };
   }
 
   async saveAppointmentAvailability(
@@ -1662,7 +2193,13 @@ export class CompanyService {
 
   async listCustomerSubscriptions(
     user: AuthenticatedUser,
-    queryParams: { company_id?: string; customer_id?: string; status?: string } = {}
+    queryParams: {
+      company_id?: string;
+      customer_id?: string;
+      status?: string;
+      professional_id?: string;
+      scope?: string;
+    } = {}
   ) {
     const companyId = this.resolveCompanyId(user, queryParams);
     await this.ensureAnyModuleAccess(user, companyId, ['subscriptions', 'assinaturas']);
@@ -1671,15 +2208,33 @@ export class CompanyService {
     const customerId = String(queryParams.customer_id || '').trim();
     const status = String(queryParams.status || '').trim();
 
+    // "Meus mensalistas": o funcionario ve os proprios; o dono escolhe o barbeiro.
+    const scope = String(queryParams.scope || '').trim().toLowerCase();
+    const requestedProfessional = String(queryParams.professional_id || '').trim();
+    let professionalFilter: string | undefined;
+    if (scope === 'mine') {
+      professionalFilter = user.role === 'FUNCIONARIO_EMPRESA' ? user.id : requestedProfessional;
+      if (!professionalFilter) {
+        throw new CompanyServiceError(
+          'Para scope=mine informe professional_id ou acesse como funcionario',
+          400
+        );
+      }
+    } else if (requestedProfessional) {
+      professionalFilter = requestedProfessional;
+    }
+
     const rows = await (prisma as any).customerSubscription.findMany({
       where: {
         companyId,
         ...(customerId ? { customerId } : {}),
         ...(status ? { status: this.normalizeSubscriptionStatus(status) } : {}),
+        ...(professionalFilter ? { professionalId: professionalFilter } : {}),
       },
       include: {
         customer: { select: { id: true, name: true, email: true, phone: true } },
         plan: { select: { id: true, name: true, interval: true, includedServices: true, isUnlimited: true } },
+        professional: { select: { id: true, fullName: true } },
       },
       orderBy: [{ status: 'asc' }, { endAt: 'asc' }],
     });
@@ -1700,6 +2255,8 @@ export class CompanyService {
       amount: this.toNumber(item.amount),
       auto_renew: Boolean(item.autoRenew),
       notes: item.notes || null,
+      professional_id: item.professionalId || null,
+      professional_name: item.professional?.fullName || null,
       created_at: item.createdAt,
       updated_at: item.updatedAt,
     }));
@@ -1717,6 +2274,7 @@ export class CompanyService {
       amount?: number;
       notes?: string;
       status?: string;
+      professional_id?: string;
     }
   ) {
     this.ensureOwnerCompanyRole(user);
@@ -1730,7 +2288,10 @@ export class CompanyService {
     }
 
     const [customer, plan] = await Promise.all([
-      prisma.customer.findFirst({ where: { id: customerId, companyId }, select: { id: true } }),
+      prisma.customer.findFirst({
+        where: { id: customerId, companyId },
+        select: { id: true, preferredProfessionalId: true },
+      }),
       (prisma as any).subscriptionPlan.findFirst({
         where: { id: planId, companyId, isActive: true },
         select: { id: true, interval: true, includedServices: true, isUnlimited: true, price: true },
@@ -1739,6 +2300,28 @@ export class CompanyService {
 
     if (!customer) throw new CompanyServiceError('Cliente nao encontrado', 404);
     if (!plan) throw new CompanyServiceError('Plano nao encontrado ou inativo', 404);
+
+    // Barbeiro da mensalidade. Se nao vier no payload, herda o barbeiro do cliente,
+    // que e o comportamento esperado numa barbearia: o mensalista e "do" barbeiro dele.
+    const requestedProfessionalId = String(data.professional_id || '').trim();
+    let professionalId: string | null = requestedProfessionalId || customer.preferredProfessionalId || null;
+    if (professionalId) {
+      const professional = await prisma.userRole.findFirst({
+        where: {
+          companyId,
+          userId: professionalId,
+          role: { in: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+        },
+        select: { userId: true },
+      });
+      if (!professional) {
+        if (requestedProfessionalId) {
+          throw new CompanyServiceError('Profissional nao encontrado nesta empresa', 404);
+        }
+        // Barbeiro herdado do cliente ja nao atende mais aqui: deixa a mensalidade sem dono.
+        professionalId = null;
+      }
+    }
 
     const startAt = data.start_at ? new Date(data.start_at) : new Date();
     if (Number.isNaN(startAt.getTime())) throw new CompanyServiceError('start_at invalido', 400);
@@ -1760,6 +2343,7 @@ export class CompanyService {
       autoRenew: data.auto_renew !== false,
       notes: String(data.notes || '').trim() || null,
       remainingServices,
+      professionalId,
     };
 
     const subscriptionId = String(data.id || '').trim();
@@ -1782,6 +2366,7 @@ export class CompanyService {
       amount: this.toNumber(saved.amount),
       auto_renew: Boolean(saved.autoRenew),
       notes: saved.notes || null,
+      professional_id: saved.professionalId || null,
       created_at: saved.createdAt,
       updated_at: saved.updatedAt,
     };
@@ -2635,11 +3220,98 @@ export class CompanyService {
     };
   }
 
+  // Lista os ajustes de comissao de um mes, dia a dia.
+  // E a "aba de historico" que o dono abre para ver o que aumentou ou diminuiu.
+  async listCommissionAdjustments(
+    user: AuthenticatedUser,
+    queryParams: { month?: string; professional_id?: string; company_id?: string } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, [
+      'commissions_owner',
+      'comissoes_dono',
+      'commissions_staff',
+    ]);
+
+    const monthRef = this.parseMonthRef(queryParams.month);
+    const requested = String(queryParams.professional_id || '').trim();
+    // Funcionario so ve os proprios ajustes.
+    const professionalId = user.role === 'FUNCIONARIO_EMPRESA' ? user.id : requested;
+
+    const rows = await (prisma as any).commissionAdjustment.findMany({
+      where: {
+        companyId,
+        monthRef: monthRef.start,
+        ...(professionalId ? { professionalId } : {}),
+      },
+      include: {
+        professional: { select: { id: true, fullName: true } },
+        createdByUser: { select: { id: true, fullName: true } },
+      },
+      orderBy: [{ refDate: 'asc' }, { createdAt: 'asc' }],
+    });
+
+    const data = rows.map((item: any) => ({
+      id: item.id,
+      professional_id: item.professionalId,
+      professional_name: item.professional?.fullName || null,
+      month: monthRef.month,
+      ref_date: item.refDate ? new Date(item.refDate).toISOString().slice(0, 10) : null,
+      amount: this.toNumber(item.amount),
+      reason: item.reason || null,
+      created_by_name: item.createdByUser?.fullName || null,
+      created_at: item.createdAt,
+    }));
+
+    // Agrupa por dia para a tela montar o extrato diario.
+    const byDay = new Map<string, { date: string; total: number; count: number }>();
+    for (const item of data) {
+      const key = item.ref_date || 'mes';
+      const current = byDay.get(key) || { date: key, total: 0, count: 0 };
+      current.total += item.amount;
+      current.count += 1;
+      byDay.set(key, current);
+    }
+
+    return {
+      period: { month: monthRef.month },
+      summary: {
+        total: data.reduce((sum: number, item: any) => sum + item.amount, 0),
+        count: data.length,
+      },
+      by_day: Array.from(byDay.values()).sort((a, b) => a.date.localeCompare(b.date)),
+      data,
+    };
+  }
+
+  async deleteCommissionAdjustment(user: AuthenticatedUser, adjustmentId: string) {
+    this.ensureOwnerCompanyRole(user);
+    const id = String(adjustmentId || '').trim();
+    if (!id) throw new CompanyServiceError('id obrigatorio', 400);
+
+    const existing = await (prisma as any).commissionAdjustment.findUnique({
+      where: { id },
+      select: { id: true, companyId: true },
+    });
+    if (!existing) throw new CompanyServiceError('Ajuste nao encontrado', 404);
+    if (!this.checkAccess(user, existing.companyId)) {
+      throw new CompanyServiceError('Acesso negado', 403);
+    }
+    await this.ensureAnyModuleAccess(user, existing.companyId, [
+      'commissions_owner',
+      'comissoes_dono',
+    ]);
+
+    await (prisma as any).commissionAdjustment.delete({ where: { id } });
+    return { success: true, id };
+  }
+
   async createCommissionAdjustment(
     user: AuthenticatedUser,
     payload: {
       professional_id?: string;
       month?: string;
+      ref_date?: string;
       amount?: number;
       reason?: string;
       company_id?: string;
@@ -2667,12 +3339,32 @@ export class CompanyService {
     });
     if (!professional) throw new CompanyServiceError('Profissional nao encontrado na empresa', 404);
 
-    const { start } = this.parseMonthRef(payload.month);
+    // ref_date = dia especifico do ajuste. O mes de apuracao e sempre derivado dele,
+    // para nunca existir um ajuste do dia 03/09 apurado dentro de agosto.
+    const refDateRaw = String(payload.ref_date || '').trim();
+    let refDate: Date | null = null;
+    let monthStart: Date;
+
+    if (refDateRaw) {
+      const [y, m, d] = refDateRaw.split('-').map((v) => Number(v));
+      if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) {
+        throw new CompanyServiceError('ref_date invalido. Use AAAA-MM-DD', 400);
+      }
+      refDate = new Date(Date.UTC(y, m - 1, d));
+      if (Number.isNaN(refDate.getTime())) {
+        throw new CompanyServiceError('ref_date invalido. Use AAAA-MM-DD', 400);
+      }
+      monthStart = this.parseMonthRef(`${refDateRaw.slice(0, 7)}`).start;
+    } else {
+      monthStart = this.parseMonthRef(payload.month).start;
+    }
+
     const created = await (prisma as any).commissionAdjustment.create({
       data: {
         companyId,
         professionalId,
-        monthRef: start,
+        monthRef: monthStart,
+        refDate,
         amount,
         reason,
         createdByUserId: user.id,
@@ -2684,6 +3376,7 @@ export class CompanyService {
       company_id: created.companyId,
       professional_id: created.professionalId,
       month: created.monthRef.toISOString().slice(0, 7),
+      ref_date: created.refDate ? new Date(created.refDate).toISOString().slice(0, 10) : null,
       amount: Number(created.amount || 0),
       reason: created.reason || null,
       created_by_user_id: created.createdByUserId || null,
@@ -2770,7 +3463,8 @@ export class CompanyService {
           professionalId: { in: professionalIds },
           monthRef: monthRef.start,
         },
-        select: { professionalId: true, amount: true },
+        select: { professionalId: true, amount: true, refDate: true, reason: true },
+        orderBy: { refDate: 'asc' },
       }),
       Promise.resolve([]),
       (prisma as any).commissionPayout.findMany({
@@ -2856,13 +3550,34 @@ export class CompanyService {
     }
 
     const adjustmentsByProfessional = new Map<string, number>();
+    // Detalhamento dia a dia, para o dono abrir e ver de onde veio o ajuste.
+    const adjustmentDaysByProfessional = new Map<
+      string,
+      Map<string, { date: string | null; total: number; reasons: string[] }>
+    >();
     for (const item of adjustments as any[]) {
       const professionalId = String(item.professionalId || '').trim();
       if (!professionalId) continue;
+      const amount = this.toNumber(item.amount);
       adjustmentsByProfessional.set(
         professionalId,
-        (adjustmentsByProfessional.get(professionalId) || 0) + this.toNumber(item.amount)
+        (adjustmentsByProfessional.get(professionalId) || 0) + amount
       );
+
+      const dayKey = item.refDate ? new Date(item.refDate).toISOString().slice(0, 10) : 'mes';
+      if (!adjustmentDaysByProfessional.has(professionalId)) {
+        adjustmentDaysByProfessional.set(professionalId, new Map());
+      }
+      const dayMap = adjustmentDaysByProfessional.get(professionalId)!;
+      const entry = dayMap.get(dayKey) || {
+        date: dayKey === 'mes' ? null : dayKey,
+        total: 0,
+        reasons: [] as string[],
+      };
+      entry.total += amount;
+      const reason = String(item.reason || '').trim();
+      if (reason) entry.reasons.push(reason);
+      dayMap.set(dayKey, entry);
     }
     const payoutByProfessional = new Map<string, any>(
       (payouts as any[]).map((item: any) => [String(item.professionalId || ''), item])
@@ -2897,6 +3612,9 @@ export class CompanyService {
         product_commission_pct: productPct,
         monthly_fixed_amount: monthlyFixed,
         monthly_adjustments: monthAdjustments,
+        adjustments_by_day: Array.from(
+          (adjustmentDaysByProfessional.get(professionalId) || new Map()).values()
+        ).sort((a: any, b: any) => String(a.date || '').localeCompare(String(b.date || ''))),
         service_commission_amount: serviceCommission,
         product_commission_amount: productCommission,
         total_commission: totalCommission,
@@ -3522,6 +4240,14 @@ export class CompanyService {
           total,
         },
       });
+
+      // Venda fechada conta como visita: alimenta "ha quantos dias o cliente nao aparece".
+      if (customerForSale?.id) {
+        await tx.customer.update({
+          where: { id: customerForSale.id },
+          data: { lastVisitAt: new Date() },
+        });
+      }
 
       if (subscriptionUsageDrafts.length > 0) {
         await (tx as any).subscriptionUsage.createMany({
@@ -7933,6 +8659,9 @@ export class CompanyService {
       bookedServices.map((item: any) => [item.id, Number(item.durationMinutes || 30)])
     );
 
+    // Bloqueios de agenda do barbeiro neste dia (almoco, folga, medico).
+    const blockedIntervals = await getBlockedIntervals(company.id, professionalId, startDate);
+
     const now = new Date();
     const slotDuration = Number(service.durationMinutes || 30);
     const slots: Array<{ time: string; scheduled_at: string }> = [];
@@ -7952,6 +8681,8 @@ export class CompanyService {
 
         const slotStartMs = slotStart.getTime();
         const slotEndMs = slotEnd.getTime();
+        if (isIntervalBlocked(blockedIntervals, slotStartMs, slotEndMs)) continue;
+
         const isBlocked = booked.some((item: any) => {
           const bookedStart = new Date(item.scheduledAt);
           const bookedDuration = Number(durationMap.get(item.serviceId || '') || slotDuration);
@@ -8102,6 +8833,12 @@ export class CompanyService {
     dayStart.setHours(0, 0, 0, 0);
     const dayEnd = new Date(scheduledAt);
     dayEnd.setHours(23, 59, 59, 999);
+
+    // O horario pode estar livre de agendamentos mas bloqueado pelo barbeiro.
+    const blockedIntervals = await getBlockedIntervals(company.id, professionalId, dayStart);
+    if (isIntervalBlocked(blockedIntervals, newStart, newEnd)) {
+      throw new CompanyServiceError('Horario indisponivel: o profissional bloqueou esse periodo', 409);
+    }
 
     const booked = await (prisma as any).appointment.findMany({
       where: {

@@ -26,6 +26,10 @@ model User {
   roles                               UserRole[]
   supportTicketsCreated               SupportTicket[]        @relation("SupportTicketCreatedBy")
   supportTicketsResponded             SupportTicket[]        @relation("SupportTicketRespondedBy")
+  // Barbeiro -> carteira de clientes / mensalidades / bloqueios de agenda
+  preferredByCustomers                Customer[]             @relation("CustomerPreferredProfessional")
+  subscriptionsAsProfessional         CustomerSubscription[] @relation("SubscriptionProfessional")
+  appointmentBlocks                   AppointmentBlock[]     @relation("AppointmentBlockProfessional")
 
   @@map("profiles")
 }
@@ -43,6 +47,7 @@ model Company {
   createdAt               DateTime                     @default(now()) @map("created_at")
   updatedAt               DateTime                     @updatedAt @map("updated_at")
   appointmentAvailability AppointmentAvailability[]
+  appointmentBlocks       AppointmentBlock[]
   appointmentServices     AppointmentService[]
   appointments            Appointment[]
     auditLogs               AuditLog[]
@@ -202,6 +207,13 @@ model Customer {
   isActive            Boolean                      @default(true) @map("is_active")
   createdAt           DateTime                     @default(now()) @map("created_at")
   updatedAt           DateTime                     @updatedAt @map("updated_at")
+  // Barbeiro de referencia do cliente (N clientes -> 1 barbeiro, opcional).
+  // SetNull: se o barbeiro sair da barbearia o cliente permanece, apenas sem referencia.
+  preferredProfessionalId String?                  @map("preferred_professional_id")
+  // Ultima vez que o cliente foi atendido (agendamento concluido ou venda no PDV).
+  lastVisitAt         DateTime?                    @map("last_visit_at")
+  // Quando isActive passou de true para false. Alimenta "ha quanto tempo esta desativado".
+  deactivatedAt       DateTime?                    @map("deactivated_at")
   appointments        Appointment[]
   courseAccesses      CourseAccess[]
   serviceHistoryEntries CustomerServiceHistoryEntry[]
@@ -210,8 +222,11 @@ model Customer {
   loyaltyTransactions CustomerLoyaltyTransaction[]
   subscriptions       CustomerSubscription[]
   company             Company                      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  preferredProfessional User?                      @relation("CustomerPreferredProfessional", fields: [preferredProfessionalId], references: [id], onDelete: SetNull)
 
   @@index([companyId])
+  @@index([companyId, preferredProfessionalId])
+  @@index([companyId, isActive, lastVisitAt])
   @@map("customers")
 }
 
@@ -543,6 +558,33 @@ model AppointmentAvailability {
   @@map("appointment_availability")
 }
 
+// Bloqueio pontual na agenda de um barbeiro: almoco, folga, medico, atraso.
+// N bloqueios -> 1 barbeiro. Subtrai janelas da disponibilidade semanal.
+model AppointmentBlock {
+  id             String   @id @default(uuid())
+  companyId      String   @map("empresa_id")
+  professionalId String   @map("professional_id")
+  startAt        DateTime @map("start_at")
+  endAt          DateTime @map("end_at")
+  reason         String?
+  // Bloqueio recorrente (almoco de toda terca, por exemplo).
+  // Quando true, weekday/startTime/endTime valem e startAt/endAt guardam a vigencia.
+  isRecurring    Boolean  @default(false) @map("is_recurring")
+  weekday        Int?
+  startTime      String?  @map("start_time")
+  endTime        String?  @map("end_time")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdByUserId String? @map("created_by_user_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at")
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  professional   User     @relation("AppointmentBlockProfessional", fields: [professionalId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, professionalId, startAt])
+  @@index([companyId, professionalId, weekday])
+  @@map("appointment_blocks")
+}
+
 model CommissionProfile {
   id                   String   @id @default(dbgenerated("(gen_random_uuid())::text"))
   companyId            String   @map("empresa_id")
@@ -563,20 +605,25 @@ model CommissionProfile {
 }
 
 model CommissionAdjustment {
-  id              String   @id @default(dbgenerated("(gen_random_uuid())::text"))
-  companyId       String   @map("empresa_id")
-  professionalId  String   @map("professional_id")
-  monthRef        DateTime @map("month_ref")
-  amount          Decimal  @db.Decimal(10, 2)
+  id              String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  companyId       String    @map("empresa_id")
+  professionalId  String    @map("professional_id")
+  // monthRef continua sendo a chave de apuracao: todo ajuste pertence a um mes.
+  monthRef        DateTime  @map("month_ref")
+  // refDate marca o DIA especifico do ajuste dentro daquele mes.
+  // Nulo = ajuste do mes inteiro (comportamento historico, preservado).
+  refDate         DateTime? @map("ref_date") @db.Date
+  amount          Decimal   @db.Decimal(10, 2)
   reason          String?
-  createdByUserId String?  @map("created_by_user_id")
-  createdAt       DateTime @default(now()) @map("created_at")
-  createdByUser   User?    @relation("CommissionAdjustmentCreatedBy", fields: [createdByUserId], references: [id])
-  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  professional    User     @relation("CommissionAdjustmentProfessional", fields: [professionalId], references: [id], onDelete: Cascade)
+  createdByUserId String?   @map("created_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  createdByUser   User?     @relation("CommissionAdjustmentCreatedBy", fields: [createdByUserId], references: [id])
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  professional    User      @relation("CommissionAdjustmentProfessional", fields: [professionalId], references: [id], onDelete: Cascade)
 
   @@index([companyId, professionalId, monthRef])
   @@index([companyId, monthRef])
+  @@index([companyId, professionalId, refDate])
   @@map("commission_adjustments")
 }
 
@@ -696,13 +743,18 @@ model CustomerSubscription {
   notes             String?
   createdAt         DateTime            @default(now()) @map("created_at")
   updatedAt         DateTime            @default(now()) @updatedAt @map("updated_at")
+  // Barbeiro dono da mensalidade (N assinaturas -> 1 barbeiro, opcional).
+  // SetNull para que a assinatura sobreviva a saida do barbeiro e possa ser remanejada.
+  professionalId    String?             @map("professional_id")
   customer          Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
   company           Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
   plan              SubscriptionPlan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+  professional      User?               @relation("SubscriptionProfessional", fields: [professionalId], references: [id], onDelete: SetNull)
   usages            SubscriptionUsage[]
 
   @@index([companyId, customerId, status, endAt])
   @@index([companyId, planId, status])
+  @@index([companyId, professionalId, status])
   @@map("customer_subscriptions")
 }
 

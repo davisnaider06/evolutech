@@ -9,7 +9,7 @@ interface TableConfig {
 export const TABLE_CONFIG: Record<string, TableConfig> = {
   customers: {
     searchFields: ['name', 'email', 'phone', 'document'],
-    allowedOrderBy: ['name', 'createdAt', 'updatedAt', 'isActive'],
+    allowedOrderBy: ['name', 'createdAt', 'updatedAt', 'isActive', 'lastVisitAt', 'deactivatedAt'],
     defaultOrderBy: 'createdAt',
     dateField: 'createdAt',
     moduleCodes: ['customers', 'clientes'],

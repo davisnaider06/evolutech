@@ -19,6 +19,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { companyService } from '@/services/company';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -33,6 +34,15 @@ interface Customer {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  // Barbeiro de referencia do cliente (relacao N clientes -> 1 barbeiro).
+  preferred_professional_id: string | null;
+  preferred_professional_name: string | null;
+  last_visit_at: string | null;
+  deactivated_at: string | null;
+  /** Dias desde o ultimo atendimento. null = nunca foi atendido. */
+  days_since_last_visit: number | null;
+  /** Dias desde a desativacao. null = cliente ativo. */
+  days_inactive: number | null;
 }
 
 interface CustomerFormData {
@@ -41,6 +51,7 @@ interface CustomerFormData {
   phone: string;
   document: string;
   isActive: boolean;
+  preferredProfessionalId: string;
 }
 
 interface CustomerHistoryResponse {
@@ -151,7 +162,17 @@ const defaultFormData: CustomerFormData = {
   phone: '',
   document: '',
   isActive: true,
+  preferredProfessionalId: '',
 };
+
+/** Faixas de inatividade oferecidas no filtro de "cliente sumido". */
+const INACTIVE_RANGES = [
+  { value: '', label: 'Todos os clientes' },
+  { value: '30', label: 'Sem vir ha 30+ dias' },
+  { value: '60', label: 'Sem vir ha 60+ dias' },
+  { value: '90', label: 'Sem vir ha 90+ dias' },
+  { value: '180', label: 'Sem vir ha 180+ dias' },
+];
 
 const emptyHistoryEntryForm: HistoryEntryFormData = {
   service_id: '',
@@ -165,6 +186,8 @@ const emptyHistoryEntryForm: HistoryEntryFormData = {
 };
 
 const Clientes: React.FC = () => {
+  const { user } = useAuth();
+  const isEmployee = user?.role === 'FUNCIONARIO_EMPRESA';
   const [data, setData] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -172,6 +195,10 @@ const Clientes: React.FC = () => {
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [formData, setFormData] = useState<CustomerFormData>(defaultFormData);
   const [filters, setFilters] = useState<{ search?: string; is_active?: string }>({});
+  // Carteira: barbeiro logado ve os proprios clientes por padrao; o dono ve todos.
+  const [onlyMine, setOnlyMine] = useState(isEmployee);
+  const [professionalFilter, setProfessionalFilter] = useState('');
+  const [inactiveDays, setInactiveDays] = useState('');
   const [pagination, setPagination] = useState({ page: 1, pageSize: 10 });
   const [totalCount, setTotalCount] = useState(0);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -200,6 +227,10 @@ const Clientes: React.FC = () => {
         pageSize: pagination.pageSize,
         search: filters.search,
         is_active: filters.is_active,
+        // scope=mine: o backend resolve o barbeiro (o proprio, se for funcionario).
+        scope: onlyMine ? 'mine' : undefined,
+        professional_id: onlyMine ? undefined : professionalFilter || undefined,
+        inactive_days: inactiveDays || undefined,
       });
       setData(result.data || []);
       setTotalCount(result.total || 0);
@@ -212,7 +243,15 @@ const Clientes: React.FC = () => {
 
   useEffect(() => {
     fetchCustomers();
-  }, [pagination.page, pagination.pageSize, filters.search, filters.is_active]);
+  }, [
+    pagination.page,
+    pagination.pageSize,
+    filters.search,
+    filters.is_active,
+    onlyMine,
+    professionalFilter,
+    inactiveDays,
+  ]);
 
   const loadSupportData = async () => {
     try {
@@ -268,13 +307,48 @@ const Clientes: React.FC = () => {
 
   const columns: Column<Customer>[] = [
     { key: 'name', label: 'Nome' },
-    { key: 'email', label: 'E-mail' },
     { key: 'phone', label: 'Telefone' },
-    { key: 'document', label: 'CPF/CNPJ' },
+    {
+      key: 'preferred_professional_name',
+      label: 'Barbeiro',
+      render: (item) =>
+        item.preferred_professional_name ? (
+          <span>{item.preferred_professional_name}</span>
+        ) : (
+          <span className="text-muted-foreground">Sem barbeiro</span>
+        ),
+    },
+    {
+      key: 'days_since_last_visit',
+      label: 'Ultima visita',
+      render: (item) => {
+        if (item.days_since_last_visit === null) {
+          return <span className="text-muted-foreground">Nunca veio</span>;
+        }
+        if (item.days_since_last_visit === 0) return <span>Hoje</span>;
+        // Acima de 60 dias o cliente merece atencao; acima de 90, e caso de recuperacao.
+        const tone =
+          item.days_since_last_visit >= 90
+            ? 'text-destructive font-medium'
+            : item.days_since_last_visit >= 60
+              ? 'text-amber-600 font-medium'
+              : '';
+        return <span className={tone}>ha {item.days_since_last_visit} dias</span>;
+      },
+    },
     {
       key: 'isActive',
       label: 'Status',
-      render: (item) => <StatusBadge status={item.isActive ? 'active' : 'inactive'} />,
+      render: (item) => (
+        <div className="flex flex-col gap-0.5">
+          <StatusBadge status={item.isActive ? 'active' : 'inactive'} />
+          {!item.isActive && item.days_inactive !== null && (
+            <span className="text-xs text-muted-foreground">
+              desativado ha {item.days_inactive} dias
+            </span>
+          )}
+        </div>
+      ),
     },
     {
       key: 'createdAt',
@@ -297,6 +371,7 @@ const Clientes: React.FC = () => {
       phone: customer.phone || '',
       document: customer.document || '',
       isActive: customer.isActive,
+      preferredProfessionalId: customer.preferred_professional_id || '',
     });
     setIsFormOpen(true);
   };
@@ -315,6 +390,8 @@ const Clientes: React.FC = () => {
         phone: formData.phone.trim() || null,
         document: formData.document.trim() || null,
         isActive: formData.isActive,
+        // String vazia limpa o vinculo com o barbeiro.
+        preferred_professional_id: formData.preferredProfessionalId || '',
       };
 
       if (editingCustomer) {
@@ -549,6 +626,73 @@ const Clientes: React.FC = () => {
         }}
       />
 
+      {/* Carteira de clientes: de quem e o cliente e quem sumiu. */}
+      <Card>
+        <CardContent className="flex flex-col gap-4 pt-6 md:flex-row md:items-end">
+          <div className="flex items-center gap-2">
+            <Switch
+              id="onlyMine"
+              checked={onlyMine}
+              onCheckedChange={(checked) => {
+                setPagination((prev) => ({ ...prev, page: 1 }));
+                setOnlyMine(checked);
+                if (checked) setProfessionalFilter('');
+              }}
+            />
+            <Label htmlFor="onlyMine" className="cursor-pointer">
+              {isEmployee ? 'Somente meus clientes' : 'Somente os meus'}
+            </Label>
+          </div>
+
+          {!isEmployee && (
+            <div className="space-y-2 md:w-64">
+              <Label>Barbeiro</Label>
+              <SearchableSelect
+                value={professionalFilter}
+                onValueChange={(value) => {
+                  setPagination((prev) => ({ ...prev, page: 1 }));
+                  setProfessionalFilter(value);
+                  if (value) setOnlyMine(false);
+                }}
+                options={[
+                  { value: '', label: 'Todos os barbeiros' },
+                  ...professionalOptions.map((item) => ({ value: item.id, label: item.name })),
+                ]}
+                placeholder="Filtrar por barbeiro"
+                disabled={onlyMine}
+              />
+            </div>
+          )}
+
+          <div className="space-y-2 md:w-64">
+            <Label>Clientes sumidos</Label>
+            <SearchableSelect
+              value={inactiveDays}
+              onValueChange={(value) => {
+                setPagination((prev) => ({ ...prev, page: 1 }));
+                setInactiveDays(value);
+              }}
+              options={INACTIVE_RANGES.map((item) => ({ value: item.value, label: item.label }))}
+              placeholder="Tempo sem vir"
+            />
+          </div>
+
+          {(onlyMine || professionalFilter || inactiveDays) && (
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setPagination((prev) => ({ ...prev, page: 1 }));
+                setOnlyMine(false);
+                setProfessionalFilter('');
+                setInactiveDays('');
+              }}
+            >
+              Limpar carteira
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+
       <DataTable
         columns={columns}
         data={data}
@@ -618,6 +762,25 @@ const Clientes: React.FC = () => {
               onChange={(e) => setFormData((prev) => ({ ...prev, document: e.target.value }))}
               placeholder="000.000.000-00"
             />
+          </div>
+
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="preferredProfessional">Barbeiro responsavel</Label>
+            <SearchableSelect
+              value={formData.preferredProfessionalId}
+              onValueChange={(value) =>
+                setFormData((prev) => ({ ...prev, preferredProfessionalId: value }))
+              }
+              options={[
+                { value: '', label: 'Sem barbeiro definido' },
+                ...professionalOptions.map((item) => ({ value: item.id, label: item.name })),
+              ]}
+              placeholder="Selecione o barbeiro"
+            />
+            <p className="text-xs text-muted-foreground">
+              Define de quem e a carteira. O barbeiro escolhido ve esse cliente em "Meus clientes",
+              e novas mensalidades ja nascem vinculadas a ele.
+            </p>
           </div>
 
           <div className="flex items-center space-x-2 pt-7">
