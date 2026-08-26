@@ -58,6 +58,47 @@ export class CustomerPortalService {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   }
 
+  /**
+   * Verifica se a mensalidade do cliente vale no dia da semana informado.
+   *
+   * O dono define, em cada plano, os dias que o plano NAO cobre — tipicamente
+   * sexta, sabado e domingo, que sao os dias de pico da barbearia.
+   *
+   * Retorna null quando nao ha restricao (cliente sem plano ativo, ou plano
+   * que cobre a semana inteira). Retorna a descricao do bloqueio quando o dia
+   * nao e coberto, para a tela conseguir explicar o motivo ao cliente.
+   */
+  private async getPlanDayBlock(companyId: string, customerId: string, data: Date) {
+    const weekday = data.getDay();
+    const agora = new Date();
+
+    const assinatura = await (prisma as any).customerSubscription.findFirst({
+      where: {
+        companyId,
+        customerId,
+        status: 'active',
+        startAt: { lte: agora },
+        endAt: { gte: agora },
+      },
+      include: { plan: { select: { name: true, blockedWeekdays: true } } },
+      orderBy: { endAt: 'asc' },
+    });
+
+    if (!assinatura?.plan) return null;
+    const bloqueados: number[] = Array.isArray(assinatura.plan.blockedWeekdays)
+      ? assinatura.plan.blockedWeekdays
+      : [];
+    if (!bloqueados.includes(weekday)) return null;
+
+    const nomes = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+    return {
+      planName: String(assinatura.plan.name || 'seu plano'),
+      weekday,
+      weekdayName: nomes[weekday],
+      message: `O plano "${assinatura.plan.name}" nao atende ${nomes[weekday]}. Escolha outro dia.`,
+    };
+  }
+
   private async getCustomerContext(auth: AuthenticatedCustomer) {
     const account = await (prisma as any).customerAccount.findFirst({
       where: {
@@ -458,6 +499,17 @@ export class CustomerPortalService {
       throw new CustomerPortalError('Data/hora invalida para agendamento', 400);
     }
 
+    // Mesma regra da listagem, aplicada tambem na criacao: sem isso bastaria
+    // chamar a API direto para furar o bloqueio do plano.
+    const bloqueioPlano = await this.getPlanDayBlock(
+      context.companyId,
+      context.customerId,
+      scheduledAt
+    );
+    if (bloqueioPlano) {
+      throw new CustomerPortalError(bloqueioPlano.message, 409);
+    }
+
     const [service, professional] = await Promise.all([
       (prisma as any).appointmentService.findFirst({
         where: { id: serviceId, companyId: context.companyId, isActive: true },
@@ -619,6 +671,15 @@ export class CustomerPortalService {
     const date = new Date(year, (month || 1) - 1, day || 1, 0, 0, 0, 0);
     if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day) || Number.isNaN(date.getTime())) {
       throw new CustomerPortalError('Data invalida', 400);
+    }
+
+    // Mensalista com plano que nao cobre este dia da semana nao ve horario.
+    const bloqueioPlano = await this.getPlanDayBlock(context.companyId, context.customerId, date);
+    if (bloqueioPlano) {
+      return {
+        slots: [] as Array<{ time: string; scheduled_at: string }>,
+        plan_block: bloqueioPlano,
+      };
     }
 
     const service = await (prisma as any).appointmentService.findFirst({

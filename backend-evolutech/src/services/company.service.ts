@@ -1845,13 +1845,20 @@ export class CompanyService {
         },
         include: {
           plan: {
-            select: { id: true, name: true, isUnlimited: true },
+            select: { id: true, name: true, isUnlimited: true, blockedWeekdays: true },
           },
         },
         orderBy: { endAt: 'asc' },
       });
 
-      if (activeSubscription) {
+      // O plano pode nao valer neste dia da semana (sexta e fim de semana,
+      // tipicamente). Nesse caso a venda acontece, mas sem abater do plano.
+      const planoBloqueadoHoje =
+        activeSubscription &&
+        Array.isArray(activeSubscription.plan?.blockedWeekdays) &&
+        activeSubscription.plan.blockedWeekdays.includes(now.getDay());
+
+      if (activeSubscription && !planoBloqueadoHoje) {
         const remainingCover = activeSubscription.plan?.isUnlimited
           ? serviceQuantity
           : Math.max(0, Number(activeSubscription.remainingServices ?? 0));
@@ -2121,6 +2128,7 @@ export class CompanyService {
       price: this.toNumber(item.price),
       included_services: item.includedServices ?? null,
       is_unlimited: Boolean(item.isUnlimited),
+      blocked_weekdays: Array.isArray(item.blockedWeekdays) ? item.blockedWeekdays : [],
       is_active: Boolean(item.isActive),
       created_at: item.createdAt,
       updated_at: item.updatedAt,
@@ -2139,6 +2147,7 @@ export class CompanyService {
       included_services?: number | null;
       is_unlimited?: boolean;
       is_active?: boolean;
+      blocked_weekdays?: number[];
     }
   ) {
     this.ensureOwnerCompanyRole(user);
@@ -2147,6 +2156,19 @@ export class CompanyService {
 
     const name = String(data.name || '').trim();
     if (!name) throw new CompanyServiceError('name obrigatorio', 400);
+
+    // Dias em que o plano nao vale. Normaliza, tira repetido e ordena.
+    const blockedWeekdays = Array.isArray(data.blocked_weekdays)
+      ? Array.from(new Set(data.blocked_weekdays.map((d) => Number(d))))
+          .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6)
+          .sort((a, b) => a - b)
+      : [];
+    if (blockedWeekdays.length === 7) {
+      throw new CompanyServiceError(
+        'O plano nao pode bloquear os sete dias da semana: ele ficaria sem uso',
+        400
+      );
+    }
 
     const interval = this.normalizeSubscriptionInterval(data.interval);
     const isUnlimited = Boolean(data.is_unlimited);
@@ -2163,6 +2185,7 @@ export class CompanyService {
       price: Math.max(0, Number(data.price || 0)),
       includedServices,
       isUnlimited,
+      blockedWeekdays,
       isActive: data.is_active !== false,
     };
 
@@ -2185,6 +2208,7 @@ export class CompanyService {
       price: this.toNumber(saved.price),
       included_services: saved.includedServices ?? null,
       is_unlimited: Boolean(saved.isUnlimited),
+      blocked_weekdays: Array.isArray(saved.blockedWeekdays) ? saved.blockedWeekdays : [],
       is_active: Boolean(saved.isActive),
       created_at: saved.createdAt,
       updated_at: saved.updatedAt,
@@ -4004,13 +4028,21 @@ export class CompanyService {
                 id: true,
                 name: true,
                 isUnlimited: true,
+                blockedWeekdays: true,
               },
             },
           },
           orderBy: { endAt: 'asc' },
         });
 
-        if (activeSubscription) {
+        // O plano pode nao valer neste dia da semana (sexta e fim de semana,
+        // tipicamente). Nesse caso a venda acontece, mas sem abater do plano.
+        const planoBloqueadoHoje =
+          activeSubscription &&
+          Array.isArray(activeSubscription.plan?.blockedWeekdays) &&
+          activeSubscription.plan.blockedWeekdays.includes(new Date().getDay());
+
+        if (activeSubscription && !planoBloqueadoHoje) {
           let remainingCover = activeSubscription.plan?.isUnlimited
             ? serviceQuantity
             : Math.max(0, Number(activeSubscription.remainingServices ?? 0));

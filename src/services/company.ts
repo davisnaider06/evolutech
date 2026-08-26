@@ -217,6 +217,8 @@ export const companyService = {
     included_services?: number | null;
     is_unlimited?: boolean;
     is_active?: boolean;
+    /** Dias da semana em que o plano NAO vale (0=domingo ... 6=sabado). */
+    blocked_weekdays?: number[];
   }) =>
     request(`/subscriptions/plans`, {
       method: data.id ? 'PUT' : 'POST',

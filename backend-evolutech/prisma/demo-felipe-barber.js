@@ -7,6 +7,8 @@
  *
  * Uso:
  *   node prisma/demo-felipe-barber.js              monta (ou atualiza) a empresa
+ *   node prisma/demo-felipe-barber.js --zerar      apaga os dados de demonstracao,
+ *                                                  mantendo empresa, equipe e modulos
  *   node prisma/demo-felipe-barber.js --remover    apaga a empresa e seus usuarios
  *
  * Rodar de novo NAO duplica: o script e idempotente. Se voce bagunçar tudo
@@ -98,6 +100,62 @@ async function remover() {
   }
 
   console.log(`"${EMPRESA}" removida, junto com ${userIds.length} usuarios.`);
+}
+
+// ---------------------------------------------------------------
+// ZERAR OS DADOS, MANTENDO A CONTA UTILIZAVEL
+//
+// Apaga tudo o que foi semeado para demonstracao, mas preserva o que
+// o cliente precisa para entrar e comecar a usar: a empresa, os acessos
+// da equipe e os modulos liberados.
+// ---------------------------------------------------------------
+async function zerar() {
+  const company = await prisma.company.findFirst({ where: { name: EMPRESA } });
+  if (!company) {
+    console.log(`"${EMPRESA}" nao existe. Nada a zerar.`);
+    return;
+  }
+  const companyId = company.id;
+
+  // A ordem importa: filhos antes dos pais, para nao esbarrar em chave estrangeira.
+  const etapas = [
+    ['uso de assinatura', () => prisma.subscriptionUsage.deleteMany({ where: { companyId } })],
+    ['mensalidades', () => prisma.customerSubscription.deleteMany({ where: { companyId } })],
+    ['planos', () => prisma.subscriptionPlan.deleteMany({ where: { companyId } })],
+    ['historico de atendimento', () => prisma.customerServiceHistoryEntry.deleteMany({ where: { companyId } })],
+    ['agendamentos', () => prisma.appointment.deleteMany({ where: { companyId } })],
+    ['bloqueios de agenda', () => prisma.appointmentBlock.deleteMany({ where: { companyId } })],
+    ['disponibilidade', () => prisma.appointmentAvailability.deleteMany({ where: { companyId } })],
+    ['servicos', () => prisma.appointmentService.deleteMany({ where: { companyId } })],
+    ['extrato de fidelidade', () => prisma.customerLoyaltyTransaction.deleteMany({ where: { companyId } })],
+    ['saldos de fidelidade', () => prisma.customerLoyaltyProfile.deleteMany({ where: { companyId } })],
+    ['regras de fidelidade', () => prisma.companyLoyaltySettings.deleteMany({ where: { companyId } })],
+    ['contas do portal', () => prisma.customerAccount.deleteMany({ where: { companyId } })],
+    ['clientes', () => prisma.customer.deleteMany({ where: { companyId } })],
+    ['pedidos', () => prisma.order.deleteMany({ where: { companyId } })],
+    ['produtos', () => prisma.product.deleteMany({ where: { companyId } })],
+    ['caixa', () => prisma.cashTransaction.deleteMany({ where: { companyId } })],
+    ['ajustes de comissao', () => prisma.commissionAdjustment.deleteMany({ where: { companyId } })],
+    ['pagamentos de comissao', () => prisma.commissionPayout.deleteMany({ where: { companyId } })],
+    ['perfis de comissao', () => prisma.commissionProfile.deleteMany({ where: { companyId } })],
+    ['tarefas', () => prisma.task.deleteMany({ where: { companyId } })],
+  ];
+
+  for (const [nome, fn] of etapas) {
+    try {
+      const r = await fn();
+      if (r.count > 0) console.log(`  ${nome}: ${r.count} removidos`);
+    } catch (error) {
+      console.log(`  ${nome}: ignorado (${String(error.message).split('\n')[0].slice(0, 60)})`);
+    }
+  }
+
+  console.log('\nMantidos para o cliente usar:');
+  const equipe = await prisma.userRole.count({ where: { companyId } });
+  const modulos = await prisma.companyModule.count({ where: { companyId, isActive: true } });
+  console.log(`  empresa "${company.name}" (${company.slug}) — status ${company.status}`);
+  console.log(`  ${equipe} acessos de equipe`);
+  console.log(`  ${modulos} modulos liberados`);
 }
 
 // ---------------------------------------------------------------
@@ -642,9 +700,10 @@ async function montar() {
 
 async function main() {
   await acordarBanco();
-  const desmontar = process.argv.includes('--remover');
-  if (desmontar) {
+  if (process.argv.includes('--remover')) {
     await remover();
+  } else if (process.argv.includes('--zerar')) {
+    await zerar();
   } else {
     await montar();
   }

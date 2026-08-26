@@ -17,7 +17,27 @@ type Plan = {
   price: number;
   included_services?: number | null;
   is_unlimited: boolean;
+  /** Dias em que o plano NAO vale (0=domingo ... 6=sabado). */
+  blocked_weekdays?: number[];
   is_active: boolean;
+};
+
+const DIAS_SEMANA = [
+  { value: 1, label: 'Seg' },
+  { value: 2, label: 'Ter' },
+  { value: 3, label: 'Qua' },
+  { value: 4, label: 'Qui' },
+  { value: 5, label: 'Sex' },
+  { value: 6, label: 'Sab' },
+  { value: 0, label: 'Dom' },
+];
+
+const nomeDiasBloqueados = (dias?: number[]) => {
+  if (!dias || dias.length === 0) return null;
+  const mapa = new Map(DIAS_SEMANA.map((d) => [d.value, d.label]));
+  return DIAS_SEMANA.filter((d) => dias.includes(d.value))
+    .map((d) => mapa.get(d.value))
+    .join(', ');
 };
 
 type CustomerSubscription = {
@@ -74,6 +94,7 @@ const Assinaturas: React.FC = () => {
     included_services: 2,
     is_unlimited: false,
     is_active: true,
+    blocked_weekdays: [] as number[],
   });
 
   const [subscriptionForm, setSubscriptionForm] = useState({
@@ -157,6 +178,7 @@ const Assinaturas: React.FC = () => {
       included_services: 2,
       is_unlimited: false,
       is_active: true,
+      blocked_weekdays: [],
     });
   };
 
@@ -176,6 +198,7 @@ const Assinaturas: React.FC = () => {
         included_services: planForm.is_unlimited ? null : Number(planForm.included_services || 0),
         is_unlimited: planForm.is_unlimited,
         is_active: planForm.is_active,
+        blocked_weekdays: planForm.blocked_weekdays,
       });
       toast.success(planForm.id ? 'Plano atualizado' : 'Plano criado');
       resetPlanForm();
@@ -198,6 +221,7 @@ const Assinaturas: React.FC = () => {
       included_services: Number(plan.included_services || 0),
       is_unlimited: Boolean(plan.is_unlimited),
       is_active: Boolean(plan.is_active),
+      blocked_weekdays: Array.isArray(plan.blocked_weekdays) ? plan.blocked_weekdays : [],
     });
   };
 
@@ -337,6 +361,45 @@ const Assinaturas: React.FC = () => {
               onChange={(e) => setPlanForm((p) => ({ ...p, description: e.target.value }))}
             />
           </div>
+
+          {/* Dias em que o plano nao vale — tipicamente os dias de pico. */}
+          <div className="space-y-2 md:col-span-4">
+            <Label>Dias bloqueados para o mensalista</Label>
+            <div className="flex flex-wrap gap-2">
+              {DIAS_SEMANA.map((dia) => {
+                const bloqueado = planForm.blocked_weekdays.includes(dia.value);
+                return (
+                  <button
+                    key={dia.value}
+                    type="button"
+                    aria-pressed={bloqueado}
+                    onClick={() =>
+                      setPlanForm((p) => ({
+                        ...p,
+                        blocked_weekdays: bloqueado
+                          ? p.blocked_weekdays.filter((d) => d !== dia.value)
+                          : [...p.blocked_weekdays, dia.value],
+                      }))
+                    }
+                    className={
+                      'h-10 w-16 rounded-md border text-sm transition ' +
+                      (bloqueado
+                        ? 'border-destructive bg-destructive/15 text-destructive font-medium'
+                        : 'border-input bg-background hover:bg-accent')
+                    }
+                  >
+                    {dia.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {planForm.blocked_weekdays.length === 0
+                ? 'Nenhum dia bloqueado: o plano vale a semana inteira.'
+                : `O mensalista deste plano nao agenda ${nomeDiasBloqueados(planForm.blocked_weekdays)}. ` +
+                  'Ele continua podendo cortar nesses dias pagando avulso, pelo link publico ou no balcao.'}
+            </p>
+          </div>
           <div className="flex items-center gap-2">
             <Switch
               checked={planForm.is_unlimited}
@@ -465,6 +528,11 @@ const Assinaturas: React.FC = () => {
                     {plan.interval} - {toMoney(plan.price)} -{' '}
                     {plan.is_unlimited ? 'Ilimitado' : `${plan.included_services || 0} servicos`}
                   </p>
+                  {nomeDiasBloqueados(plan.blocked_weekdays) && (
+                    <p className="text-destructive text-xs">
+                      Nao atende: {nomeDiasBloqueados(plan.blocked_weekdays)}
+                    </p>
+                  )}
                 </div>
                 <Button size="sm" variant="outline" onClick={() => handleEditPlan(plan)}>
                   Editar
