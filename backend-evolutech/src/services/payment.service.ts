@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import https from 'https';
 import { prisma } from '../db';
 import { decryptSecret } from '../utils/crypto.util';
+import { notificationService } from './notification.service';
 
 type JsonObject = Record<string, any>;
 
@@ -166,6 +167,9 @@ export class PaymentService {
     const isPaid = paidStatuses.has(normalized);
     const isFailed = failedStatuses.has(normalized);
 
+    // Preenchido dentro da transacao para o e-mail ser enviado depois do commit.
+    let assinaturaAtivada: any = null;
+
     await prisma.$transaction(async (tx) => {
       await (tx as any).paymentTransaction.update({
         where: { id: txPayment.id },
@@ -189,6 +193,11 @@ export class PaymentService {
 
         await this.syncCompanyMonthlyRevenue(tx, params.companyId, updatedOrder.createdAt);
 
+        // Se este pedido cobrava uma mensalidade, e ela que precisa ser ativada.
+        // Sem isto o cliente paga e a assinatura fica presa em "pending" para
+        // sempre: o PDV nao abate o plano e as regras de plano nao valem.
+        assinaturaAtivada = await this.activateSubscriptionForOrder(tx, txPayment.orderId);
+
         await tx.auditLog.create({
           data: {
             companyId: params.companyId,
@@ -211,10 +220,245 @@ export class PaymentService {
           where: { orderId: txPayment.orderId },
           data: { status: 'failed' },
         });
+        // Pagamento recusado: a mensalidade daquele pedido nao entra em vigor.
+        await (tx as any).customerSubscription.updateMany({
+          where: { orderId: txPayment.orderId, status: 'pending' },
+          data: { status: 'canceled' },
+        });
       }
     });
 
+    // Fora da transacao de proposito: e-mail e chamadas ao gateway nao podem
+    // segurar nem desfazer a confirmacao do pagamento.
+    if (assinaturaAtivada) {
+      // Mensalidade paga no cartao: guarda o cartao para os proximos ciclos.
+      const noCartao = ['credito', 'debito', 'cartao'].includes(
+        String(assinaturaAtivada.paymentMethod || '').toLowerCase()
+      );
+      if (noCartao && params.provider === 'stripe' && params.externalPaymentId) {
+        await this.salvarCartaoDaSessao({
+          companyId: params.companyId,
+          customerId: assinaturaAtivada.customerId,
+          sessionId: params.externalPaymentId,
+        });
+      }
+      await this.avisarAssinaturaAtivada(assinaturaAtivada);
+    }
+
     return { received: true, processed: true };
+  }
+
+  /**
+   * Ativa a mensalidade vinculada a um pedido pago e devolve o que o
+   * e-mail de confirmacao precisa. Retorna null se o pedido nao for de
+   * assinatura, ou se ela ja estiver ativa.
+   */
+  private async activateSubscriptionForOrder(tx: any, orderId: string) {
+    const assinatura = await tx.customerSubscription.findFirst({
+      where: { orderId, status: 'pending' },
+      include: {
+        customer: { select: { name: true, email: true } },
+        company: { select: { name: true } },
+        plan: { select: { name: true, isUnlimited: true } },
+      },
+    });
+    if (!assinatura) return null;
+
+    await tx.customerSubscription.update({
+      where: { id: assinatura.id },
+      data: { status: 'active' },
+    });
+
+    return assinatura;
+  }
+
+  private async avisarAssinaturaAtivada(assinatura: any) {
+    try {
+      await notificationService.assinaturaAtivada({
+        to: assinatura.customer?.email || '',
+        customerName: assinatura.customer?.name || 'cliente',
+        companyName: assinatura.company?.name || 'Barbearia',
+        planName: assinatura.plan?.name || 'Plano',
+        amount: Number(assinatura.amount || 0),
+        endAt: assinatura.endAt,
+        isUnlimited: Boolean(assinatura.plan?.isUnlimited),
+        remainingServices: assinatura.remainingServices ?? null,
+      });
+    } catch (error: any) {
+      console.error('[payment] falha ao avisar assinatura ativada:', error?.message);
+    }
+  }
+
+  /**
+   * Guarda o cartao que o cliente acabou de usar, para os proximos ciclos
+   * da mensalidade. So roda quando o pedido pago era de assinatura no cartao.
+   *
+   * O Stripe devolve, na sessao de checkout, o cliente criado e o metodo de
+   * pagamento usado. Sao essas duas referencias que precisamos guardar —
+   * nunca o numero do cartao, que nem chega ate aqui.
+   */
+  private async salvarCartaoDaSessao(params: {
+    companyId: string;
+    customerId: string;
+    sessionId: string;
+  }) {
+    try {
+      const gateway = await (prisma as any).paymentGateway.findFirst({
+        where: { companyId: params.companyId, provider: 'stripe', isActive: true },
+      });
+      if (!gateway) return null;
+      const secretKey = decryptSecret(gateway.secretKeyEncrypted || '');
+      if (!secretKey) return null;
+
+      const sessao = await requestStripe(
+        'GET',
+        `/v1/checkout/sessions/${encodeURIComponent(params.sessionId)}`,
+        secretKey
+      );
+      const externalCustomerId = String(sessao?.customer || '').trim();
+      const paymentIntentId = String(sessao?.payment_intent || '').trim();
+      if (!externalCustomerId || !paymentIntentId) return null;
+
+      const intent = await requestStripe(
+        'GET',
+        `/v1/payment_intents/${encodeURIComponent(paymentIntentId)}`,
+        secretKey
+      );
+      const externalPaymentMethodId = String(intent?.payment_method || '').trim();
+      if (!externalPaymentMethodId) return null;
+
+      const metodo = await requestStripe(
+        'GET',
+        `/v1/payment_methods/${encodeURIComponent(externalPaymentMethodId)}`,
+        secretKey
+      );
+      const cartao = metodo?.card || {};
+
+      // Um cartao por cliente como padrao: o novo assume o lugar do anterior.
+      await (prisma as any).customerPaymentMethod.updateMany({
+        where: { companyId: params.companyId, customerId: params.customerId },
+        data: { isDefault: false },
+      });
+
+      return await (prisma as any).customerPaymentMethod.upsert({
+        where: {
+          companyId_customerId_provider_externalPaymentMethodId: {
+            companyId: params.companyId,
+            customerId: params.customerId,
+            provider: 'stripe',
+            externalPaymentMethodId,
+          },
+        },
+        update: {
+          externalCustomerId,
+          brand: cartao.brand || null,
+          last4: cartao.last4 || null,
+          expMonth: cartao.exp_month ? Number(cartao.exp_month) : null,
+          expYear: cartao.exp_year ? Number(cartao.exp_year) : null,
+          isDefault: true,
+          isActive: true,
+        },
+        create: {
+          companyId: params.companyId,
+          customerId: params.customerId,
+          provider: 'stripe',
+          externalCustomerId,
+          externalPaymentMethodId,
+          brand: cartao.brand || null,
+          last4: cartao.last4 || null,
+          expMonth: cartao.exp_month ? Number(cartao.exp_month) : null,
+          expYear: cartao.exp_year ? Number(cartao.exp_year) : null,
+          isDefault: true,
+          isActive: true,
+        },
+      });
+    } catch (error: any) {
+      // Falhar aqui nao pode invalidar um pagamento que ja foi confirmado.
+      console.error('[payment] nao consegui salvar o cartao:', error?.message);
+      return null;
+    }
+  }
+
+  /**
+   * Cobra um valor no cartao ja salvo do cliente, sem ele estar presente.
+   *
+   * Usado pela regua das mensalidades no dia do vencimento. Devolve
+   * { ok: true } quando o Stripe autoriza na hora. Cartao recusado ou que
+   * exige autenticacao do titular retorna ok:false com o motivo — nesses
+   * casos a assinatura nao e renovada.
+   */
+  async cobrarNoCartaoSalvo(params: {
+    companyId: string;
+    customerId: string;
+    orderId: string;
+    amount: number;
+    descricao: string;
+  }): Promise<{ ok: boolean; motivo?: string; externalPaymentId?: string }> {
+    const cartao = await (prisma as any).customerPaymentMethod.findFirst({
+      where: { companyId: params.companyId, customerId: params.customerId, isActive: true },
+      orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }],
+    });
+    if (!cartao) return { ok: false, motivo: 'cliente sem cartao salvo' };
+    if (cartao.provider !== 'stripe') {
+      return { ok: false, motivo: `cobranca recorrente ainda nao suportada em ${cartao.provider}` };
+    }
+
+    const gateway = await (prisma as any).paymentGateway.findFirst({
+      where: { companyId: params.companyId, provider: 'stripe', isActive: true },
+    });
+    if (!gateway) return { ok: false, motivo: 'gateway Stripe inativo' };
+    const secretKey = decryptSecret(gateway.secretKeyEncrypted || '');
+    if (!secretKey) return { ok: false, motivo: 'secret key do Stripe ausente' };
+
+    const amountInCents = Math.round(Number(params.amount || 0) * 100);
+    if (amountInCents <= 0) return { ok: false, motivo: 'valor invalido' };
+
+    try {
+      const intent = await requestStripe(
+        'POST',
+        '/v1/payment_intents',
+        secretKey,
+        this.buildStripeForm({
+          amount: amountInCents,
+          currency: 'brl',
+          customer: cartao.externalCustomerId,
+          payment_method: cartao.externalPaymentMethodId,
+          // off_session + confirm: cobra sem o cliente estar na tela.
+          off_session: 'true',
+          confirm: 'true',
+          description: params.descricao,
+          'metadata[order_id]': params.orderId,
+          'metadata[company_id]': params.companyId,
+          'metadata[recorrente]': 'true',
+        })
+      );
+
+      const status = String(intent?.status || '');
+      const autorizado = status === 'succeeded';
+
+      await (prisma as any).paymentTransaction.create({
+        data: {
+          companyId: params.companyId,
+          orderId: params.orderId,
+          gatewayId: gateway.id,
+          provider: 'stripe',
+          paymentMethod: 'credito',
+          externalPaymentId: intent?.id || null,
+          status: autorizado ? 'paid' : status || 'failed',
+          amount: params.amount,
+          paidAt: autorizado ? new Date() : null,
+          gatewayResponse: intent || null,
+        },
+      });
+
+      if (!autorizado) {
+        // Cartao expirado, sem limite, ou que exige autenticacao do titular.
+        return { ok: false, motivo: `Stripe retornou status ${status}`, externalPaymentId: intent?.id };
+      }
+      return { ok: true, externalPaymentId: intent?.id };
+    } catch (error: any) {
+      return { ok: false, motivo: String(error?.message || 'falha na cobranca').slice(0, 160) };
+    }
   }
 
   async getCompanyActiveGateway(companyId: string, provider?: string) {
@@ -371,6 +615,8 @@ export class PaymentService {
       amount: number;
       customerName?: string | null;
       paymentMethod: 'credito' | 'debito' | 'cartao';
+      /** true em cobranca de mensalidade: guarda o cartao para os proximos ciclos. */
+      saveCard?: boolean;
     }
   ) {
     const gateway = await (tx as any).paymentGateway.findFirst({
@@ -396,6 +642,15 @@ export class PaymentService {
       'metadata[order_id]': params.orderId,
       'metadata[company_id]': params.companyId,
       ...(params.customerName ? { 'metadata[customer_name]': params.customerName } : {}),
+      // Quando a cobranca e de uma mensalidade, pedimos ao Stripe para guardar
+      // o cartao e criar um cliente. E o que permite cobrar os proximos ciclos
+      // sem o cliente precisar digitar o cartao de novo.
+      ...(params.saveCard
+        ? {
+            customer_creation: 'always',
+            'payment_intent_data[setup_future_usage]': 'off_session',
+          }
+        : {}),
     });
 
     const session = await requestStripe('POST', '/v1/checkout/sessions', secretKey, formBody);

@@ -13,6 +13,7 @@ import customerAuthRoutes from './routes/customer-auth.routes';
 import customerRoutes from './routes/customer.routes';
 import { prisma } from './db';
 import { CompanyService } from './services/company.service';
+import { subscriptionBillingService } from './services/subscription-billing.service';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -28,6 +29,19 @@ const COLLECTIONS_JOB_MS = Math.max(60000, Number(process.env.COLLECTIONS_AUTOMA
 const COLLECTIONS_JOB_STARTUP_DELAY_MS = Math.max(
   5000,
   Number(process.env.COLLECTIONS_AUTOMATION_JOB_STARTUP_DELAY_MS || 15000)
+);
+// Regua das mensalidades: avisa 2 dias antes do vencimento e encerra quem
+// nao pagou. Roda de 6 em 6 horas por padrao — a regua e por dia, entao
+// rodar mais de uma vez e inofensivo (o envio e idempotente) e protege
+// contra o servico ter ficado suspenso na hora certa.
+const SUBSCRIPTION_JOB_ENABLED = process.env.SUBSCRIPTION_BILLING_JOB_ENABLED !== 'false';
+const SUBSCRIPTION_JOB_MS = Math.max(
+  600000,
+  Number(process.env.SUBSCRIPTION_BILLING_JOB_MS || 6 * 60 * 60 * 1000)
+);
+const SUBSCRIPTION_JOB_STARTUP_DELAY_MS = Math.max(
+  10000,
+  Number(process.env.SUBSCRIPTION_BILLING_JOB_STARTUP_DELAY_MS || 45000)
 );
 
 // Middlewares Globais
@@ -146,6 +160,41 @@ const startServer = async () => {
     setInterval(() => {
       void runCollectionsJob('interval');
     }, COLLECTIONS_JOB_MS).unref();
+  }
+
+  if (SUBSCRIPTION_JOB_ENABLED) {
+    let subscriptionJobRunning = false;
+
+    const runSubscriptionJob = async (reason: 'startup' | 'interval') => {
+      if (subscriptionJobRunning) {
+        console.warn(`Subscription billing job skipped (${reason}): previous cycle still running`);
+        return;
+      }
+      subscriptionJobRunning = true;
+      try {
+        const resultado = await subscriptionBillingService.executar();
+        if (resultado.avisos_enviados || resultado.renovadas || resultado.canceladas || resultado.erros) {
+          console.log(
+            `[subscription-billing] ${reason}: ${resultado.avisos_enviados} avisos, ` +
+              `${resultado.renovadas} renovadas, ${resultado.canceladas} encerradas, ` +
+              `${resultado.erros} erros`
+          );
+          resultado.detalhes.forEach((linha) => console.log(`  - ${linha}`));
+        }
+      } catch (error) {
+        console.warn(`Subscription billing job failed (${reason})`, error);
+      } finally {
+        subscriptionJobRunning = false;
+      }
+    };
+
+    setTimeout(() => {
+      void runSubscriptionJob('startup');
+    }, SUBSCRIPTION_JOB_STARTUP_DELAY_MS).unref();
+
+    setInterval(() => {
+      void runSubscriptionJob('interval');
+    }, SUBSCRIPTION_JOB_MS).unref();
   }
 };
 

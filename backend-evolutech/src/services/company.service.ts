@@ -2016,7 +2016,15 @@ export class CompanyService {
       let renewedCount = 0;
 
       for (const item of dueSubscriptions) {
-        const canRenew = Boolean(item.autoRenew && item.plan?.isActive);
+        // A renovacao deixou de acontecer aqui.
+        //
+        // Antes, esta rotina criava um pedido ja marcado como "paid" e
+        // renovava a assinatura sem cobrar ninguem: o faturamento subia no
+        // relatorio sem dinheiro ter entrado. Agora quem renova e a regua
+        // (subscription-billing.service), que cobra no cartao salvo antes de
+        // liberar o proximo ciclo. Aqui so marcamos como vencida — a regua
+        // decide, no ciclo dela, se renova ou cancela.
+        const canRenew = false;
         if (!canRenew) {
           await (tx as any).customerSubscription.update({
             where: { id: item.id },
@@ -2281,6 +2289,8 @@ export class CompanyService {
       notes: item.notes || null,
       professional_id: item.professionalId || null,
       professional_name: item.professional?.fullName || null,
+      payment_method: item.paymentMethod || null,
+      renewal_notice_sent_at: item.renewalNoticeSentAt || null,
       created_at: item.createdAt,
       updated_at: item.updatedAt,
     }));

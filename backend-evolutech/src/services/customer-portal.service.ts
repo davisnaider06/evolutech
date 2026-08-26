@@ -313,6 +313,13 @@ export class CustomerPortalService {
   async listMySubscriptions(auth: AuthenticatedCustomer) {
     const context = await this.getCustomerContext(auth);
 
+    // Cartao salvo, para o cliente saber onde a renovacao vai ser cobrada.
+    const cartao = await (prisma as any).customerPaymentMethod.findFirst({
+      where: { companyId: context.companyId, customerId: context.customerId, isActive: true },
+      orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }],
+      select: { brand: true, last4: true },
+    });
+
     const rows = await (prisma as any).customerSubscription.findMany({
       where: {
         companyId: context.companyId,
@@ -342,6 +349,11 @@ export class CustomerPortalService {
       remaining_services: item.remainingServices,
       auto_renew: item.autoRenew,
       amount: this.toNumber(item.amount),
+      payment_method: item.paymentMethod || null,
+      saved_card:
+        cartao && ['credito', 'debito', 'cartao'].includes(String(item.paymentMethod || '').toLowerCase())
+          ? { brand: cartao.brand, last4: cartao.last4 }
+          : null,
       plan: item.plan
         ? {
             id: item.plan.id,
@@ -864,7 +876,10 @@ export class CustomerPortalService {
           remainingServices: plan.isUnlimited ? null : Number(plan.includedServices || 0),
           autoRenew: true,
           amount,
-          notes: `order_id:${order.id}`,
+          // Vinculo real com o pedido: e por ele que o webhook ativa a
+          // assinatura quando o pagamento for confirmado.
+          orderId: order.id,
+          paymentMethod,
         },
         select: { id: true, status: true, startAt: true, endAt: true },
       });
@@ -902,6 +917,8 @@ export class CustomerPortalService {
             amount,
             customerName: context.customer.name,
             paymentMethod: paymentMethod as 'credito' | 'debito' | 'cartao',
+            // Mensalidade: guarda o cartao para renovar sem pedir de novo.
+            saveCard: true,
           });
         } else if (activeGateway.provider === 'mercadopago') {
           gatewayPayment = await this.paymentService.createMercadoPagoPaymentLink(tx, {

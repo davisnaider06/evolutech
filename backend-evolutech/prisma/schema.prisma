@@ -67,6 +67,7 @@ model Company {
   loyaltyProfiles         CustomerLoyaltyProfile[]
   loyaltyTransactions     CustomerLoyaltyTransaction[]
   customerSubscriptions   CustomerSubscription[]
+  customerPaymentMethods  CustomerPaymentMethod[]
   customers               Customer[]
   modules                 CompanyModule[]
   orders                  Order[]
@@ -221,6 +222,7 @@ model Customer {
   loyaltyProfile      CustomerLoyaltyProfile?
   loyaltyTransactions CustomerLoyaltyTransaction[]
   subscriptions       CustomerSubscription[]
+  paymentMethods      CustomerPaymentMethod[]
   company             Company                      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   preferredProfessional User?                      @relation("CustomerPreferredProfessional", fields: [preferredProfessionalId], references: [id], onDelete: SetNull)
 
@@ -295,6 +297,7 @@ model Order {
   billingCharge       BillingCharge?
   company             Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
   paymentTransactions PaymentTransaction[]
+  subscription        CustomerSubscription? @relation("SubscriptionOrder")
 
   @@map("orders")
 }
@@ -710,6 +713,37 @@ model CustomerLoyaltyTransaction {
   @@map("customer_loyalty_transactions")
 }
 
+/// Cartao que o cliente autorizou a barbearia a cobrar de novo.
+///
+/// Nao guardamos numero de cartao: apenas as referencias que o gateway
+/// devolve (cliente e metodo de pagamento no lado dele) mais os dados
+/// visiveis (bandeira e 4 ultimos digitos), para o cliente reconhecer
+/// qual cartao esta salvo.
+model CustomerPaymentMethod {
+  id                      String   @id @default(uuid())
+  companyId               String   @map("empresa_id")
+  customerId              String   @map("customer_id")
+  provider                String
+  /// Identificador do cliente dentro do gateway (ex.: cus_... no Stripe).
+  externalCustomerId      String   @map("external_customer_id")
+  /// Identificador do cartao salvo dentro do gateway (ex.: pm_... no Stripe).
+  externalPaymentMethodId String   @map("external_payment_method_id")
+  brand                   String?
+  last4                   String?
+  expMonth                Int?     @map("exp_month")
+  expYear                 Int?     @map("exp_year")
+  isDefault               Boolean  @default(true) @map("is_default")
+  isActive                Boolean  @default(true) @map("is_active")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @default(now()) @updatedAt @map("updated_at")
+  company                 Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer                Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, customerId, provider, externalPaymentMethodId], map: "customer_payment_methods_unique")
+  @@index([companyId, customerId, isActive])
+  @@map("customer_payment_methods")
+}
+
 model SubscriptionPlan {
   id               String                 @id @default(dbgenerated("(gen_random_uuid())::text"))
   companyId        String                 @map("empresa_id")
@@ -750,15 +784,32 @@ model CustomerSubscription {
   // Barbeiro dono da mensalidade (N assinaturas -> 1 barbeiro, opcional).
   // SetNull para que a assinatura sobreviva a saida do barbeiro e possa ser remanejada.
   professionalId    String?             @map("professional_id")
+  // Pedido que cobra este ciclo da mensalidade. E por aqui que o webhook do
+  // gateway encontra a assinatura e a ativa quando o pagamento e confirmado.
+  // Antes esse vinculo existia so como texto em `notes`, e ninguem lia.
+  orderId           String?             @unique @map("order_id")
+  // Como o cliente paga: pix, credito, debito. Define a regua de cobranca.
+  paymentMethod     String?             @map("payment_method")
+  // Quando o aviso de vencimento foi enviado, para nao mandar duas vezes.
+  renewalNoticeSentAt DateTime?         @map("renewal_notice_sent_at")
+  // Tentativas de cobranca no cartao dentro do ciclo atual. Zera a cada renovacao.
+  paymentAttempts   Int                 @default(0) @map("payment_attempts")
+  lastPaymentAttemptAt DateTime?        @map("last_payment_attempt_at")
+  // Ate quando o cliente mantem o plano mesmo com a cobranca falhando.
+  // Enquanto estiver dentro do prazo, o sistema tenta cobrar de novo em vez
+  // de cancelar: cartao sem limite naquele dia nao deve custar o cliente.
+  graceUntil        DateTime?           @map("grace_until")
   customer          Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
   company           Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
   plan              SubscriptionPlan    @relation(fields: [planId], references: [id], onDelete: Cascade)
   professional      User?               @relation("SubscriptionProfessional", fields: [professionalId], references: [id], onDelete: SetNull)
+  order             Order?              @relation("SubscriptionOrder", fields: [orderId], references: [id], onDelete: SetNull)
   usages            SubscriptionUsage[]
 
   @@index([companyId, customerId, status, endAt])
   @@index([companyId, planId, status])
   @@index([companyId, professionalId, status])
+  @@index([status, endAt])
   @@map("customer_subscriptions")
 }
 
