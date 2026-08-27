@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
+import { uploadImagem } from '@/lib/uploadImagem';
 import { useAuth } from '@/contexts/AuthContext';
 import { companyService } from '@/services/company';
 import * as XLSX from 'xlsx';
@@ -220,11 +220,10 @@ const Cursos: React.FC = () => {
     const companyId = company?.id || user?.tenantId;
     if (!companyId) throw new Error('Empresa nao identificada para upload');
 
-    const fileName = `courses/${companyId}/${folder}/${Date.now()}-${sanitizeFileName(file.name)}`;
-    const { error } = await supabase.storage.from('company-logos').upload(fileName, file, { upsert: true });
-    if (error) throw new Error(error.message || 'Falha no upload');
-    const { data } = supabase.storage.from('company-logos').getPublicUrl(fileName);
-    return data.publicUrl;
+    const { url } = await uploadImagem(file, folder === 'covers' ? 'course_cover' : 'course_media', {
+      companyId,
+    });
+    return url;
   };
 
   const handleContentFile = async (file: File) => {

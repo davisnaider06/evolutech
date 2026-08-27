@@ -255,10 +255,13 @@ const Clientes: React.FC = () => {
 
   const loadSupportData = async () => {
     try {
-      const [servicesResult, teamResult] = await Promise.all([
-        companyService.list('appointment_services', { page: 1, pageSize: 300, is_active: 'true', orderBy: 'name' }),
-        companyService.listTeamMembers(),
-      ]);
+      const servicesResult = await companyService.list('appointment_services', {
+        page: 1,
+        pageSize: 300,
+        is_active: 'true',
+        orderBy: 'name',
+      });
+
       setServiceOptions(
         (servicesResult?.data || []).map((item: any) => ({
           id: String(item.id),
@@ -267,6 +270,13 @@ const Clientes: React.FC = () => {
             item.recommendedReturnDays != null ? Number(item.recommendedReturnDays) : null,
         }))
       );
+
+      if (isEmployee) {
+        setProfessionalOptions([]);
+        return;
+      }
+
+      const teamResult = await companyService.listTeamMembers();
       setProfessionalOptions(
         (Array.isArray(teamResult) ? teamResult : []).map((item: any) => ({
           id: String(item.id),
@@ -299,7 +309,7 @@ const Clientes: React.FC = () => {
 
   useEffect(() => {
     loadSupportData();
-  }, []);
+  }, [isEmployee]);
 
   useEffect(() => {
     loadFollowUps();
@@ -766,20 +776,27 @@ const Clientes: React.FC = () => {
 
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="preferredProfessional">Barbeiro responsavel</Label>
-            <SearchableSelect
-              value={formData.preferredProfessionalId}
-              onValueChange={(value) =>
-                setFormData((prev) => ({ ...prev, preferredProfessionalId: value }))
-              }
-              options={[
-                { value: '', label: 'Sem barbeiro definido' },
-                ...professionalOptions.map((item) => ({ value: item.id, label: item.name })),
-              ]}
-              placeholder="Selecione o barbeiro"
-            />
+            {isEmployee ? (
+              <div className="rounded-md border border-dashed border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                O cliente sera vinculado automaticamente a sua carteira.
+              </div>
+            ) : (
+              <SearchableSelect
+                value={formData.preferredProfessionalId}
+                onValueChange={(value) =>
+                  setFormData((prev) => ({ ...prev, preferredProfessionalId: value }))
+                }
+                options={[
+                  { value: '', label: 'Sem barbeiro definido' },
+                  ...professionalOptions.map((item) => ({ value: item.id, label: item.name })),
+                ]}
+                placeholder="Selecione o barbeiro"
+              />
+            )}
             <p className="text-xs text-muted-foreground">
-              Define de quem e a carteira. O barbeiro escolhido ve esse cliente em "Meus clientes",
-              e novas mensalidades ja nascem vinculadas a ele.
+              {isEmployee
+                ? 'O sistema define o barbeiro automaticamente para o seu usuario.'
+                : 'Define de quem e a carteira. O barbeiro escolhido ve esse cliente em "Meus clientes", e novas mensalidades ja nascem vinculadas a ele.'}
             </p>
           </div>
 

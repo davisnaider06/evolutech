@@ -2,10 +2,12 @@ import { Router } from 'express';
 import { CompanyController } from '../controllers/company.controller';
 import { DashboardController } from '../controllers/dashboard.controller';
 import { authenticateToken } from '../middlewares/auth.middleware';
+import { MediaController } from '../controllers/media.controller';
 
 const router = Router();
 const companyController = new CompanyController();
 const dashboardController = new DashboardController();
+const mediaController = new MediaController();
 const COMPANY_PERF_DEBUG = process.env.COMPANY_PERF_DEBUG === 'true';
 const COMPANY_SLOW_MS = Number(process.env.COMPANY_SLOW_MS || 300);
 
@@ -25,6 +27,9 @@ if (COMPANY_PERF_DEBUG) {
 
 router.get('/financeiro/overview', companyController.getFinancialOverview.bind(companyController));
 router.get('/gateways/catalog', companyController.listPaymentGatewayCatalog.bind(companyController));
+router.post('/audit', companyController.registrarAuditoria.bind(companyController));
+router.post('/media', mediaController.upload.bind(mediaController));
+router.delete('/media/:mediaId', mediaController.remove.bind(mediaController));
 router.get('/theme', companyController.getMyTheme.bind(companyController));
 router.put('/theme', companyController.upsertMyTheme.bind(companyController));
 router.get('/reports/overview', companyController.getReportsOverview.bind(companyController));

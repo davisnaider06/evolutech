@@ -69,31 +69,31 @@ const CustomerDashboard: React.FC = () => {
 
   const loadData = async () => {
     setLoading(true);
-    try {
-      const [dashboardData, appointmentsData, subscriptionsData, loyaltyData, coursesData, bookingData, plansData, availableCoursesData] =
-        await Promise.all([
-          customerPortalService.dashboard(),
-          customerPortalService.appointments(),
-          customerPortalService.subscriptions(),
-          customerPortalService.loyalty(),
-          customerPortalService.courses(),
-          customerPortalService.bookingOptions(),
-          customerPortalService.plans(),
-          customerPortalService.availableCourses(),
-        ]);
-      setDashboard(dashboardData);
-      setAppointments(appointmentsData);
-      setSubscriptions(subscriptionsData);
-      setLoyalty(loyaltyData);
-      setCourses(coursesData);
-      setBookingOptions(bookingData);
-      setPlansCatalog(plansData);
-      setCoursesCatalog(availableCoursesData);
-    } catch (error: any) {
-      toast.error(error.message || 'Erro ao carregar portal');
-    } finally {
-      setLoading(false);
+    const results = await Promise.allSettled([
+      customerPortalService.dashboard(),
+      customerPortalService.appointments(),
+      customerPortalService.subscriptions(),
+      customerPortalService.loyalty(),
+      customerPortalService.courses(),
+      customerPortalService.bookingOptions(),
+      customerPortalService.plans(),
+      customerPortalService.availableCourses(),
+    ]);
+    const [dashboardData, appointmentsData, subscriptionsData, loyaltyData, coursesData, bookingData, plansData, availableCoursesData] = results;
+    if (dashboardData.status === 'fulfilled') setDashboard(dashboardData.value);
+    if (appointmentsData.status === 'fulfilled') setAppointments(appointmentsData.value);
+    if (subscriptionsData.status === 'fulfilled') setSubscriptions(subscriptionsData.value);
+    if (loyaltyData.status === 'fulfilled') setLoyalty(loyaltyData.value);
+    if (coursesData.status === 'fulfilled') setCourses(coursesData.value);
+    if (bookingData.status === 'fulfilled') setBookingOptions(bookingData.value);
+    if (plansData.status === 'fulfilled') setPlansCatalog(plansData.value);
+    if (availableCoursesData.status === 'fulfilled') setCoursesCatalog(availableCoursesData.value);
+
+    const firstError = results.find((result) => result.status === 'rejected');
+    if (firstError?.status === 'rejected') {
+      toast.error(firstError.reason?.message || 'Alguns dados do portal nao puderam ser carregados');
     }
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -380,6 +380,11 @@ const CustomerDashboard: React.FC = () => {
                     {creatingAppointment ? 'Agendando...' : 'Novo agendamento'}
                   </Button>
                 </form>
+                {(!bookingOptions?.services?.length || !bookingOptions?.professionals?.length) && (
+                  <p className="text-sm text-muted-foreground">
+                    Agendamento indisponivel no momento: a empresa precisa publicar um servico e configurar a disponibilidade de um profissional.
+                  </p>
+                )}
                 {appointments.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Nenhum agendamento encontrado.</p>
                 ) : (
@@ -437,6 +442,11 @@ const CustomerDashboard: React.FC = () => {
                     </div>
                   ))}
                 </div>
+                {plansCatalog.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhum plano ativo foi publicado pela empresa para compra online.
+                  </p>
+                )}
                 {subscriptions.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Nenhuma assinatura encontrada.</p>
                 ) : (
@@ -521,6 +531,11 @@ const CustomerDashboard: React.FC = () => {
                     </div>
                   ))}
                 </div>
+                {coursesCatalog.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhum curso ativo foi publicado pela empresa para compra online.
+                  </p>
+                )}
                 {courses.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Nenhum curso encontrado.</p>
                 ) : (

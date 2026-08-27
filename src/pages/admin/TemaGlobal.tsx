@@ -1,5 +1,5 @@
 ﻿import React, { useState, useRef, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { uploadImagem } from '@/lib/uploadImagem';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { adminService } from '@/services/admin';
@@ -361,20 +361,13 @@ export default function TemaGlobal() {
     reader.onload = () => setLogoPreview(reader.result as string);
     reader.readAsDataURL(file);
 
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${selectedCompanyId}/logo.${fileExt}`;
-
-    const { error } = await supabase.storage.from('company-logos').upload(fileName, file, { upsert: true });
-
-    if (error) {
-      toast.error('Erro ao enviar logo');
-      return;
+    try {
+      const { url } = await uploadImagem(file, 'logo', { companyId: selectedCompanyId });
+      setTheme((prev) => (prev ? { ...prev, logo_path: url } : null));
+      toast.success('Logo atualizado!');
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao enviar logo');
     }
-
-    const { data } = supabase.storage.from('company-logos').getPublicUrl(fileName);
-
-    setTheme((prev) => (prev ? { ...prev, logo_path: data.publicUrl } : null));
-    toast.success('Logo atualizado!');
   };
 
   const handleSave = async () => {

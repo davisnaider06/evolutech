@@ -68,6 +68,7 @@ model Company {
   loyaltyTransactions     CustomerLoyaltyTransaction[]
   customerSubscriptions   CustomerSubscription[]
   customerPaymentMethods  CustomerPaymentMethod[]
+  mediaAssets             MediaAsset[]
   customers               Customer[]
   modules                 CompanyModule[]
   orders                  Order[]
@@ -742,6 +743,31 @@ model CustomerPaymentMethod {
   @@unique([companyId, customerId, provider, externalPaymentMethodId], map: "customer_payment_methods_unique")
   @@index([companyId, customerId, isActive])
   @@map("customer_payment_methods")
+}
+
+/// Arquivo de imagem guardado no proprio banco.
+///
+/// Substitui o storage do Supabase. A escolha por guardar no Postgres vale
+/// para o que o sistema realmente sobe: logo, favicon e capa de curso —
+/// arquivos pequenos, poucos por empresa e que mudam raramente. Se um dia
+/// entrar arquivo pesado, o caminho e trocar `data` por uma URL de storage
+/// externo sem mexer em quem consome.
+model MediaAsset {
+  id         String   @id @default(uuid())
+  companyId  String?  @map("empresa_id")
+  /// Para que serve: logo, favicon, login_cover, course_cover.
+  kind       String
+  fileName   String   @map("file_name")
+  mimeType   String   @map("mime_type")
+  sizeBytes  Int      @map("size_bytes")
+  /// Conteudo binario do arquivo.
+  data       Bytes
+  createdBy  String?  @map("created_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+  company    Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, kind])
+  @@map("media_assets")
 }
 
 model SubscriptionPlan {

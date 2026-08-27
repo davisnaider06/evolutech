@@ -38,6 +38,15 @@ export class CompanyController {
     }
   }
 
+  async registrarAuditoria(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.registrarAuditoria(req.user!, req.body || {});
+      return res.status(201).json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   // --- Agenda em grade (timeline por barbeiro) ---
   async getAgendaBoard(req: AuthedRequest, res: Response) {
     try {

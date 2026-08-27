@@ -492,6 +492,40 @@ export class CompanyService {
     this.setCachedModuleAccess(companyId, moduleCodes, user.role, true, user.id);
   }
 
+  /**
+   * Registra no Neon uma acao feita pela interface.
+   *
+   * Antes o front gravava auditoria direto no Supabase — banco separado que
+   * ninguem consultava. Agora vai para a mesma tabela que o backend ja usa,
+   * e aparece na tela de Logs.
+   */
+  async registrarAuditoria(
+    user: AuthenticatedUser,
+    payload: { action?: string; entity_type?: string; entity_id?: string; details?: any }
+  ) {
+    const action = String(payload.action || '').trim();
+    const entityType = String(payload.entity_type || '').trim();
+    if (!action || !entityType) {
+      throw new CompanyServiceError('action e entity_type sao obrigatorios', 400);
+    }
+
+    const registro = await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        companyId: user.companyId || null,
+        action: `${action.toUpperCase()}_${entityType.toUpperCase()}`.slice(0, 120),
+        resource: entityType,
+        // AuditLog nao tem coluna de id do registro: vai junto nos detalhes.
+        details: {
+          ...(payload.details && typeof payload.details === 'object' ? payload.details : {}),
+          ...(payload.entity_id ? { entity_id: String(payload.entity_id) } : {}),
+        },
+      },
+      select: { id: true, createdAt: true },
+    });
+    return { id: registro.id, created_at: registro.createdAt };
+  }
+
   async listTableData(table: string, user: AuthenticatedUser, queryParams: any) {
     const model = this.getModel(table);
     const config = TABLE_CONFIG[table];

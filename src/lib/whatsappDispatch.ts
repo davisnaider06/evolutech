@@ -8,7 +8,7 @@
  * onde a automação da Evolutech processa externamente.
  */
 
-import { supabase } from "@/integrations/supabase/client";
+import { companyService } from "@/services/company";
 
 export type WhatsAppEvento = 
   | "agendamento" 
@@ -46,15 +46,19 @@ interface DispatchResult {
  */
 export async function dispatchWhatsAppEvent(options: DispatchOptions): Promise<DispatchResult> {
   try {
-    const { data, error } = await supabase.functions.invoke("whatsapp-dispatch", {
-      body: {
-        empresa_id: options.empresa_id,
-        telefone: options.telefone,
-        evento: options.evento,
-        mensagem: options.mensagem,
-        dados_extras: options.dados_extras,
-      },
-    });
+    // Envio pela API propria (Z-API no backend). Antes passava por uma edge
+    // function do Supabase; o backend ja faz o disparo e registra o envio.
+    let data: unknown = null;
+    let error: Error | null = null;
+    try {
+      data = await companyService.sendWhatsApp({
+        phone: options.telefone,
+        message: options.mensagem,
+        company_id: options.empresa_id,
+      });
+    } catch (e: any) {
+      error = e instanceof Error ? e : new Error(String(e));
+    }
 
     if (error) {
       console.error("Erro ao disparar evento WhatsApp:", error);

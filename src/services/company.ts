@@ -29,6 +29,13 @@ const request = async (path: string, init?: RequestInit) => {
 };
 
 export const companyService = {
+  /** Registra uma acao da interface na auditoria (tabela audit_logs, no Neon). */
+  registrarAuditoria: async (data: {
+    action: string;
+    entity_type: string;
+    entity_id?: string;
+    details?: Record<string, unknown>;
+  }) => request('/audit', { method: 'POST', body: JSON.stringify(data) }),
   getTheme: async () => request('/theme'),
   saveTheme: async (data: Record<string, unknown>) =>
     request('/theme', { method: 'PUT', body: JSON.stringify(data) }),

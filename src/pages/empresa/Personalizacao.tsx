@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { uploadImagem } from '@/lib/uploadImagem';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -189,24 +189,14 @@ const Personalizacao: React.FC = () => {
   const handleFileUpload = async (file: File, type: 'logo' | 'favicon'): Promise<string | null> => {
     if (!user?.tenantId) return null;
     
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${user.tenantId}/${type}.${fileExt}`;
-    
-    const { error } = await supabase.storage
-      .from('company-logos')
-      .upload(fileName, file, { upsert: true });
-    
-    if (error) {
-      console.error(`Error uploading ${type}:`, error);
-      toast.error(`Erro ao enviar ${type === 'logo' ? 'logo' : 'favicon'}`);
+    try {
+      const { url } = await uploadImagem(file, type, { companyId: user.tenantId });
+      return url;
+    } catch (error: any) {
+      console.error(`Erro ao enviar ${type}:`, error);
+      toast.error(error?.message || `Erro ao enviar ${type === 'logo' ? 'logo' : 'favicon'}`);
       return null;
     }
-    
-    const { data } = supabase.storage
-      .from('company-logos')
-      .getPublicUrl(fileName);
-    
-    return data.publicUrl;
   };
 
   const handleLogoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
