@@ -99,6 +99,33 @@ export class CustomerPortalService {
     };
   }
 
+  /**
+   * O cliente tem mensalidade em aberto?
+   *
+   * Enquanto o dono nao confirma o recebimento, o cliente nao marca horario
+   * novo. Os agendamentos que ja existiam continuam de pe: cancelar o que ja
+   * estava combinado seria punir duas vezes, e muitas vezes o acerto acontece
+   * justamente na proxima visita.
+   *
+   * Consulta local em vez de reaproveitar a do CompanyService para nao
+   * arrastar um servico de 9 mil linhas para dentro do portal — e a mesma
+   * escolha ja feita em getPlanDayBlock.
+   */
+  private async getSubscriptionBlock(companyId: string, customerId: string) {
+    const emAberto = await (prisma as any).customerSubscription.findFirst({
+      where: { companyId, customerId, status: 'overdue' },
+      include: { plan: { select: { name: true } } },
+      orderBy: { overdueSince: 'asc' },
+    });
+    if (!emAberto) return null;
+
+    return {
+      planName: String(emAberto.plan?.name || 'seu plano'),
+      message:
+        'Sua mensalidade esta em aberto. Fale com a barbearia para acertar e liberar novos agendamentos.',
+    };
+  }
+
   private async getCustomerContext(auth: AuthenticatedCustomer) {
     const account = await (prisma as any).customerAccount.findFirst({
       where: {
@@ -509,6 +536,15 @@ export class CustomerPortalService {
     const scheduledAt = new Date(scheduledAtRaw);
     if (Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() < Date.now()) {
       throw new CustomerPortalError('Data/hora invalida para agendamento', 400);
+    }
+
+    // Mensalidade em aberto trava o agendamento novo.
+    const bloqueioMensalidade = await this.getSubscriptionBlock(
+      context.companyId,
+      context.customerId
+    );
+    if (bloqueioMensalidade) {
+      throw new CustomerPortalError(bloqueioMensalidade.message, 402);
     }
 
     // Mesma regra da listagem, aplicada tambem na criacao: sem isso bastaria

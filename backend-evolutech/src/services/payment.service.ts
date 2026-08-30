@@ -1049,6 +1049,21 @@ export class PaymentService {
     };
   }
 
+  /**
+   * Existe uma transacao nossa com esse id externo?
+   *
+   * Serve de porteiro dos webhooks: sem isso, qualquer id inventado fazia o
+   * sistema sair chamando a API do gateway. Tambem evita responder erro para
+   * evento de outra empresa, o que faria o gateway ficar reenviando.
+   */
+  private async localTransactionExists(companyId: string, provider: string, externalPaymentId: string) {
+    const found = await (prisma as any).paymentTransaction.findFirst({
+      where: { companyId, provider, externalPaymentId },
+      select: { id: true },
+    });
+    return Boolean(found);
+  }
+
   private verifyStripeSignature(rawBody: string, signatureHeader: string, webhookSecret: string) {
     const parts = String(signatureHeader || '')
       .split(',')
@@ -1064,9 +1079,26 @@ export class PaymentService {
       throw new PaymentServiceError('Assinatura Stripe invalida', 400);
     }
 
+    // Sem janela de tempo, uma requisicao legitima capturada uma vez pode ser
+    // reenviada para sempre. O Stripe recomenda 5 minutos.
+    const toleranceSeconds = Math.max(30, Number(process.env.STRIPE_WEBHOOK_TOLERANCE_SECONDS || 300));
+    const eventAgeSeconds = Math.abs(Math.floor(Date.now() / 1000) - Number(timestamp));
+    if (!Number.isFinite(eventAgeSeconds) || eventAgeSeconds > toleranceSeconds) {
+      throw new PaymentServiceError('Assinatura Stripe fora da janela de tempo aceita', 400);
+    }
+
     const payload = `${timestamp}.${rawBody}`;
     const digest = crypto.createHmac('sha256', webhookSecret).update(payload).digest('hex');
-    if (digest !== expectedV1) {
+
+    // Comparacao em tempo constante: `!==` vaza, pelo tempo de resposta,
+    // quantos caracteres do inicio ja batem.
+    const digestBuffer = Buffer.from(digest, 'utf8');
+    const expectedBuffer = Buffer.from(expectedV1, 'utf8');
+    const confere =
+      digestBuffer.length === expectedBuffer.length &&
+      crypto.timingSafeEqual(digestBuffer, expectedBuffer);
+
+    if (!confere) {
       throw new PaymentServiceError('Assinatura Stripe nao confere', 400);
     }
   }
@@ -1084,10 +1116,19 @@ export class PaymentService {
       throw new PaymentServiceError('Gateway Stripe nao encontrado para empresa', 404);
     }
 
+    // Antes a verificacao era condicional: sem webhook secret cadastrado, o
+    // `if` passava reto e o payload era aceito como veio. Como o endpoint e
+    // publico por natureza, isso equivalia a nao ter verificacao nenhuma para
+    // toda empresa que ainda nao tinha preenchido o campo.
     const webhookSecret = decryptSecret(gateway.webhookSecretEncrypted || '');
-    if (webhookSecret) {
-      this.verifyStripeSignature(rawBody, signatureHeader || '', webhookSecret);
+    if (!webhookSecret) {
+      throw new PaymentServiceError(
+        'Webhook secret do Stripe nao configurado para esta empresa. ' +
+          'Cadastre o secret em Gateways antes de receber notificacoes de pagamento.',
+        400
+      );
     }
+    this.verifyStripeSignature(rawBody, signatureHeader || '', webhookSecret);
 
     let event: any;
     try {
@@ -1131,6 +1172,13 @@ export class PaymentService {
     const paymentId = payload?.data?.id || payload?.id;
     if (!paymentId) return { received: true, ignored: true };
 
+    // Evento que nao corresponde a nenhuma transacao nossa nao vira chamada
+    // externa: sem esse porteiro, o endpoint publico vira um proxy para
+    // consultar a API do Mercado Pago com o token da empresa.
+    if (!(await this.localTransactionExists(companyId, 'mercadopago', String(paymentId)))) {
+      return { received: true, ignored: true };
+    }
+
     const token = decryptSecret(gateway.secretKeyEncrypted || '');
     if (!token) throw new PaymentServiceError('Token Mercado Pago nao configurado', 400);
 
@@ -1168,11 +1216,40 @@ export class PaymentService {
       payload?.reference_id;
     if (!externalId) return { received: true, ignored: true };
 
-    const statusRaw =
-      payload?.status ||
-      payload?.order?.status ||
-      payload?.charges?.[0]?.status ||
-      'pending';
+    // O id que guardamos e o id do pedido no PagBank.
+    if (!(await this.localTransactionExists(companyId, 'pagbank', String(externalId)))) {
+      return { received: true, ignored: true };
+    }
+
+    // O status vem da API do PagBank, nunca do corpo da requisicao.
+    //
+    // O endpoint e publico e nao havia verificacao de assinatura: um POST com
+    // {"id": "...", "status": "PAID"} dava o pedido por pago, quitava a
+    // cobranca, somava no faturamento da empresa e ativava a mensalidade do
+    // cliente. Agora o corpo serve so para saber QUAL pedido reconsultar —
+    // quem responde se ele foi pago e o PagBank, com o token da empresa.
+    const token = decryptSecret(gateway.secretKeyEncrypted || '');
+    if (!token) throw new PaymentServiceError('Token PagBank nao configurado', 400);
+
+    const env = String(gateway.environment || 'sandbox').toLowerCase();
+    const host = env === 'producao' ? 'api.pagseguro.com' : 'sandbox.api.pagseguro.com';
+
+    let order: JsonObject;
+    try {
+      order = await requestJson('GET', host, `/orders/${encodeURIComponent(String(externalId))}`, token);
+    } catch (error: any) {
+      // Pedido que o PagBank nao reconhece nao muda nada por aqui.
+      if (error instanceof PaymentServiceError && error.statusCode === 404) {
+        return { received: true, ignored: true };
+      }
+      throw error;
+    }
+
+    const charges: JsonObject[] = Array.isArray(order?.charges) ? order.charges : [];
+    const chargePaga = charges.find((charge) =>
+      ['PAID', 'COMPLETED'].includes(String(charge?.status || '').toUpperCase())
+    );
+    const statusRaw = chargePaga?.status || charges[0]?.status || order?.status || 'pending';
 
     const mapStatus: Record<string, string> = {
       PAID: 'paid',
@@ -1183,14 +1260,15 @@ export class PaymentService {
     };
 
     const normalizedStatus = mapStatus[String(statusRaw).toUpperCase()] || String(statusRaw).toLowerCase();
+    const paidAtRaw = chargePaga?.paid_at || chargePaga?.created_at;
 
     return this.finalizePaymentStatus({
       companyId,
       provider: 'pagbank',
-      externalPaymentId: String(externalId),
+      externalPaymentId: String(order?.id || externalId),
       newStatus: normalizedStatus,
-      paidAt: normalizedStatus === 'paid' ? new Date() : null,
-      webhookPayload: payload,
+      paidAt: normalizedStatus === 'paid' ? (paidAtRaw ? new Date(paidAtRaw) : new Date()) : null,
+      webhookPayload: order,
     });
   }
 }

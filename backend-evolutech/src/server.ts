@@ -14,14 +14,13 @@ import customerRoutes from './routes/customer.routes';
 import { prisma } from './db';
 import { CompanyService } from './services/company.service';
 import { subscriptionBillingService } from './services/subscription-billing.service';
+import { resolveCorsOrigins, isProduction } from './config/secrets';
+import { securityHeaders, apiRateLimit } from './middlewares/security.middleware';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 const requestLogEnabled = process.env.REQUEST_LOG_ENABLED === 'true';
-const corsOrigins = String(process.env.CORS_ORIGIN || '*')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const corsOrigins = resolveCorsOrigins();
 const DB_KEEPALIVE_ENABLED = process.env.DB_KEEPALIVE_ENABLED !== 'false';
 const DB_KEEPALIVE_MS = Math.max(60000, Number(process.env.DB_KEEPALIVE_MS || 240000));
 const COLLECTIONS_JOB_ENABLED = process.env.COLLECTIONS_AUTOMATION_JOB_ENABLED === 'true';
@@ -44,7 +43,14 @@ const SUBSCRIPTION_JOB_STARTUP_DELAY_MS = Math.max(
   Number(process.env.SUBSCRIPTION_BILLING_JOB_STARTUP_DELAY_MS || 45000)
 );
 
+// Em producao o servico fica atras de um proxy (Vercel, Render e afins).
+// Sem isso, `req.ip` seria sempre o IP do proxy e o rate limit trataria o
+// mundo inteiro como um unico cliente. `1` confia so no proxy imediato — nao
+// na cadeia inteira de X-Forwarded-For, que o cliente consegue forjar.
+app.set('trust proxy', isProduction ? 1 : false);
+
 // Middlewares Globais
+app.use(securityHeaders);
 app.use(
   cors({
     origin: corsOrigins.includes('*') ? true : corsOrigins,
@@ -65,6 +71,10 @@ if (requestLogEnabled) {
     next();
   });
 }
+
+// Teto geral da API. Fica depois dos webhooks de proposito: o gateway pode
+// reenviar em rajada e nao deve levar 429 por isso.
+app.use('/api', apiRateLimit);
 
 // Registro de Rotas
 app.use('/api/auth', authRoutes);       // Login e Perfil
@@ -173,10 +183,18 @@ const startServer = async () => {
       subscriptionJobRunning = true;
       try {
         const resultado = await subscriptionBillingService.executar();
-        if (resultado.avisos_enviados || resultado.renovadas || resultado.canceladas || resultado.erros) {
+        if (
+          resultado.avisos_enviados ||
+          resultado.renovadas ||
+          resultado.canceladas ||
+          resultado.em_aberto ||
+          resultado.resumos_enviados ||
+          resultado.erros
+        ) {
           console.log(
             `[subscription-billing] ${reason}: ${resultado.avisos_enviados} avisos, ` +
               `${resultado.renovadas} renovadas, ${resultado.canceladas} encerradas, ` +
+              `${resultado.em_aberto} em aberto, ${resultado.resumos_enviados} resumos, ` +
               `${resultado.erros} erros`
           );
           resultado.detalhes.forEach((linha) => console.log(`  - ${linha}`));

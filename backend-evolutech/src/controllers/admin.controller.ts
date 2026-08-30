@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import { AdminService } from '../services/admin.service';
+import { AuthedRequest } from '../types';
+import { invalidateRoleCache } from '../middlewares/auth.middleware';
 
 const adminService = new AdminService();
 
@@ -333,10 +335,12 @@ export class AdminController {
     }
   }
 
-  async deleteTenant(req: Request, res: Response) {
+  async deleteTenant(req: AuthedRequest, res: Response) {
     try {
       const { tenantId } = req.params;
-      await adminService.deleteTenant(tenantId);
+      await adminService.deleteTenant(tenantId, req.user?.id || null);
+      // Os papeis em cache dos usuarios daquela empresa nao valem mais.
+      invalidateRoleCache();
       return res.status(204).send();
     } catch (error: any) {
       return res.status(400).json({ error: error.message || 'Erro ao remover tenant' });
@@ -412,6 +416,7 @@ export class AdminController {
     try {
       const { userId } = req.params;
       const user = await adminService.toggleUserStatus(userId);
+      invalidateRoleCache(userId);
       return res.json({
         id: user.id,
         is_active: user.isActive
@@ -431,6 +436,7 @@ export class AdminController {
       }
 
       const user = await adminService.changeUserRole(userId, { role, company_id: company_id || null });
+      invalidateRoleCache(userId);
       return res.json(user);
     } catch (error: any) {
       return res.status(400).json({ error: error.message || 'Erro ao alterar perfil do usuario' });

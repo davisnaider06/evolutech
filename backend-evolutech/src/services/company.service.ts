@@ -12,6 +12,7 @@ import {
   SUPPORTED_PAYMENT_GATEWAYS,
 } from '../config/paymentGatewayCatalog';
 import { getBlockedIntervals, isIntervalBlocked } from '../utils/appointment-blocks.util';
+import { invalidateRoleCache } from '../middlewares/auth.middleware';
 
 class CompanyServiceError extends Error {
   statusCode: number;
@@ -482,7 +483,7 @@ export class CompanyService {
     if (!hasModule) {
       this.setCachedModuleAccess(companyId, moduleCodes, user.role, false, user.id);
       throw new CompanyServiceError(
-        `M�dulo "${moduleCodes[0]}" n�o est� ativo para esta empresa`,
+        `Módulo "${moduleCodes[0]}" não está ativo para esta empresa`,
         403
       );
     }
@@ -529,13 +530,21 @@ export class CompanyService {
   async listTableData(table: string, user: AuthenticatedUser, queryParams: any) {
     const model = this.getModel(table);
     const config = TABLE_CONFIG[table];
-    if (!model || !config) throw new CompanyServiceError('Tabela n�o suportada ou n�o configurada', 400);
+    if (!model || !config) throw new CompanyServiceError('Tabela não suportada ou não configurada', 400);
 
     const companyId = this.resolveCompanyId(user, queryParams);
     await this.validateModuleAccess(table, user, companyId);
 
-    const page = Number(queryParams.page || 1);
-    const pageSize = Number(queryParams.pageSize || 10);
+    // Teto e piso na paginacao: os valores vem da query e antes iam direto
+    // para o `take` do Prisma. `pageSize=100000` varria a tabela inteira, e
+    // `pageSize=abc` virava NaN e derrubava a query.
+    const MAX_PAGE_SIZE = 200;
+    const rawPage = Number(queryParams.page);
+    const rawPageSize = Number(queryParams.pageSize);
+    const page = Number.isFinite(rawPage) && rawPage >= 1 ? Math.floor(rawPage) : 1;
+    const pageSize = Number.isFinite(rawPageSize) && rawPageSize >= 1
+      ? Math.min(Math.floor(rawPageSize), MAX_PAGE_SIZE)
+      : 10;
     const search = (queryParams.search as string)?.trim();
     const orderBy = config.allowedOrderBy.includes(queryParams.orderBy)
       ? queryParams.orderBy
@@ -664,7 +673,7 @@ export class CompanyService {
 
   async createRecord(table: string, user: AuthenticatedUser, data: any) {
     const model = this.getModel(table);
-    if (!model) throw new CompanyServiceError('Tabela n�o suportada', 400);
+    if (!model) throw new CompanyServiceError('Tabela não suportada', 400);
 
     const companyId = this.resolveCompanyId(user, data);
     await this.validateModuleAccess(table, user, companyId);
@@ -726,7 +735,7 @@ export class CompanyService {
 
   async updateRecord(table: string, id: string, user: AuthenticatedUser, data: any) {
     const model = this.getModel(table);
-    if (!model) throw new CompanyServiceError('Tabela n�o suportada', 400);
+    if (!model) throw new CompanyServiceError('Tabela não suportada', 400);
 
     const existing = await model.findUnique({
       where: { id },
@@ -735,7 +744,7 @@ export class CompanyService {
         ...(table === 'appointments' ? { professionalId: true } : {}),
       },
     });
-    if (!existing) throw new CompanyServiceError('Registro n�o encontrado', 404);
+    if (!existing) throw new CompanyServiceError('Registro não encontrado', 404);
     if (!this.checkAccess(user, existing.companyId)) throw new CompanyServiceError('Acesso negado', 403);
     if (
       (table === 'courses' || table === 'course_accesses') &&
@@ -781,7 +790,7 @@ export class CompanyService {
     if (table === 'products' && targetType === 'service') {
       return prisma.$transaction(async (tx) => {
         const current = await tx.product.findUnique({ where: { id } });
-        if (!current) throw new CompanyServiceError('Registro n�o encontrado', 404);
+        if (!current) throw new CompanyServiceError('Registro não encontrado', 404);
 
         const createdService = await (tx as any).appointmentService.create({
           data: {
@@ -802,7 +811,7 @@ export class CompanyService {
     if (table === 'appointment_services' && targetType === 'product') {
       return prisma.$transaction(async (tx) => {
         const current = await (tx as any).appointmentService.findUnique({ where: { id } });
-        if (!current) throw new CompanyServiceError('Registro n�o encontrado', 404);
+        if (!current) throw new CompanyServiceError('Registro não encontrado', 404);
 
         const createdProduct = await tx.product.create({
           data: {
@@ -911,7 +920,7 @@ export class CompanyService {
 
   async deleteRecord(table: string, id: string, user: AuthenticatedUser) {
     const model = this.getModel(table);
-    if (!model) throw new CompanyServiceError('Tabela n�o suportada', 400);
+    if (!model) throw new CompanyServiceError('Tabela não suportada', 400);
 
     const existing = await model.findUnique({
       where: { id },
@@ -920,7 +929,7 @@ export class CompanyService {
         ...(table === 'appointments' ? { professionalId: true } : {}),
       },
     });
-    if (!existing) throw new CompanyServiceError('Registro n�o encontrado', 404);
+    if (!existing) throw new CompanyServiceError('Registro não encontrado', 404);
     if (!this.checkAccess(user, existing.companyId)) throw new CompanyServiceError('Acesso negado', 403);
     if (
       (table === 'courses' || table === 'course_accesses') &&
@@ -2343,6 +2352,7 @@ export class CompanyService {
       notes?: string;
       status?: string;
       professional_id?: string;
+      payment_method?: string;
     }
   ) {
     this.ensureOwnerCompanyRole(user);
@@ -2412,6 +2422,7 @@ export class CompanyService {
       notes: String(data.notes || '').trim() || null,
       remainingServices,
       professionalId,
+      paymentMethod: this.normalizeSubscriptionPaymentMethod(data.payment_method),
     };
 
     const subscriptionId = String(data.id || '').trim();
@@ -2435,9 +2446,288 @@ export class CompanyService {
       auto_renew: Boolean(saved.autoRenew),
       notes: saved.notes || null,
       professional_id: saved.professionalId || null,
+      payment_method: saved.paymentMethod || 'manual',
       created_at: saved.createdAt,
       updated_at: saved.updatedAt,
     };
+  }
+
+  /**
+   * Como a mensalidade e recebida.
+   *
+   * 'manual' e o padrao de proposito: a barbearia que nao conecta gateway e a
+   * regra, nao a excecao. Quem conecta escolhe pix ou cartao na tela.
+   */
+  private normalizeSubscriptionPaymentMethod(value?: string) {
+    const raw = String(value || '').trim().toLowerCase();
+    if (!raw) return 'manual';
+    if (['manual', 'dinheiro', 'balcao', 'especie'].includes(raw)) return 'manual';
+    if (['pix'].includes(raw)) return 'pix';
+    if (['cartao', 'credito', 'debito'].includes(raw)) return raw;
+    throw new CompanyServiceError(
+      'payment_method invalido. Use manual, pix, credito ou debito',
+      400
+    );
+  }
+
+  /**
+   * As mensalidades que dependem de uma acao do dono.
+   *
+   * Dois grupos: as que vencem nos proximos dias e as que ja venceram e
+   * aguardam ele confirmar se recebeu. Na cobranca manual nao existe webhook
+   * para responder isso — sem esta tela, a mensalidade em aberto ficaria
+   * invisivel ate alguem reparar.
+   */
+  async listSubscriptionsNeedingAttention(
+    user: AuthenticatedUser,
+    queryParams: { company_id?: string; companyId?: string; days_ahead?: number } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, ['subscriptions', 'assinaturas']);
+
+    const diasAFrente = Math.min(30, Math.max(1, Number(queryParams.days_ahead || 2)));
+    const limite = new Date();
+    limite.setDate(limite.getDate() + diasAFrente);
+    limite.setHours(23, 59, 59, 999);
+
+    const include = {
+      customer: { select: { id: true, name: true, phone: true, email: true } },
+      plan: { select: { id: true, name: true } },
+      professional: { select: { id: true, fullName: true } },
+    };
+
+    const [vencendo, emAberto] = await Promise.all([
+      (prisma as any).customerSubscription.findMany({
+        where: { companyId, status: 'active', endAt: { gte: new Date(), lte: limite } },
+        include,
+        orderBy: { endAt: 'asc' },
+      }),
+      (prisma as any).customerSubscription.findMany({
+        where: { companyId, status: 'overdue' },
+        include,
+        orderBy: { overdueSince: 'asc' },
+      }),
+    ]);
+
+    const dias = (data: any) => {
+      if (!data) return 0;
+      const inicio = new Date(data).getTime();
+      if (Number.isNaN(inicio)) return 0;
+      return Math.max(0, Math.floor((Date.now() - inicio) / 86400000));
+    };
+
+    const mapear = (item: any) => ({
+      id: item.id,
+      customer_id: item.customerId,
+      customer_name: item.customer?.name || 'Cliente',
+      customer_phone: item.customer?.phone || null,
+      customer_email: item.customer?.email || null,
+      plan_name: item.plan?.name || 'Plano',
+      professional_name: item.professional?.fullName || null,
+      amount: this.toNumber(item.amount),
+      status: item.status,
+      end_at: item.endAt,
+      payment_method: item.paymentMethod || 'manual',
+      days_overdue: item.status === 'overdue' ? dias(item.overdueSince || item.endAt) : 0,
+    });
+
+    const listaEmAberto = emAberto.map(mapear);
+
+    return {
+      vencendo: vencendo.map(mapear),
+      em_aberto: listaEmAberto,
+      total_em_aberto: listaEmAberto.reduce((soma: number, item: any) => soma + item.amount, 0),
+    };
+  }
+
+  /**
+   * O dono confirma que recebeu: a mensalidade entra no proximo ciclo.
+   *
+   * E o equivalente manual do que o webhook do gateway faz quando o pagamento
+   * e confirmado. Renova a partir do vencimento anterior, nao de hoje, para
+   * que quem paga com tres dias de atraso nao ganhe tres dias de plano.
+   */
+  async markSubscriptionPaid(
+    user: AuthenticatedUser,
+    subscriptionId: string,
+    payload: { company_id?: string; companyId?: string; notes?: string } = {}
+  ) {
+    this.ensureOwnerCompanyRole(user);
+    const companyId = this.resolveCompanyId(user, payload);
+    await this.ensureAnyModuleAccess(user, companyId, ['subscriptions', 'assinaturas']);
+
+    const assinatura = await (prisma as any).customerSubscription.findFirst({
+      where: { id: subscriptionId, companyId },
+      include: { plan: { select: { interval: true, isUnlimited: true, includedServices: true } } },
+    });
+    if (!assinatura) throw new CompanyServiceError('Mensalidade nao encontrada', 404);
+
+    const inicio = new Date(assinatura.endAt);
+    const fim = this.calculateSubscriptionEndAt(inicio, assinatura.plan?.interval || 'monthly');
+
+    const atualizada = await (prisma as any).customerSubscription.update({
+      where: { id: assinatura.id },
+      data: {
+        status: 'active',
+        startAt: inicio,
+        endAt: fim,
+        overdueSince: null,
+        manuallyPaidAt: new Date(),
+        manuallyPaidBy: user.id,
+        // O ciclo novo comeca limpo: aviso de vencimento e tentativas zeradas.
+        renewalNoticeSentAt: null,
+        paymentAttempts: 0,
+        lastPaymentAttemptAt: null,
+        graceUntil: null,
+        remainingServices: assinatura.plan?.isUnlimited
+          ? null
+          : Math.max(0, Number(assinatura.plan?.includedServices || 0)),
+        ...(String(payload.notes || '').trim() ? { notes: String(payload.notes).trim() } : {}),
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        companyId,
+        action: 'SUBSCRIPTION_MARKED_PAID',
+        resource: 'customer_subscriptions',
+        details: {
+          subscriptionId: assinatura.id,
+          customerId: assinatura.customerId,
+          amount: this.toNumber(assinatura.amount),
+          newEndAt: fim.toISOString(),
+        },
+      },
+    });
+
+    return {
+      id: atualizada.id,
+      status: atualizada.status,
+      start_at: atualizada.startAt,
+      end_at: atualizada.endAt,
+    };
+  }
+
+  /**
+   * O dono diz que nao recebeu: a mensalidade fica em aberto.
+   *
+   * Enquanto estiver assim o cliente nao marca horario novo — os que ja
+   * estavam marcados continuam de pe.
+   */
+  async markSubscriptionOverdue(
+    user: AuthenticatedUser,
+    subscriptionId: string,
+    payload: { company_id?: string; companyId?: string; notes?: string } = {}
+  ) {
+    this.ensureOwnerCompanyRole(user);
+    const companyId = this.resolveCompanyId(user, payload);
+    await this.ensureAnyModuleAccess(user, companyId, ['subscriptions', 'assinaturas']);
+
+    const assinatura = await (prisma as any).customerSubscription.findFirst({
+      where: { id: subscriptionId, companyId },
+      select: { id: true, customerId: true, status: true, overdueSince: true, endAt: true },
+    });
+    if (!assinatura) throw new CompanyServiceError('Mensalidade nao encontrada', 404);
+
+    const atualizada = await (prisma as any).customerSubscription.update({
+      where: { id: assinatura.id },
+      data: {
+        status: 'overdue',
+        // Preserva a data original quando ja estava em aberto, para o
+        // "vencida ha X dias" nao reiniciar a cada clique.
+        overdueSince: assinatura.overdueSince || new Date(),
+        manuallyPaidAt: null,
+        ...(String(payload.notes || '').trim() ? { notes: String(payload.notes).trim() } : {}),
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        companyId,
+        action: 'SUBSCRIPTION_MARKED_OVERDUE',
+        resource: 'customer_subscriptions',
+        details: { subscriptionId: assinatura.id, customerId: assinatura.customerId },
+      },
+    });
+
+    return { id: atualizada.id, status: atualizada.status, overdue_since: atualizada.overdueSince };
+  }
+
+  /**
+   * O cliente tem mensalidade em aberto?
+   *
+   * Usado como trava antes de aceitar agendamento novo, tanto no portal do
+   * cliente quanto no link publico. Retorna a descricao do bloqueio, para a
+   * tela conseguir explicar em vez de so recusar.
+   */
+  async getSubscriptionBlock(companyId: string, customerId?: string | null) {
+    if (!customerId) return null;
+
+    const emAberto = await (prisma as any).customerSubscription.findFirst({
+      where: { companyId, customerId, status: 'overdue' },
+      include: { plan: { select: { name: true } } },
+      orderBy: { overdueSince: 'asc' },
+    });
+    if (!emAberto) return null;
+
+    return {
+      subscriptionId: emAberto.id,
+      planName: String(emAberto.plan?.name || 'seu plano'),
+      amount: this.toNumber(emAberto.amount),
+      message:
+        'Sua mensalidade esta em aberto. Fale com a barbearia para acertar e liberar novos agendamentos.',
+    };
+  }
+
+  /** Ajustes da propria empresa que o dono edita em Configuracoes. */
+  async getMyCompanySettings(user: AuthenticatedUser, queryOrBody: any = {}) {
+    const companyId = this.resolveCompanyId(user, queryOrBody);
+
+    const empresa = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: { id: true, name: true, notificationPhone: true, billingDigestSentAt: true },
+    });
+    if (!empresa) throw new CompanyServiceError('Empresa nao encontrada', 404);
+
+    return {
+      id: empresa.id,
+      name: empresa.name,
+      notification_phone: empresa.notificationPhone || '',
+      billing_digest_sent_at: empresa.billingDigestSentAt,
+    };
+  }
+
+  async updateMyCompanySettings(
+    user: AuthenticatedUser,
+    data: { notification_phone?: string | null; company_id?: string; companyId?: string }
+  ) {
+    this.ensureOwnerCompanyRole(user);
+    const companyId = this.resolveCompanyId(user, data);
+
+    // Telefone vazio e uma escolha valida: desliga o resumo por WhatsApp e
+    // o dono passa a receber so por e-mail e pelo painel.
+    const bruto = String(data.notification_phone ?? '').trim();
+    const notificationPhone = bruto ? this.normalizePhone(bruto) : null;
+
+    const empresa = await prisma.company.update({
+      where: { id: companyId },
+      data: { notificationPhone },
+      select: { id: true, notificationPhone: true },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        companyId,
+        action: 'COMPANY_SETTINGS_UPDATED',
+        resource: 'companies',
+        details: { notificationPhoneDefinido: Boolean(notificationPhone) },
+      },
+    });
+
+    return { id: empresa.id, notification_phone: empresa.notificationPhone || '' };
   }
 
   async listSubscriptionUsage(
@@ -7913,6 +8203,9 @@ export class CompanyService {
       return nextUser;
     });
 
+    // Desativar o funcionario tem de valer agora, nao na proxima revalidacao.
+    invalidateRoleCache(memberId);
+
     return {
       id: updated.id,
       email: updated.email,
@@ -7980,6 +8273,9 @@ export class CompanyService {
         },
       });
     });
+
+    // O funcionario perdeu o vinculo: o papel em cache nao vale mais.
+    invalidateRoleCache(memberId);
 
     return { success: true };
   }
@@ -8860,6 +9156,21 @@ export class CompanyService {
         'Campos obrigatorios: customer_name, service_id, professional_id, scheduled_at',
         400
       );
+    }
+
+    // Mensalidade em aberto trava o agendamento novo tambem por aqui — senao
+    // o cliente bloqueado no portal contornaria a trava pelo link publico.
+    // O cliente e reconhecido pelo telefone, que e como esta tela identifica
+    // quem ja e cadastrado.
+    if (customerPhone) {
+      const conhecido = await prisma.customer.findFirst({
+        where: { companyId: company.id, phone: customerPhone },
+        select: { id: true },
+      });
+      const bloqueioMensalidade = await this.getSubscriptionBlock(company.id, conhecido?.id);
+      if (bloqueioMensalidade) {
+        throw new CompanyServiceError(bloqueioMensalidade.message, 402);
+      }
     }
 
     const [service, professional] = await Promise.all([

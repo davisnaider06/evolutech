@@ -297,6 +297,29 @@ export const companyService = {
     const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
     return request(`/subscriptions/usage${suffix}`);
   },
+
+  /** Mensalidades que vencem em breve e as que aguardam baixa do dono. */
+  listSubscriptionsNeedingAttention: async (daysAhead = 2) =>
+    request(`/subscriptions/attention?days_ahead=${encodeURIComponent(String(daysAhead))}`),
+
+  /** O dono confirma que recebeu: renova o ciclo e libera a agenda do cliente. */
+  markSubscriptionPaid: async (subscriptionId: string, notes?: string) =>
+    request(`/subscriptions/${encodeURIComponent(subscriptionId)}/mark-paid`, {
+      method: 'POST',
+      body: JSON.stringify(notes ? { notes } : {}),
+    }),
+
+  /** O dono diz que nao recebeu: fica em aberto e trava agendamento novo. */
+  markSubscriptionOverdue: async (subscriptionId: string, notes?: string) =>
+    request(`/subscriptions/${encodeURIComponent(subscriptionId)}/mark-overdue`, {
+      method: 'POST',
+      body: JSON.stringify(notes ? { notes } : {}),
+    }),
+
+  getMyCompanySettings: async () => request('/settings'),
+
+  updateMyCompanySettings: async (data: { notification_phone?: string }) =>
+    request('/settings', { method: 'PUT', body: JSON.stringify(data) }),
   getCashOverview: async (params?: {
     dateFrom?: string;
     dateTo?: string;

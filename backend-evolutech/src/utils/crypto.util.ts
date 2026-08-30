@@ -1,10 +1,13 @@
 import crypto from 'crypto';
+import { getPaymentEncryptionSecret } from '../config/secrets';
 
 const ALGORITHM = 'aes-256-gcm';
 
 function getEncryptionKey(): Buffer {
-  const secret = process.env.PAYMENT_KEYS_ENCRYPTION_SECRET || process.env.JWT_SECRET || 'dev-only-secret';
-  return crypto.createHash('sha256').update(secret).digest();
+  // A cadeia PAYMENT_KEYS_ENCRYPTION_SECRET -> JWT_SECRET vive em config/secrets
+  // e nao pode mudar de ordem: credenciais de gateway salvas antes da chave
+  // dedicada existir foram criptografadas com o JWT_SECRET.
+  return crypto.createHash('sha256').update(getPaymentEncryptionSecret()).digest();
 }
 
 export function encryptSecret(plainText: string): string {

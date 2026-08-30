@@ -293,6 +293,158 @@ export class NotificationService {
       }),
     });
   }
+
+  /**
+   * Faltam dois dias e a mensalidade e acertada na propria barbearia.
+   *
+   * Sem gateway nao ha link de pagamento nem cancelamento automatico, entao o
+   * texto nao promete nem ameaca nenhum dos dois: avisa a data e o valor, e
+   * manda acertar no balcao. Quem decide se recebeu e o dono.
+   */
+  async avisoVencimentoManual(params: {
+    to: string;
+    customerName: string;
+    companyName: string;
+    planName: string;
+    amount: number;
+    endAt: Date;
+  }) {
+    return this.enviar({
+      to: params.to,
+      contexto: 'aviso de vencimento (manual)',
+      subject: `Sua mensalidade ${params.planName} vence em 2 dias`,
+      html: montarLayout({
+        companyName: params.companyName,
+        title: 'Sua mensalidade vence em 2 dias',
+        body: `
+          <p>Ola, ${escapeHtml(params.customerName)}!</p>
+          <p>Sua mensalidade do plano <strong>${escapeHtml(params.planName)}</strong> vence em
+             <strong>${dia(params.endAt)}</strong>.</p>
+          <p>O acerto e feito direto na barbearia. Voce pode pagar na sua proxima visita
+             ou combinar o pagamento com a gente.</p>`,
+        callout: {
+          tone: 'info',
+          text: `Valor: <strong>${money(params.amount)}</strong>. Vencimento em ${dia(params.endAt)}.`,
+        },
+      }),
+    });
+  }
+
+  /**
+   * Venceu e o dono ainda nao confirmou o recebimento.
+   *
+   * Tom de lembrete, nao de corte: o dono pode simplesmente ainda nao ter dado
+   * baixa. Quem sabe se o dinheiro entrou e ele, e o e-mail nao pode afirmar
+   * que o cliente esta devendo.
+   */
+  async avisoMensalidadeEmAberto(params: {
+    to: string;
+    customerName: string;
+    companyName: string;
+    planName: string;
+    amount: number;
+    endAt: Date;
+    diasEmAtraso: number;
+  }) {
+    const desde =
+      params.diasEmAtraso <= 0
+        ? 'hoje'
+        : params.diasEmAtraso === 1
+          ? 'ontem'
+          : `ha ${params.diasEmAtraso} dias`;
+
+    return this.enviar({
+      to: params.to,
+      contexto: 'mensalidade em aberto (manual)',
+      subject: `Sua mensalidade ${params.planName} esta em aberto`,
+      html: montarLayout({
+        companyName: params.companyName,
+        title: 'Sua mensalidade esta em aberto',
+        body: `
+          <p>Ola, ${escapeHtml(params.customerName)}!</p>
+          <p>Sua mensalidade do plano <strong>${escapeHtml(params.planName)}</strong> venceu
+             ${desde} (${dia(params.endAt)}) e ainda consta em aberto por aqui.</p>
+          <p>Se voce ja acertou com a barbearia, pode ignorar este aviso: assim que a baixa
+             for dada, sua mensalidade volta ao normal.</p>`,
+        callout: {
+          tone: 'warn',
+          text: `Valor em aberto: <strong>${money(params.amount)}</strong>. Fale com a barbearia para acertar.`,
+        },
+      }),
+    });
+  }
+
+  /**
+   * Resumo para o DONO, nao para o cliente.
+   *
+   * Todos os outros e-mails daqui falam com o cliente final. Este e o unico
+   * que fala com quem opera a barbearia: e a lista do que ele precisa cobrar
+   * e dar baixa, que na cobranca manual so ele consegue resolver.
+   */
+  async resumoMensalidadesParaDono(params: {
+    to: string;
+    companyName: string;
+    vencendo: Array<{ customerName: string; planName: string; amount: number; endAt: Date }>;
+    emAberto: Array<{
+      customerName: string;
+      planName: string;
+      amount: number;
+      endAt: Date;
+      diasEmAtraso: number;
+    }>;
+  }) {
+    const linha = (texto: string, detalhe: string) => `
+      <tr>
+        <td style="padding:8px 0;border-bottom:1px solid #E4E4E7;">${texto}</td>
+        <td style="padding:8px 0;border-bottom:1px solid #E4E4E7;text-align:right;white-space:nowrap;">${detalhe}</td>
+      </tr>`;
+
+    const bloco = (titulo: string, linhas: string[]) =>
+      linhas.length === 0
+        ? ''
+        : `<h2 style="margin:22px 0 6px;font-size:15px;color:#18181B;">${titulo}</h2>
+           <table style="width:100%;border-collapse:collapse;font-size:14px;">${linhas.join('')}</table>`;
+
+    const linhasVencendo = params.vencendo.map((item) =>
+      linha(
+        `${escapeHtml(item.customerName)} <span style="color:#71717A;">- ${escapeHtml(item.planName)}</span>`,
+        `${money(item.amount)} <span style="color:#71717A;">- ${dia(item.endAt)}</span>`
+      )
+    );
+
+    const linhasEmAberto = params.emAberto.map((item) =>
+      linha(
+        `${escapeHtml(item.customerName)} <span style="color:#71717A;">- ${escapeHtml(item.planName)}</span>`,
+        `${money(item.amount)} <span style="color:#B91C1C;">- ${
+          item.diasEmAtraso <= 0 ? 'vence hoje' : `ha ${item.diasEmAtraso}d`
+        }</span>`
+      )
+    );
+
+    const totalEmAberto = params.emAberto.reduce((soma, item) => soma + Number(item.amount || 0), 0);
+
+    return this.enviar({
+      to: params.to,
+      contexto: 'resumo de mensalidades para o dono',
+      subject: `${params.vencendo.length + params.emAberto.length} mensalidades precisam da sua atencao`,
+      html: montarLayout({
+        companyName: params.companyName,
+        title: 'Mensalidades a receber',
+        body: `
+          <p>Resumo do dia. Confirme o recebimento na tela de <strong>Assinaturas</strong> para
+             cada cliente que ja acertou com voce.</p>
+          ${bloco(`Vencem em breve (${params.vencendo.length})`, linhasVencendo)}
+          ${bloco(`Em aberto, aguardando sua confirmacao (${params.emAberto.length})`, linhasEmAberto)}`,
+        callout:
+          params.emAberto.length > 0
+            ? {
+                tone: 'warn',
+                text: `Total em aberto: <strong>${money(totalEmAberto)}</strong> em ${params.emAberto.length} mensalidade(s).`,
+              }
+            : undefined,
+      }),
+    });
+  }
 }
 
 export const notificationService = new NotificationService();

@@ -76,6 +76,20 @@ router.get('/subscriptions/customers', companyController.listCustomerSubscriptio
 router.post('/subscriptions/customers', companyController.upsertCustomerSubscription.bind(companyController));
 router.put('/subscriptions/customers', companyController.upsertCustomerSubscription.bind(companyController));
 router.get('/subscriptions/usage', companyController.listSubscriptionUsage.bind(companyController));
+router.get(
+  '/subscriptions/attention',
+  companyController.listSubscriptionsNeedingAttention.bind(companyController)
+);
+router.post(
+  '/subscriptions/:subscriptionId/mark-paid',
+  companyController.markSubscriptionPaid.bind(companyController)
+);
+router.post(
+  '/subscriptions/:subscriptionId/mark-overdue',
+  companyController.markSubscriptionOverdue.bind(companyController)
+);
+router.get('/settings', companyController.getMyCompanySettings.bind(companyController));
+router.put('/settings', companyController.updateMyCompanySettings.bind(companyController));
 router.get('/cash/overview', companyController.getCashOverview.bind(companyController));
 router.get('/support/tickets', companyController.listSupportTickets.bind(companyController));
 router.post('/support/tickets', companyController.createSupportTicket.bind(companyController));

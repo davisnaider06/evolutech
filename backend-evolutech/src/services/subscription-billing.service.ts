@@ -10,6 +10,10 @@
  *        - cartao: "vamos cobrar no seu cartao no dia X"
  *
  *   D+0  fecha o ciclo:
+ *        - manual: NAO cancela e NAO cobra nada. Marca a mensalidade como
+ *                  "overdue" e espera o dono confirmar se recebeu. Barbearia
+ *                  que nao conecta conta bancaria vive nesse caminho: quem
+ *                  sabe se o dinheiro entrou e o dono, nao o sistema.
  *        - cartao: cobra no cartao salvo. Autorizou -> renova por mais um
  *                  ciclo e avisa. Recusou -> NAO cancela na hora: o plano
  *                  segue ativo por alguns dias e o sistema tenta de novo,
@@ -23,6 +27,7 @@
 import { prisma } from '../db';
 import { notificationService } from './notification.service';
 import { PaymentService } from './payment.service';
+import { CompanyService } from './company.service';
 
 const DIAS_DE_AVISO = Number(process.env.SUBSCRIPTION_NOTICE_DAYS || 2);
 
@@ -41,16 +46,65 @@ const MAX_TENTATIVAS = INTERVALOS_DE_TENTATIVA.length + 1;
 const ehCartao = (metodo: unknown) =>
   ['credito', 'debito', 'cartao'].includes(String(metodo || '').toLowerCase());
 
+/** Metodos que dizem explicitamente "o acerto e no balcao". */
+const METODOS_MANUAIS = ['manual', 'dinheiro', 'balcao', 'especie'];
+
+const ehManualExplicito = (metodo: unknown) =>
+  METODOS_MANUAIS.includes(String(metodo || '').toLowerCase());
+
+/** Dias inteiros entre uma data e agora, nunca negativo. */
+const diasDesde = (data: Date | string | null | undefined) => {
+  if (!data) return 0;
+  const inicio = new Date(data).getTime();
+  if (Number.isNaN(inicio)) return 0;
+  return Math.max(0, Math.floor((Date.now() - inicio) / 86400000));
+};
+
 export interface ExecucaoRegua {
   avisos_enviados: number;
   renovadas: number;
   canceladas: number;
+  /** Mensalidades manuais que venceram e aguardam o dono confirmar. */
+  em_aberto: number;
+  /** Empresas que receberam o resumo do dia. */
+  resumos_enviados: number;
   erros: number;
   detalhes: string[];
 }
 
 export class SubscriptionBillingService {
   private paymentService = new PaymentService();
+  private companyService = new CompanyService();
+
+  /** Empresas que tem gateway ativo, respondido uma vez por passada da regua. */
+  private cacheGateway = new Map<string, boolean>();
+
+  private async empresaTemGateway(companyId: string) {
+    const cacheado = this.cacheGateway.get(companyId);
+    if (cacheado !== undefined) return cacheado;
+
+    const gateway = await (prisma as any).paymentGateway.findFirst({
+      where: { companyId, isActive: true },
+      select: { id: true },
+    });
+    const tem = Boolean(gateway);
+    this.cacheGateway.set(companyId, tem);
+    return tem;
+  }
+
+  /**
+   * Como esta mensalidade e cobrada.
+   *
+   * A regra do meio e a que resolve o caso real: barbearia sem gateway nao
+   * tem como receber PIX confirmado por webhook, entao "pix" ali significa,
+   * na pratica, dinheiro no balcao. Tratar como automatico era o que fazia a
+   * assinatura ser cancelada sozinha todo mes.
+   */
+  private async modoDeCobranca(item: any): Promise<'manual' | 'cartao' | 'pix'> {
+    if (ehManualExplicito(item.paymentMethod)) return 'manual';
+    if (ehCartao(item.paymentMethod)) return 'cartao';
+    return (await this.empresaTemGateway(item.companyId)) ? 'pix' : 'manual';
+  }
 
   /** Ativas que vencem daqui a N dias e ainda nao receberam o aviso. */
   private async buscarParaAvisar() {
@@ -78,7 +132,7 @@ export class SubscriptionBillingService {
   private async buscarVencidas() {
     return (prisma as any).customerSubscription.findMany({
       where: {
-        status: { in: ['active', 'pending'] },
+        status: { in: ['active', 'pending', 'overdue'] },
         endAt: { lt: new Date() },
       },
       include: {
@@ -112,9 +166,13 @@ export class SubscriptionBillingService {
       };
 
       try {
-        const resultado = ehCartao(item.paymentMethod)
-          ? await notificationService.avisoVencimentoCartao(dados)
-          : await notificationService.avisoVencimentoPix(dados);
+        const modo = await this.modoDeCobranca(item);
+        const resultado =
+          modo === 'cartao'
+            ? await notificationService.avisoVencimentoCartao(dados)
+            : modo === 'manual'
+              ? await notificationService.avisoVencimentoManual(dados)
+              : await notificationService.avisoVencimentoPix(dados);
 
         // Marca como avisado mesmo quando o envio e pulado (cliente sem
         // e-mail): senao o job tentaria de novo todo dia, para sempre.
@@ -145,6 +203,7 @@ export class SubscriptionBillingService {
     const vencidas = await this.buscarVencidas();
     let renovadas = 0;
     let canceladas = 0;
+    let emAberto = 0;
     let erros = 0;
     const detalhes: string[] = [];
 
@@ -163,7 +222,43 @@ export class SubscriptionBillingService {
           continue;
         }
 
-        if (ehCartao(item.paymentMethod)) {
+        const modo = await this.modoDeCobranca(item);
+
+        // Cobranca manual: o sistema nao decide nada sozinho.
+        //
+        // Antes esta assinatura caia no caminho do PIX, onde "order.status
+        // !== paid" — que sem gateway nunca vira 'paid' — significava
+        // cancelar. Resultado: toda mensalidade de barbearia sem gateway era
+        // cancelada no vencimento, com e-mail de cancelamento para o cliente.
+        // Agora ela fica em aberto, esperando o dono dar baixa.
+        if (modo === 'manual') {
+          if (item.status === 'overdue') {
+            detalhes.push(`em aberto aguardando o dono: ${nome} - ${plano}`);
+            continue;
+          }
+
+          await (prisma as any).customerSubscription.update({
+            where: { id: item.id },
+            data: { status: 'overdue', overdueSince: new Date() },
+          });
+          emAberto += 1;
+          detalhes.push(`marcada em aberto: ${nome} - ${plano}`);
+
+          if (empresaAtiva) {
+            await notificationService.avisoMensalidadeEmAberto({
+              to: item.customer?.email || '',
+              customerName: nome,
+              companyName: item.company?.name || 'Barbearia',
+              planName: plano,
+              amount: Number(item.amount || 0),
+              endAt: item.endAt,
+              diasEmAtraso: diasDesde(item.endAt),
+            });
+          }
+          continue;
+        }
+
+        if (modo === 'cartao') {
           // Ja falhou antes e ainda nao chegou a hora de tentar de novo:
           // o cliente segue com o plano ativo, esperando dentro do prazo.
           if (item.graceUntil && !this.chegouAHoraDeTentar(item)) {
@@ -256,7 +351,7 @@ export class SubscriptionBillingService {
       }
     }
 
-    return { renovadas, canceladas, erros, detalhes };
+    return { renovadas, canceladas, emAberto, erros, detalhes };
   }
 
   /**
@@ -408,17 +503,195 @@ export class SubscriptionBillingService {
     return fim;
   }
 
+  /**
+   * Manda para cada dono a lista do que ele precisa cobrar e dar baixa.
+   *
+   * E o unico aviso da regua que fala com o dono. Todos os outros falam com o
+   * cliente final — e na cobranca manual isso nao basta: o cliente nao tem
+   * como se dar baixa sozinho, entao sem esta lista a mensalidade em aberto
+   * fica invisivel ate alguem abrir a tela de Assinaturas.
+   *
+   * Vai por e-mail e por WhatsApp. Uma vez por dia, guardado por
+   * billingDigestSentAt: o job roda de 6 em 6 horas e o dono nao precisa da
+   * mesma lista quatro vezes.
+   */
+  async enviarResumoParaDonos() {
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    const limiteAviso = new Date();
+    limiteAviso.setDate(limiteAviso.getDate() + DIAS_DE_AVISO);
+    limiteAviso.setHours(23, 59, 59, 999);
+
+    const empresas = await (prisma as any).company.findMany({
+      where: {
+        status: 'active',
+        OR: [{ billingDigestSentAt: null }, { billingDigestSentAt: { lt: hoje } }],
+      },
+      select: { id: true, name: true, notificationPhone: true },
+    });
+
+    let enviados = 0;
+    let erros = 0;
+    const detalhes: string[] = [];
+
+    for (const empresa of empresas) {
+      try {
+        const [vencendo, emAberto] = await Promise.all([
+          (prisma as any).customerSubscription.findMany({
+            where: {
+              companyId: empresa.id,
+              status: 'active',
+              endAt: { gte: new Date(), lte: limiteAviso },
+            },
+            include: { customer: { select: { name: true } }, plan: { select: { name: true } } },
+            orderBy: { endAt: 'asc' },
+          }),
+          (prisma as any).customerSubscription.findMany({
+            where: { companyId: empresa.id, status: 'overdue' },
+            include: { customer: { select: { name: true } }, plan: { select: { name: true } } },
+            orderBy: { overdueSince: 'asc' },
+          }),
+        ]);
+
+        // Nada a cobrar: nao existe motivo para uma mensagem dizendo isso.
+        if (vencendo.length === 0 && emAberto.length === 0) continue;
+
+        const mapear = (item: any) => ({
+          customerName: item.customer?.name || 'cliente',
+          planName: item.plan?.name || 'Plano',
+          amount: Number(item.amount || 0),
+          endAt: item.endAt,
+        });
+
+        const listaVencendo = vencendo.map(mapear);
+        const listaEmAberto = emAberto.map((item: any) => ({
+          ...mapear(item),
+          diasEmAtraso: diasDesde(item.overdueSince || item.endAt),
+        }));
+
+        // E-mail vai para o dono da empresa (o DONO_EMPRESA cadastrado).
+        const dono = await prisma.userRole.findFirst({
+          where: { companyId: empresa.id, role: 'DONO_EMPRESA', user: { isActive: true } },
+          select: { user: { select: { email: true } } },
+          orderBy: { createdAt: 'asc' },
+        });
+
+        if (dono?.user?.email) {
+          await notificationService.resumoMensalidadesParaDono({
+            to: dono.user.email,
+            companyName: empresa.name,
+            vencendo: listaVencendo,
+            emAberto: listaEmAberto,
+          });
+        }
+
+        if (empresa.notificationPhone) {
+          await this.enviarResumoPorWhatsApp(empresa, listaVencendo, listaEmAberto);
+        }
+
+        await (prisma as any).company.update({
+          where: { id: empresa.id },
+          data: { billingDigestSentAt: new Date() },
+        });
+
+        enviados += 1;
+        detalhes.push(
+          `resumo enviado a ${empresa.name}: ${listaVencendo.length} vencendo, ` +
+            `${listaEmAberto.length} em aberto`
+        );
+      } catch (error: any) {
+        erros += 1;
+        detalhes.push(`falha no resumo de ${empresa.name}: ${error?.message}`);
+      }
+    }
+
+    return { enviados, erros, detalhes };
+  }
+
+  /** Mesma lista do e-mail, no formato curto que o WhatsApp comporta. */
+  private async enviarResumoPorWhatsApp(
+    empresa: { id: string; name: string; notificationPhone: string | null },
+    vencendo: Array<{ customerName: string; planName: string; amount: number; endAt: Date }>,
+    emAberto: Array<{ customerName: string; amount: number; diasEmAtraso: number }>
+  ) {
+    const dinheiro = (valor: number) =>
+      Number(valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    const partes: string[] = [`*${empresa.name}* - mensalidades a receber`];
+
+    if (vencendo.length > 0) {
+      partes.push(
+        `\n*Vencem em ate ${DIAS_DE_AVISO} dias (${vencendo.length}):*\n` +
+          vencendo
+            .slice(0, 15)
+            .map(
+              (item) =>
+                `- ${item.customerName} - ${dinheiro(item.amount)} - ${new Date(
+                  item.endAt
+                ).toLocaleDateString('pt-BR')}`
+            )
+            .join('\n')
+      );
+    }
+
+    if (emAberto.length > 0) {
+      const total = emAberto.reduce((soma, item) => soma + Number(item.amount || 0), 0);
+      partes.push(
+        `\n*Em aberto, aguardando voce (${emAberto.length}):*\n` +
+          emAberto
+            .slice(0, 15)
+            .map(
+              (item) =>
+                `- ${item.customerName} - ${dinheiro(item.amount)}` +
+                (item.diasEmAtraso > 0 ? ` - ha ${item.diasEmAtraso}d` : ' - vence hoje')
+            )
+            .join('\n') +
+          `\n\nTotal em aberto: *${dinheiro(total)}*`
+      );
+    }
+
+    partes.push('\nConfirme os recebimentos em Assinaturas.');
+
+    try {
+      await this.companyService.sendWhatsApp(
+        {
+          id: 'subscription-billing-system',
+          email: 'billing-system@evolutech.local',
+          fullName: 'Regua de Mensalidades',
+          role: 'SUPER_ADMIN_EVOLUTECH',
+          companyId: empresa.id,
+          companyName: empresa.name,
+        },
+        {
+          phone: empresa.notificationPhone || '',
+          message: partes.join('\n'),
+          company_id: empresa.id,
+        }
+      );
+    } catch (error: any) {
+      // WhatsApp fora do ar nao pode impedir o e-mail nem travar a regua.
+      console.warn(`[subscription-billing] whatsapp do resumo falhou (${empresa.name}):`, error?.message);
+    }
+  }
+
   /** Passada completa da regua. E o que o job periodico chama. */
   async executar(): Promise<ExecucaoRegua> {
+    this.cacheGateway.clear();
+
     const avisos = await this.enviarAvisosDeVencimento();
     const vencimentos = await this.processarVencimentos();
+    // Depois dos dois, para a lista ja sair com o que acabou de vencer.
+    const resumos = await this.enviarResumoParaDonos();
 
     return {
       avisos_enviados: avisos.enviados,
       renovadas: vencimentos.renovadas,
       canceladas: vencimentos.canceladas,
-      erros: avisos.erros + vencimentos.erros,
-      detalhes: [...avisos.detalhes, ...vencimentos.detalhes],
+      em_aberto: vencimentos.emAberto,
+      resumos_enviados: resumos.enviados,
+      erros: avisos.erros + vencimentos.erros + resumos.erros,
+      detalhes: [...avisos.detalhes, ...vencimentos.detalhes, ...resumos.detalhes],
     };
   }
 }

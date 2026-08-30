@@ -978,8 +978,60 @@ export class AdminService {
     });
   }
 
-  async deleteTenant(companyId: string) {
-    return prisma.company.delete({ where: { id: companyId } });
+  /**
+   * Apaga a empresa e desativa quem ficou sem vinculo nenhum.
+   *
+   * As linhas de `user_roles` caem por cascata junto com a empresa, mas as
+   * contas sobrevivem — com senha valida e `is_active` true. Antes essas contas
+   * viravam super admin no proximo login, porque o middleware assumia esse
+   * papel quando o token vinha sem `role`. O middleware agora recusa, e aqui
+   * fechamos a outra ponta: a conta orfa e desativada em vez de ficar num
+   * limbo em que o dono ainda consegue autenticar.
+   *
+   * Desativar, e nao apagar, porque a conta e referenciada pelos logs de
+   * auditoria e pelo historico de comissoes; apagar o registro levaria junto a
+   * rastreabilidade de quem fez o que.
+   */
+  async deleteTenant(companyId: string, actorUserId?: string | null) {
+    return prisma.$transaction(async (tx) => {
+      const vinculos = await tx.userRole.findMany({
+        where: { companyId },
+        select: { userId: true },
+      });
+      const candidatos = Array.from(new Set(vinculos.map((item) => item.userId)));
+
+      const empresa = await tx.company.delete({ where: { id: companyId } });
+
+      // Depois do delete os vinculos daquela empresa ja nao existem: quem
+      // continuar com zero papeis ficou orfao.
+      const orfaos: string[] = [];
+      for (const userId of candidatos) {
+        const restantes = await tx.userRole.count({ where: { userId } });
+        if (restantes === 0) orfaos.push(userId);
+      }
+
+      if (orfaos.length > 0) {
+        await tx.user.updateMany({
+          where: { id: { in: orfaos } },
+          data: { isActive: false },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            userId: actorUserId || null,
+            action: 'TENANT_DELETED_USERS_DEACTIVATED',
+            resource: 'companies',
+            details: {
+              companyId,
+              companyName: empresa.name,
+              deactivatedUserIds: orfaos,
+            },
+          },
+        });
+      }
+
+      return { ...empresa, deactivated_users: orfaos.length };
+    });
   }
 
   async listUsers() {

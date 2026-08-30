@@ -2,8 +2,8 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../db';
 import { AuthenticatedCustomer } from '../types';
+import { JWT_SECRET } from '../config/secrets';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'secret_fallback_dev';
 const CUSTOMER_JWT_EXPIRES_IN = (process.env.CUSTOMER_JWT_EXPIRES_IN || '24h') as jwt.SignOptions['expiresIn'];
 
 type CustomerJwtPayload = {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,7 +6,8 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { API_URL } from '@/config/api';
-import { Settings, Shield, Save, RefreshCw } from 'lucide-react';
+import { companyService } from '@/services/company';
+import { Settings, Shield, Save, RefreshCw, Bell } from 'lucide-react';
 
 const Configuracoes: React.FC = () => {
   const { user } = useAuth();
@@ -17,6 +18,54 @@ const Configuracoes: React.FC = () => {
     confirm_password: '',
   });
   const [savingPassword, setSavingPassword] = useState(false);
+
+  // Telefone que recebe o resumo diario de mensalidades a receber.
+  // Sem ele o dono ainda recebe por e-mail e pelo painel de Assinaturas;
+  // com ele, o resumo tambem chega no WhatsApp.
+  const [notificationPhone, setNotificationPhone] = useState('');
+  const [loadingSettings, setLoadingSettings] = useState(true);
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  useEffect(() => {
+    if (!isOwner) {
+      setLoadingSettings(false);
+      return;
+    }
+    let ativo = true;
+    companyService
+      .getMyCompanySettings()
+      .then((dados: any) => {
+        if (ativo) setNotificationPhone(dados?.notification_phone || '');
+      })
+      .catch(() => {
+        // Falha aqui nao impede o resto da tela: o campo fica vazio.
+      })
+      .finally(() => {
+        if (ativo) setLoadingSettings(false);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [isOwner]);
+
+  const handleSaveSettings = async () => {
+    setSavingSettings(true);
+    try {
+      const salvo: any = await companyService.updateMyCompanySettings({
+        notification_phone: notificationPhone.trim(),
+      });
+      setNotificationPhone(salvo?.notification_phone || '');
+      toast.success(
+        salvo?.notification_phone
+          ? 'Telefone salvo. O resumo de mensalidades passa a chegar no WhatsApp.'
+          : 'Telefone removido. O resumo continua por e-mail e no painel de Assinaturas.'
+      );
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao salvar o telefone');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
 
   const handleChangePassword = async () => {
     if (!isOwner) {
@@ -88,6 +137,44 @@ const Configuracoes: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {isOwner && (
+        <div className="glass rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-2">
+            <Bell className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-semibold">Avisos de mensalidade</h2>
+          </div>
+          <p className="mb-6 text-sm text-muted-foreground">
+            Todo dia o sistema manda a lista de quem vence em breve e de quem ja venceu e
+            aguarda voce confirmar o recebimento. O resumo sempre chega no seu e-mail e no
+            painel de Assinaturas; informe um WhatsApp para receber tambem por la.
+          </p>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="flex-1 space-y-2">
+              <Label htmlFor="notification_phone">WhatsApp para o resumo</Label>
+              <Input
+                id="notification_phone"
+                value={notificationPhone}
+                onChange={(e) => setNotificationPhone(e.target.value)}
+                placeholder="(11) 99999-9999"
+                disabled={loadingSettings}
+              />
+              <p className="text-xs text-muted-foreground">
+                Deixe em branco para nao receber por WhatsApp.
+              </p>
+            </div>
+            <Button onClick={handleSaveSettings} disabled={savingSettings || loadingSettings}>
+              {savingSettings ? (
+                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-2 h-4 w-4" />
+              )}
+              Salvar
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className="glass rounded-xl p-6">
         <div className="flex items-center gap-3 mb-6">

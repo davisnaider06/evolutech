@@ -3,9 +3,32 @@ import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
+/**
+ * Cria (ou atualiza) o super admin a partir das variaveis de ambiente.
+ *
+ * Antes o e-mail e a senha ficavam escritos aqui e repetidos no README. Como o
+ * seed roda contra o banco de producao, essa era a credencial viva do sistema
+ * num arquivo versionado — e o e-mail publico ainda servia de alvo, ja que os
+ * logins nao tinham limite de tentativas.
+ *
+ * Defina SEED_SUPER_ADMIN_EMAIL e SEED_SUPER_ADMIN_PASSWORD antes de rodar.
+ */
 async function ensureSuperAdmin() {
-  const email = 'davisnaider06@gmail.com';
-  const passwordHash = await bcrypt.hash('Dav1#trabalho', 12);
+  const email = String(process.env.SEED_SUPER_ADMIN_EMAIL || '').trim().toLowerCase();
+  const password = String(process.env.SEED_SUPER_ADMIN_PASSWORD || '');
+
+  if (!email || !password) {
+    throw new Error(
+      'Defina SEED_SUPER_ADMIN_EMAIL e SEED_SUPER_ADMIN_PASSWORD antes de rodar o seed. ' +
+        'Exemplo: SEED_SUPER_ADMIN_EMAIL=voce@dominio.com SEED_SUPER_ADMIN_PASSWORD=... npm run seed'
+    );
+  }
+
+  if (password.length < 12) {
+    throw new Error('SEED_SUPER_ADMIN_PASSWORD precisa ter ao menos 12 caracteres.');
+  }
+
+  const passwordHash = await bcrypt.hash(password, 12);
 
   const user = await prisma.user.upsert({
     where: { email },

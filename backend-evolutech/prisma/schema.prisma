@@ -35,52 +35,57 @@ model User {
 }
 
 model Company {
-  id                      String                       @id @default(uuid())
-  name                    String
-  slug                    String                       @unique
-  document                String?
-  plan                    String                       @default("free")
-  status                  Status                       @default(active)
-  logoUrl                 String?                      @map("logo_url")
-  monthlyRevenue          Decimal?                     @default(0) @map("monthly_revenue") @db.Decimal(10, 2)
-  sistemaBaseId           String?                      @map("sistema_base_id")
-  createdAt               DateTime                     @default(now()) @map("created_at")
-  updatedAt               DateTime                     @updatedAt @map("updated_at")
-  appointmentAvailability AppointmentAvailability[]
-  appointmentBlocks       AppointmentBlock[]
-  appointmentServices     AppointmentService[]
-  appointments            Appointment[]
-    auditLogs               AuditLog[]
-    billingCharges          BillingCharge[]
-    billingReminders        BillingReminder[]
-    cashTransactions        CashTransaction[]
-  commissionAdjustments   CommissionAdjustment[]
-  commissionPayouts       CommissionPayout[]
-  commissionProfiles      CommissionProfile[]
-  sistemaBase             SistemaBase?                 @relation(fields: [sistemaBaseId], references: [id])
-  loyaltySettings         CompanyLoyaltySettings?
-    courseAccesses          CourseAccess[]
-    courses                 Course[]
-    collectionsRuns         CollectionAutomationRun[]
-  customerAccounts        CustomerAccount[]
+  id                            String                        @id @default(uuid())
+  name                          String
+  slug                          String                        @unique
+  document                      String?
+  plan                          String                        @default("free")
+  status                        Status                        @default(active)
+  logoUrl                       String?                       @map("logo_url")
+  // Telefone que recebe o resumo de mensalidades a receber, por WhatsApp.
+  // O dono tem e-mail pela conta de usuario, mas nao havia telefone da empresa.
+  notificationPhone             String?                       @map("notification_phone")
+  // Ultimo envio do resumo, para nao repetir a cada volta do job.
+  billingDigestSentAt           DateTime?                     @map("billing_digest_sent_at")
+  monthlyRevenue                Decimal?                      @default(0) @map("monthly_revenue") @db.Decimal(10, 2)
+  sistemaBaseId                 String?                       @map("sistema_base_id")
+  createdAt                     DateTime                      @default(now()) @map("created_at")
+  updatedAt                     DateTime                      @updatedAt @map("updated_at")
+  appointmentAvailability       AppointmentAvailability[]
+  appointmentBlocks             AppointmentBlock[]
+  appointmentServices           AppointmentService[]
+  appointments                  Appointment[]
+  auditLogs                     AuditLog[]
+  billingCharges                BillingCharge[]
+  billingReminders              BillingReminder[]
+  cashTransactions              CashTransaction[]
+  commissionAdjustments         CommissionAdjustment[]
+  commissionPayouts             CommissionPayout[]
+  commissionProfiles            CommissionProfile[]
+  sistemaBase                   SistemaBase?                  @relation(fields: [sistemaBaseId], references: [id])
+  loyaltySettings               CompanyLoyaltySettings?
+  courseAccesses                CourseAccess[]
+  courses                       Course[]
+  collectionsRuns               CollectionAutomationRun[]
+  customerAccounts              CustomerAccount[]
   customerServiceHistoryEntries CustomerServiceHistoryEntry[]
-  loyaltyProfiles         CustomerLoyaltyProfile[]
-  loyaltyTransactions     CustomerLoyaltyTransaction[]
-  customerSubscriptions   CustomerSubscription[]
-  customerPaymentMethods  CustomerPaymentMethod[]
-  mediaAssets             MediaAsset[]
-  customers               Customer[]
-  modules                 CompanyModule[]
-  orders                  Order[]
-  paymentGateways         PaymentGateway[]
-  paymentTransactions     PaymentTransaction[]
-  products                Product[]
-  subscriptionPlans       SubscriptionPlan[]
-  subscriptionUsages      SubscriptionUsage[]
-  tasks                   Task[]
-  theme                   CompanyTheme?
-  userRoles               UserRole[]
-  supportTickets          SupportTicket[]
+  loyaltyProfiles               CustomerLoyaltyProfile[]
+  loyaltyTransactions           CustomerLoyaltyTransaction[]
+  customerSubscriptions         CustomerSubscription[]
+  customerPaymentMethods        CustomerPaymentMethod[]
+  mediaAssets                   MediaAsset[]
+  customers                     Customer[]
+  modules                       CompanyModule[]
+  orders                        Order[]
+  paymentGateways               PaymentGateway[]
+  paymentTransactions           PaymentTransaction[]
+  products                      Product[]
+  subscriptionPlans             SubscriptionPlan[]
+  subscriptionUsages            SubscriptionUsage[]
+  tasks                         Task[]
+  theme                         CompanyTheme?
+  userRoles                     UserRole[]
+  supportTickets                SupportTicket[]
 
   @@index([sistemaBaseId])
   @@map("companies")
@@ -171,27 +176,27 @@ model SistemaBase {
 }
 
 model SistemaBaseModulo {
-    id            String      @id @default(uuid())
-    sistemaBaseId String      @map("sistema_base_id")
-    moduloId      String      @map("modulo_id")
-    isMandatory   Boolean     @default(false) @map("is_mandatory")
-    allowedRoles  Role[]      @default([DONO_EMPRESA, FUNCIONARIO_EMPRESA]) @map("allowed_roles")
-    modulo        Modulo      @relation(fields: [moduloId], references: [id], onDelete: Cascade)
-    sistemaBase   SistemaBase @relation(fields: [sistemaBaseId], references: [id], onDelete: Cascade)
+  id            String      @id @default(uuid())
+  sistemaBaseId String      @map("sistema_base_id")
+  moduloId      String      @map("modulo_id")
+  isMandatory   Boolean     @default(false) @map("is_mandatory")
+  allowedRoles  Role[]      @default([DONO_EMPRESA, FUNCIONARIO_EMPRESA]) @map("allowed_roles")
+  modulo        Modulo      @relation(fields: [moduloId], references: [id], onDelete: Cascade)
+  sistemaBase   SistemaBase @relation(fields: [sistemaBaseId], references: [id], onDelete: Cascade)
 
   @@unique([sistemaBaseId, moduloId])
   @@map("sistema_base_modulos")
 }
 
 model CompanyModule {
-    id          String    @id @default(uuid())
-    companyId   String    @map("empresa_id")
-    moduloId    String    @map("modulo_id")
-    isActive    Boolean   @default(true) @map("is_active")
-    activatedAt DateTime? @default(now()) @map("activated_at")
-    allowedRoles Role[]   @default([DONO_EMPRESA, FUNCIONARIO_EMPRESA]) @map("allowed_roles")
-    company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-    modulo      Modulo    @relation(fields: [moduloId], references: [id], onDelete: Cascade)
+  id           String    @id @default(uuid())
+  companyId    String    @map("empresa_id")
+  moduloId     String    @map("modulo_id")
+  isActive     Boolean   @default(true) @map("is_active")
+  activatedAt  DateTime? @default(now()) @map("activated_at")
+  allowedRoles Role[]    @default([DONO_EMPRESA, FUNCIONARIO_EMPRESA]) @map("allowed_roles")
+  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  modulo       Modulo    @relation(fields: [moduloId], references: [id], onDelete: Cascade)
 
   @@unique([companyId, moduloId])
   @@index([companyId])
@@ -200,32 +205,32 @@ model CompanyModule {
 }
 
 model Customer {
-  id                  String                       @id @default(uuid())
-  companyId           String                       @map("empresa_id")
-  name                String
-  email               String?
-  phone               String?
-  document            String?
-  isActive            Boolean                      @default(true) @map("is_active")
-  createdAt           DateTime                     @default(now()) @map("created_at")
-  updatedAt           DateTime                     @updatedAt @map("updated_at")
+  id                      String                        @id @default(uuid())
+  companyId               String                        @map("empresa_id")
+  name                    String
+  email                   String?
+  phone                   String?
+  document                String?
+  isActive                Boolean                       @default(true) @map("is_active")
+  createdAt               DateTime                      @default(now()) @map("created_at")
+  updatedAt               DateTime                      @updatedAt @map("updated_at")
   // Barbeiro de referencia do cliente (N clientes -> 1 barbeiro, opcional).
   // SetNull: se o barbeiro sair da barbearia o cliente permanece, apenas sem referencia.
-  preferredProfessionalId String?                  @map("preferred_professional_id")
+  preferredProfessionalId String?                       @map("preferred_professional_id")
   // Ultima vez que o cliente foi atendido (agendamento concluido ou venda no PDV).
-  lastVisitAt         DateTime?                    @map("last_visit_at")
+  lastVisitAt             DateTime?                     @map("last_visit_at")
   // Quando isActive passou de true para false. Alimenta "ha quanto tempo esta desativado".
-  deactivatedAt       DateTime?                    @map("deactivated_at")
-  appointments        Appointment[]
-  courseAccesses      CourseAccess[]
-  serviceHistoryEntries CustomerServiceHistoryEntry[]
-  account             CustomerAccount?
-  loyaltyProfile      CustomerLoyaltyProfile?
-  loyaltyTransactions CustomerLoyaltyTransaction[]
-  subscriptions       CustomerSubscription[]
-  paymentMethods      CustomerPaymentMethod[]
-  company             Company                      @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  preferredProfessional User?                      @relation("CustomerPreferredProfessional", fields: [preferredProfessionalId], references: [id], onDelete: SetNull)
+  deactivatedAt           DateTime?                     @map("deactivated_at")
+  appointments            Appointment[]
+  courseAccesses          CourseAccess[]
+  serviceHistoryEntries   CustomerServiceHistoryEntry[]
+  account                 CustomerAccount?
+  loyaltyProfile          CustomerLoyaltyProfile?
+  loyaltyTransactions     CustomerLoyaltyTransaction[]
+  subscriptions           CustomerSubscription[]
+  paymentMethods          CustomerPaymentMethod[]
+  company                 Company                       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  preferredProfessional   User?                         @relation("CustomerPreferredProfessional", fields: [preferredProfessionalId], references: [id], onDelete: SetNull)
 
   @@index([companyId])
   @@index([companyId, preferredProfessionalId])
@@ -264,22 +269,22 @@ model AuditLog {
 }
 
 model SupportTicket {
-  id                String   @id @default(uuid())
-  companyId         String   @map("empresa_id")
-  createdByUserId   String   @map("created_by_user_id")
-  respondedByUserId String?  @map("responded_by_user_id")
-  title             String   @map("titulo")
-  description       String   @map("descricao")
-  priority          String   @default("media") @map("prioridade")
-  status            String   @default("aberto")
-  category          String?  @map("categoria")
-  response          String?  @map("resposta")
+  id                String    @id @default(uuid())
+  companyId         String    @map("empresa_id")
+  createdByUserId   String    @map("created_by_user_id")
+  respondedByUserId String?   @map("responded_by_user_id")
+  title             String    @map("titulo")
+  description       String    @map("descricao")
+  priority          String    @default("media") @map("prioridade")
+  status            String    @default("aberto")
+  category          String?   @map("categoria")
+  response          String?   @map("resposta")
   respondedAt       DateTime? @map("responded_at")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
-  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  createdByUser     User     @relation("SupportTicketCreatedBy", fields: [createdByUserId], references: [id], onDelete: Cascade)
-  respondedByUser   User?    @relation("SupportTicketRespondedBy", fields: [respondedByUserId], references: [id], onDelete: SetNull)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  company           Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdByUser     User      @relation("SupportTicketCreatedBy", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  respondedByUser   User?     @relation("SupportTicketRespondedBy", fields: [respondedByUserId], references: [id], onDelete: SetNull)
 
   @@index([companyId, status])
   @@index([createdByUserId])
@@ -288,15 +293,15 @@ model SupportTicket {
 }
 
 model Order {
-  id                  String               @id @default(uuid())
-  companyId           String               @map("empresa_id")
-  customerName        String?              @map("customer_name")
-  total               Decimal              @default(0) @db.Decimal(10, 2)
-  status              String               @default("pending")
-  createdAt           DateTime             @default(now()) @map("created_at")
-  updatedAt           DateTime             @updatedAt @map("updated_at")
+  id                  String                @id @default(uuid())
+  companyId           String                @map("empresa_id")
+  customerName        String?               @map("customer_name")
+  total               Decimal               @default(0) @db.Decimal(10, 2)
+  status              String                @default("pending")
+  createdAt           DateTime              @default(now()) @map("created_at")
+  updatedAt           DateTime              @updatedAt @map("updated_at")
   billingCharge       BillingCharge?
-  company             Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company             Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
   paymentTransactions PaymentTransaction[]
   subscription        CustomerSubscription? @relation("SubscriptionOrder")
 
@@ -353,23 +358,23 @@ model PaymentTransaction {
 }
 
 model BillingCharge {
-  id            String    @id @default(uuid())
-  companyId     String    @map("empresa_id")
-  orderId       String    @unique @map("order_id")
+  id            String            @id @default(uuid())
+  companyId     String            @map("empresa_id")
+  orderId       String            @unique @map("order_id")
   title         String
   description   String?
-  customerName  String    @map("customer_name")
-  customerEmail String?   @map("customer_email")
-  customerPhone String?   @map("customer_phone")
-  amount        Decimal   @db.Decimal(10, 2)
-  paymentMethod String    @default("pix") @map("payment_method")
-  status        String    @default("pending")
-  dueDate       DateTime? @map("due_date")
-  paidAt        DateTime? @map("paid_at")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
-  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customerName  String            @map("customer_name")
+  customerEmail String?           @map("customer_email")
+  customerPhone String?           @map("customer_phone")
+  amount        Decimal           @db.Decimal(10, 2)
+  paymentMethod String            @default("pix") @map("payment_method")
+  status        String            @default("pending")
+  dueDate       DateTime?         @map("due_date")
+  paidAt        DateTime?         @map("paid_at")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+  company       Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  order         Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
   reminders     BillingReminder[]
 
   @@index([companyId, status, createdAt])
@@ -377,22 +382,22 @@ model BillingCharge {
 }
 
 model BillingReminder {
-  id             String       @id @default(uuid())
-  companyId      String       @map("empresa_id")
-  billingChargeId String      @map("billing_charge_id")
-  stepCode       String       @map("step_code")
-  channel        String       @default("whatsapp")
-  scheduledAt    DateTime     @map("scheduled_at")
-  sentAt         DateTime?    @map("sent_at")
-  status         String       @default("scheduled")
-  errorMessage   String?      @map("error_message")
-  attemptCount   Int          @default(0) @map("attempt_count")
-  lastAttemptAt  DateTime?    @map("last_attempt_at")
-  nextRetryAt    DateTime?    @map("next_retry_at")
-  createdAt      DateTime     @default(now()) @map("created_at")
-  updatedAt      DateTime     @updatedAt @map("updated_at")
-  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  billingCharge  BillingCharge @relation(fields: [billingChargeId], references: [id], onDelete: Cascade)
+  id              String        @id @default(uuid())
+  companyId       String        @map("empresa_id")
+  billingChargeId String        @map("billing_charge_id")
+  stepCode        String        @map("step_code")
+  channel         String        @default("whatsapp")
+  scheduledAt     DateTime      @map("scheduled_at")
+  sentAt          DateTime?     @map("sent_at")
+  status          String        @default("scheduled")
+  errorMessage    String?       @map("error_message")
+  attemptCount    Int           @default(0) @map("attempt_count")
+  lastAttemptAt   DateTime?     @map("last_attempt_at")
+  nextRetryAt     DateTime?     @map("next_retry_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  company         Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  billingCharge   BillingCharge @relation(fields: [billingChargeId], references: [id], onDelete: Cascade)
 
   @@unique([companyId, billingChargeId, stepCode])
   @@index([companyId, status, scheduledAt])
@@ -402,22 +407,22 @@ model BillingReminder {
 }
 
 model CollectionAutomationRun {
-  id                     String    @id @default(uuid())
-  companyId              String    @map("empresa_id")
-  triggerSource          String    @map("trigger_source")
-  dryRun                 Boolean   @default(false) @map("dry_run")
-  sendNow                Boolean   @default(true) @map("send_now")
-  chargesAnalyzed        Int       @default(0) @map("charges_analyzed")
-  remindersCreated       Int       @default(0) @map("reminders_created")
-  remindersSent          Int       @default(0) @map("reminders_sent")
-  remindersFailed        Int       @default(0) @map("reminders_failed")
-  remindersRetried       Int       @default(0) @map("reminders_retried")
-  processedScheduled     Int       @default(0) @map("processed_scheduled")
-  status                 String    @default("completed")
-  errorMessage           String?   @map("error_message")
-  metadata               Json?
-  createdAt              DateTime  @default(now()) @map("created_at")
-  company                Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  id                 String   @id @default(uuid())
+  companyId          String   @map("empresa_id")
+  triggerSource      String   @map("trigger_source")
+  dryRun             Boolean  @default(false) @map("dry_run")
+  sendNow            Boolean  @default(true) @map("send_now")
+  chargesAnalyzed    Int      @default(0) @map("charges_analyzed")
+  remindersCreated   Int      @default(0) @map("reminders_created")
+  remindersSent      Int      @default(0) @map("reminders_sent")
+  remindersFailed    Int      @default(0) @map("reminders_failed")
+  remindersRetried   Int      @default(0) @map("reminders_retried")
+  processedScheduled Int      @default(0) @map("processed_scheduled")
+  status             String   @default("completed")
+  errorMessage       String?  @map("error_message")
+  metadata           Json?
+  createdAt          DateTime @default(now()) @map("created_at")
+  company            Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([companyId, createdAt])
   @@index([companyId, status, createdAt])
@@ -504,43 +509,43 @@ model CustomerAccount {
 }
 
 model AppointmentService {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId       String   @map("empresa_id")
-  name            String
-  description     String?
-  durationMinutes Int      @default(30) @map("duration_minutes")
-  recommendedReturnDays Int? @map("recommended_return_days")
-  price           Decimal? @db.Decimal(10, 2)
-  isActive        Boolean  @default(true) @map("is_active")
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
-  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId             String   @map("empresa_id")
+  name                  String
+  description           String?
+  durationMinutes       Int      @default(30) @map("duration_minutes")
+  recommendedReturnDays Int?     @map("recommended_return_days")
+  price                 Decimal? @db.Decimal(10, 2)
+  isActive              Boolean  @default(true) @map("is_active")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt             DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  company               Company  @relation(fields: [companyId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([companyId, isActive], map: "idx_appointment_services_company_active")
   @@map("appointment_services")
 }
 
 model CustomerServiceHistoryEntry {
-  id                String    @id @default(uuid())
-  companyId         String    @map("empresa_id")
-  customerId        String    @map("customer_id")
-  source            String    @default("manual")
-  appointmentId     String?   @map("appointment_id")
-  serviceId         String?   @map("service_id")
-  serviceName       String    @map("service_name")
-  professionalId    String?   @map("professional_id")
-  professionalName  String?   @map("professional_name")
-  serviceDate       DateTime  @map("service_date")
-  amount            Decimal   @default(0) @db.Decimal(10, 2)
-  notes             String?
-  returnInDays      Int?      @map("return_in_days")
-  returnDueAt       DateTime? @map("return_due_at")
-  followUpSentAt    DateTime? @map("follow_up_sent_at")
-  createdByUserId   String?   @map("created_by_user_id")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
-  company           Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer          Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  id               String    @id @default(uuid())
+  companyId        String    @map("empresa_id")
+  customerId       String    @map("customer_id")
+  source           String    @default("manual")
+  appointmentId    String?   @map("appointment_id")
+  serviceId        String?   @map("service_id")
+  serviceName      String    @map("service_name")
+  professionalId   String?   @map("professional_id")
+  professionalName String?   @map("professional_name")
+  serviceDate      DateTime  @map("service_date")
+  amount           Decimal   @default(0) @db.Decimal(10, 2)
+  notes            String?
+  returnInDays     Int?      @map("return_in_days")
+  returnDueAt      DateTime? @map("return_due_at")
+  followUpSentAt   DateTime? @map("follow_up_sent_at")
+  createdByUserId  String?   @map("created_by_user_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  company          Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer         Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   @@index([companyId, customerId, serviceDate])
   @@index([companyId, returnDueAt])
@@ -565,24 +570,24 @@ model AppointmentAvailability {
 // Bloqueio pontual na agenda de um barbeiro: almoco, folga, medico, atraso.
 // N bloqueios -> 1 barbeiro. Subtrai janelas da disponibilidade semanal.
 model AppointmentBlock {
-  id             String   @id @default(uuid())
-  companyId      String   @map("empresa_id")
-  professionalId String   @map("professional_id")
-  startAt        DateTime @map("start_at")
-  endAt          DateTime @map("end_at")
-  reason         String?
+  id              String   @id @default(uuid())
+  companyId       String   @map("empresa_id")
+  professionalId  String   @map("professional_id")
+  startAt         DateTime @map("start_at")
+  endAt           DateTime @map("end_at")
+  reason          String?
   // Bloqueio recorrente (almoco de toda terca, por exemplo).
   // Quando true, weekday/startTime/endTime valem e startAt/endAt guardam a vigencia.
-  isRecurring    Boolean  @default(false) @map("is_recurring")
-  weekday        Int?
-  startTime      String?  @map("start_time")
-  endTime        String?  @map("end_time")
-  isActive       Boolean  @default(true) @map("is_active")
-  createdByUserId String? @map("created_by_user_id")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at")
-  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  professional   User     @relation("AppointmentBlockProfessional", fields: [professionalId], references: [id], onDelete: Cascade)
+  isRecurring     Boolean  @default(false) @map("is_recurring")
+  weekday         Int?
+  startTime       String?  @map("start_time")
+  endTime         String?  @map("end_time")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdByUserId String?  @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  professional    User     @relation("AppointmentBlockProfessional", fields: [professionalId], references: [id], onDelete: Cascade)
 
   @@index([companyId, professionalId, startAt])
   @@index([companyId, professionalId, weekday])
@@ -753,18 +758,18 @@ model CustomerPaymentMethod {
 /// entrar arquivo pesado, o caminho e trocar `data` por uma URL de storage
 /// externo sem mexer em quem consome.
 model MediaAsset {
-  id         String   @id @default(uuid())
-  companyId  String?  @map("empresa_id")
+  id        String   @id @default(uuid())
+  companyId String?  @map("empresa_id")
   /// Para que serve: logo, favicon, login_cover, course_cover.
-  kind       String
-  fileName   String   @map("file_name")
-  mimeType   String   @map("mime_type")
-  sizeBytes  Int      @map("size_bytes")
+  kind      String
+  fileName  String   @map("file_name")
+  mimeType  String   @map("mime_type")
+  sizeBytes Int      @map("size_bytes")
   /// Conteudo binario do arquivo.
-  data       Bytes
-  createdBy  String?  @map("created_by")
-  createdAt  DateTime @default(now()) @map("created_at")
-  company    Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  data      Bytes
+  createdBy String?  @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([companyId, kind])
   @@map("media_assets")
@@ -794,43 +799,50 @@ model SubscriptionPlan {
 }
 
 model CustomerSubscription {
-  id                String              @id @default(dbgenerated("(gen_random_uuid())::text"))
-  companyId         String              @map("empresa_id")
-  customerId        String              @map("customer_id")
-  planId            String              @map("plan_id")
-  status            SubscriptionStatus  @default(active)
-  startAt           DateTime            @map("start_at")
-  endAt             DateTime            @map("end_at")
-  remainingServices Int?                @map("remaining_services")
-  autoRenew         Boolean             @default(true) @map("auto_renew")
-  amount            Decimal             @default(0) @db.Decimal(10, 2)
-  notes             String?
-  createdAt         DateTime            @default(now()) @map("created_at")
-  updatedAt         DateTime            @default(now()) @updatedAt @map("updated_at")
+  id                   String              @id @default(dbgenerated("(gen_random_uuid())::text"))
+  companyId            String              @map("empresa_id")
+  customerId           String              @map("customer_id")
+  planId               String              @map("plan_id")
+  status               SubscriptionStatus  @default(active)
+  startAt              DateTime            @map("start_at")
+  endAt                DateTime            @map("end_at")
+  remainingServices    Int?                @map("remaining_services")
+  autoRenew            Boolean             @default(true) @map("auto_renew")
+  amount               Decimal             @default(0) @db.Decimal(10, 2)
+  notes                String?
+  createdAt            DateTime            @default(now()) @map("created_at")
+  updatedAt            DateTime            @default(now()) @updatedAt @map("updated_at")
   // Barbeiro dono da mensalidade (N assinaturas -> 1 barbeiro, opcional).
   // SetNull para que a assinatura sobreviva a saida do barbeiro e possa ser remanejada.
-  professionalId    String?             @map("professional_id")
+  professionalId       String?             @map("professional_id")
   // Pedido que cobra este ciclo da mensalidade. E por aqui que o webhook do
   // gateway encontra a assinatura e a ativa quando o pagamento e confirmado.
   // Antes esse vinculo existia so como texto em `notes`, e ninguem lia.
-  orderId           String?             @unique @map("order_id")
+  orderId              String?             @unique @map("order_id")
   // Como o cliente paga: pix, credito, debito. Define a regua de cobranca.
-  paymentMethod     String?             @map("payment_method")
+  paymentMethod        String?             @map("payment_method")
   // Quando o aviso de vencimento foi enviado, para nao mandar duas vezes.
-  renewalNoticeSentAt DateTime?         @map("renewal_notice_sent_at")
+  renewalNoticeSentAt  DateTime?           @map("renewal_notice_sent_at")
   // Tentativas de cobranca no cartao dentro do ciclo atual. Zera a cada renovacao.
-  paymentAttempts   Int                 @default(0) @map("payment_attempts")
-  lastPaymentAttemptAt DateTime?        @map("last_payment_attempt_at")
+  paymentAttempts      Int                 @default(0) @map("payment_attempts")
+  lastPaymentAttemptAt DateTime?           @map("last_payment_attempt_at")
   // Ate quando o cliente mantem o plano mesmo com a cobranca falhando.
   // Enquanto estiver dentro do prazo, o sistema tenta cobrar de novo em vez
   // de cancelar: cartao sem limite naquele dia nao deve custar o cliente.
-  graceUntil        DateTime?           @map("grace_until")
-  customer          Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  company           Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  plan              SubscriptionPlan    @relation(fields: [planId], references: [id], onDelete: Cascade)
-  professional      User?               @relation("SubscriptionProfessional", fields: [professionalId], references: [id], onDelete: SetNull)
-  order             Order?              @relation("SubscriptionOrder", fields: [orderId], references: [id], onDelete: SetNull)
-  usages            SubscriptionUsage[]
+  graceUntil           DateTime?           @map("grace_until")
+  // Quando a mensalidade entrou em atraso (status overdue). Alimenta o
+  // "vencida ha X dias" na tela e ordena o resumo enviado ao dono.
+  overdueSince         DateTime?           @map("overdue_since")
+  // Confirmacao manual do recebimento: na cobranca sem gateway e o dono quem
+  // diz que o dinheiro entrou, e fica registrado quem disse.
+  manuallyPaidAt       DateTime?           @map("manually_paid_at")
+  manuallyPaidBy       String?             @map("manually_paid_by")
+  customer             Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  company              Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plan                 SubscriptionPlan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+  professional         User?               @relation("SubscriptionProfessional", fields: [professionalId], references: [id], onDelete: SetNull)
+  order                Order?              @relation("SubscriptionOrder", fields: [orderId], references: [id], onDelete: SetNull)
+  usages               SubscriptionUsage[]
 
   @@index([companyId, customerId, status, endAt])
   @@index([companyId, planId, status])
@@ -926,6 +938,9 @@ enum SubscriptionInterval {
 enum SubscriptionStatus {
   active
   pending
+  // Venceu e aguarda o dono confirmar se recebeu. So existe na cobranca
+  // manual: com gateway, quem responde isso e o webhook.
+  overdue
   expired
   canceled
   suspended

@@ -4,6 +4,7 @@ import { PageHeader } from '@/components/crud/PageHeader';
 import { SearchFilters } from '@/components/crud/SearchFilters';
 import { FormDialog } from '@/components/crud/FormDialog';
 import { StatusBadge } from '@/components/crud/StatusBadge';
+import { WhatsAppButton } from '@/components/crud/WhatsAppButton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -317,7 +318,19 @@ const Clientes: React.FC = () => {
 
   const columns: Column<Customer>[] = [
     { key: 'name', label: 'Nome' },
-    { key: 'phone', label: 'Telefone' },
+    {
+      key: 'phone',
+      label: 'Telefone',
+      render: (item) =>
+        item.phone ? (
+          <div className="flex items-center gap-1">
+            <span>{item.phone}</span>
+            <WhatsAppButton phone={item.phone} name={item.name} />
+          </div>
+        ) : (
+          <span className="text-muted-foreground">Sem telefone</span>
+        ),
+    },
     {
       key: 'preferred_professional_name',
       label: 'Barbeiro',

@@ -404,6 +404,61 @@ export class CompanyController {
     }
   }
 
+  // --- Cobranca manual de mensalidade ---
+  async listSubscriptionsNeedingAttention(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.listSubscriptionsNeedingAttention(req.user!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async markSubscriptionPaid(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.markSubscriptionPaid(
+        req.user!,
+        req.params.subscriptionId,
+        req.body || {}
+      );
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async markSubscriptionOverdue(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.markSubscriptionOverdue(
+        req.user!,
+        req.params.subscriptionId,
+        req.body || {}
+      );
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  // --- Ajustes da empresa ---
+  async getMyCompanySettings(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.getMyCompanySettings(req.user!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async updateMyCompanySettings(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.updateMyCompanySettings(req.user!, req.body || {});
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   async listSubscriptionUsage(req: AuthedRequest, res: Response) {
     try {
       const result = await service.listSubscriptionUsage(req.user!, req.query as any);

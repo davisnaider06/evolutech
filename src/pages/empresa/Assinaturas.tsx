@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { companyService } from '@/services/company';
+import { WhatsAppButton } from '@/components/crud/WhatsAppButton';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 
@@ -20,6 +21,21 @@ type Plan = {
   /** Dias em que o plano NAO vale (0=domingo ... 6=sabado). */
   blocked_weekdays?: number[];
   is_active: boolean;
+};
+
+/** Mensalidade que espera uma acao do dono: vence em breve ou ja venceu. */
+type MensalidadeEmAtencao = {
+  id: string;
+  customer_id: string;
+  customer_name: string;
+  customer_phone: string | null;
+  plan_name: string;
+  professional_name: string | null;
+  amount: number;
+  status: string;
+  end_at: string;
+  payment_method: string;
+  days_overdue: number;
 };
 
 const DIAS_SEMANA = [
@@ -70,6 +86,65 @@ type SubscriptionUsage = {
 const toMoney = (value: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0));
 
+/**
+ * Uma mensalidade na lista de atencao.
+ *
+ * Os dois botoes sao a decisao inteira que o dono precisa tomar: recebi ou
+ * nao recebi. O atalho do WhatsApp fica junto porque cobrar e o passo entre
+ * uma coisa e outra.
+ */
+const LinhaAtencao: React.FC<{
+  item: MensalidadeEmAtencao;
+  emAberto?: boolean;
+  ocupado: boolean;
+  onPago: () => void;
+  onPendente: () => void;
+}> = ({ item, emAberto = false, ocupado, onPago, onPendente }) => {
+  const vencimento = new Date(item.end_at).toLocaleDateString('pt-BR');
+  const atraso =
+    item.days_overdue === 0
+      ? 'venceu hoje'
+      : item.days_overdue === 1
+        ? 'venceu ontem'
+        : `ha ${item.days_overdue} dias`;
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate font-medium">{item.customer_name}</span>
+          <WhatsAppButton
+            phone={item.customer_phone}
+            name={item.customer_name}
+            message={
+              emAberto
+                ? `Ola ${item.customer_name}! Passando para lembrar da sua mensalidade do plano ${item.plan_name}, que venceu em ${vencimento}.`
+                : `Ola ${item.customer_name}! Sua mensalidade do plano ${item.plan_name} vence em ${vencimento}.`
+            }
+          />
+        </div>
+        <p className="truncate text-xs text-muted-foreground">
+          {item.plan_name}
+          {item.professional_name ? ` - ${item.professional_name}` : ''}
+          {' - '}
+          {emAberto ? atraso : `vence ${vencimento}`}
+        </p>
+      </div>
+
+      <span className="whitespace-nowrap font-medium tabular-nums">{toMoney(item.amount)}</span>
+
+      <div className="flex gap-2">
+        <Button size="sm" onClick={onPago} disabled={ocupado}>
+          {ocupado ? '...' : 'Recebi'}
+        </Button>
+        <Button size="sm" variant="outline" onClick={onPendente} disabled={ocupado}>
+          Nao recebi
+        </Button>
+      </div>
+    </div>
+  );
+};
+
 const Assinaturas: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -84,6 +159,14 @@ const Assinaturas: React.FC = () => {
   const [usageLoading, setUsageLoading] = useState(false);
   const [usageFilterCustomerId, setUsageFilterCustomerId] = useState('');
   const [usageFilterSubscriptionId, setUsageFilterSubscriptionId] = useState('');
+
+  const [atencao, setAtencao] = useState<{
+    vencendo: MensalidadeEmAtencao[];
+    em_aberto: MensalidadeEmAtencao[];
+    total_em_aberto: number;
+  }>({ vencendo: [], em_aberto: [], total_em_aberto: 0 });
+  const [atencaoLoading, setAtencaoLoading] = useState(true);
+  const [baixaEmCurso, setBaixaEmCurso] = useState<string | null>(null);
 
   const [planForm, setPlanForm] = useState({
     id: '',
@@ -306,9 +389,122 @@ const Assinaturas: React.FC = () => {
     toast.success('Arquivo Excel exportado');
   };
 
+  const carregarAtencao = React.useCallback(async () => {
+    setAtencaoLoading(true);
+    try {
+      const resultado = await companyService.listSubscriptionsNeedingAttention(2);
+      setAtencao({
+        vencendo: resultado?.vencendo || [],
+        em_aberto: resultado?.em_aberto || [],
+        total_em_aberto: Number(resultado?.total_em_aberto || 0),
+      });
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao carregar mensalidades pendentes');
+      setAtencao({ vencendo: [], em_aberto: [], total_em_aberto: 0 });
+    } finally {
+      setAtencaoLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    carregarAtencao();
+  }, [carregarAtencao]);
+
+  /** Recebi / Nao recebi. E a baixa manual que substitui o webhook do gateway. */
+  const darBaixa = async (item: MensalidadeEmAtencao, decisao: 'pago' | 'pendente') => {
+    setBaixaEmCurso(item.id);
+    try {
+      if (decisao === 'pago') {
+        await companyService.markSubscriptionPaid(item.id);
+        toast.success(`Mensalidade de ${item.customer_name} confirmada`);
+      } else {
+        await companyService.markSubscriptionOverdue(item.id);
+        toast.success(`Mensalidade de ${item.customer_name} marcada em aberto`);
+      }
+      await carregarAtencao();
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao registrar a baixa');
+    } finally {
+      setBaixaEmCurso(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader title="Assinaturas" description="Gerencie planos e assinaturas de clientes" />
+
+      {/*
+        Cobranca manual: sem gateway, e o dono quem diz se o dinheiro entrou.
+        Este painel e onde ele resolve isso — por isso vem antes de tudo.
+      */}
+      {(atencaoLoading || atencao.vencendo.length > 0 || atencao.em_aberto.length > 0) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Precisam de atencao</CardTitle>
+            <CardDescription>
+              Mensalidades que vencem nos proximos dias e as que ja venceram e aguardam voce
+              confirmar o recebimento. Enquanto estiver em aberto, o cliente nao marca horario novo.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {atencaoLoading ? (
+              <p className="text-sm text-muted-foreground">Carregando...</p>
+            ) : (
+              <>
+                {atencao.em_aberto.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <h3 className="text-sm font-semibold text-destructive">
+                        Em aberto, aguardando voce ({atencao.em_aberto.length})
+                      </h3>
+                      <span className="text-sm text-muted-foreground">
+                        Total: <strong>{toMoney(atencao.total_em_aberto)}</strong>
+                      </span>
+                    </div>
+                    <div className="divide-y rounded-md border">
+                      {atencao.em_aberto.map((item) => (
+                        <LinhaAtencao
+                          key={item.id}
+                          item={item}
+                          emAberto
+                          ocupado={baixaEmCurso === item.id}
+                          onPago={() => darBaixa(item, 'pago')}
+                          onPendente={() => darBaixa(item, 'pendente')}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {atencao.vencendo.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-semibold">
+                      Vencem em breve ({atencao.vencendo.length})
+                    </h3>
+                    <div className="divide-y rounded-md border">
+                      {atencao.vencendo.map((item) => (
+                        <LinhaAtencao
+                          key={item.id}
+                          item={item}
+                          ocupado={baixaEmCurso === item.id}
+                          onPago={() => darBaixa(item, 'pago')}
+                          onPendente={() => darBaixa(item, 'pendente')}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {atencao.vencendo.length === 0 && atencao.em_aberto.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Nada pendente por aqui. Todas as mensalidades estao em dia.
+                  </p>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

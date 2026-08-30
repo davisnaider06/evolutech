@@ -3,8 +3,8 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Prisma } from '@prisma/client';
 import { AppRole } from '../types';
+import { JWT_SECRET } from '../config/secrets';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'secret_fallback_dev';
 const JWT_EXPIRES_IN = (process.env.JWT_EXPIRES_IN || '24h') as jwt.SignOptions['expiresIn'];
 const OWNER_DEFAULT_MODULES = [
   { codigo: 'dashboard', nome: 'Dashboard' },
@@ -208,13 +208,23 @@ export class AuthService {
 
     const activeRole = user.roles[0];
 
+    // Conta sem vinculo nao recebe token.
+    //
+    // Um usuario pode ficar sem papel quando a empresa dele e apagada: as
+    // linhas de user_roles caem por cascata e a conta sobrevive. Emitir um
+    // token sem a claim `role` nesse caso era o que fazia o middleware cair
+    // no padrao de super admin.
+    if (!activeRole?.role) {
+      throw new Error('Sua conta nao esta vinculada a nenhum perfil de acesso');
+    }
+
     const tokenPayload: JwtAuthPayload = {
       userId: user.id,
       email: user.email,
       fullName: user.fullName,
-      role: activeRole?.role as AppRole | undefined,
-      companyId: activeRole?.companyId || null,
-      companyName: activeRole?.company?.name || null,
+      role: activeRole.role as AppRole,
+      companyId: activeRole.companyId || null,
+      companyName: activeRole.company?.name || null,
     };
 
     const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });

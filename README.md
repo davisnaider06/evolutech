@@ -53,8 +53,9 @@ npx prisma generate
 # (Se perguntar sobre perda de dados, digite 'y' para aceitar o reset)
 npx prisma db push --force-reset
 
-# 3. Popula o banco com o Super Admin inicial
-npx ts-node prisma/seed.ts
+# 3. Popula o banco com o Super Admin inicial.
+# O e-mail e a senha vem do ambiente — nao ficam escritos em nenhum arquivo.
+SEED_SUPER_ADMIN_EMAIL=voce@dominio.com SEED_SUPER_ADMIN_PASSWORD='uma-senha-forte' npx ts-node prisma/seed.ts
 
 ```
 
@@ -97,12 +98,11 @@ npm run dev
 ## 🔐 Passo 3: Login (Teste Final)
 
 1. Abra seu navegador e acesse a URL do Frontend (ex: `http://localhost:8080/login`).
-2. Utilize as credenciais de **Super Admin** criadas pelo Seed:
+2. Utilize as credenciais de **Super Admin** que você definiu ao rodar o seed — as mesmas de `SEED_SUPER_ADMIN_EMAIL` e `SEED_SUPER_ADMIN_PASSWORD`.
 
-| Campo | Valor |
-| --- | --- |
-| **Email** | `davisnaider06@gmail.com` |
-| **Senha** | `Dav1#trabalho` |
+> **Nunca escreva essas credenciais aqui.** O README é versionado: uma senha
+> anotada neste arquivo vale como senha pública. Se precisar trocar, rode o
+> seed de novo com a nova senha — ele atualiza o usuário existente.
 
 3. Clique em **Entrar**.
 4. Você deve ver a mensagem **"Bem-vindo, Super Admin!"** e ser redirecionado para o Dashboard Administrativo (`/admin-evolutech`).
@@ -124,4 +124,4 @@ npm run dev
 **Erro: "Invalid credentials"**
 
 * **Causa:** O banco foi resetado mas o Seed não rodou.
-* **Solução:** Rode `npx ts-node prisma/seed.ts` na pasta do backend.
+* **Solução:** Rode o seed de novo na pasta do backend, com `SEED_SUPER_ADMIN_EMAIL` e `SEED_SUPER_ADMIN_PASSWORD` definidos.
