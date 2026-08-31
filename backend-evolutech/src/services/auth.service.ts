@@ -5,7 +5,9 @@ import { Prisma } from '@prisma/client';
 import { AppRole } from '../types';
 import { JWT_SECRET } from '../config/secrets';
 
-const JWT_EXPIRES_IN = (process.env.JWT_EXPIRES_IN || '24h') as jwt.SignOptions['expiresIn'];
+// 7 dias, alinhado ao que o .env.example ja documentava. Com 24h o dono
+// precisava logar de novo todo dia no app da tela de inicio.
+const JWT_EXPIRES_IN = (process.env.JWT_EXPIRES_IN || '7d') as jwt.SignOptions['expiresIn'];
 const OWNER_DEFAULT_MODULES = [
   { codigo: 'dashboard', nome: 'Dashboard' },
   { codigo: 'reports', nome: 'Relatorios' },

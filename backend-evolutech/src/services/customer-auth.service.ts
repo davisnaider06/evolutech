@@ -4,7 +4,7 @@ import { prisma } from '../db';
 import { AuthenticatedCustomer } from '../types';
 import { JWT_SECRET } from '../config/secrets';
 
-const CUSTOMER_JWT_EXPIRES_IN = (process.env.CUSTOMER_JWT_EXPIRES_IN || '24h') as jwt.SignOptions['expiresIn'];
+const CUSTOMER_JWT_EXPIRES_IN = (process.env.CUSTOMER_JWT_EXPIRES_IN || '7d') as jwt.SignOptions['expiresIn'];
 
 type CustomerJwtPayload = {
   accountId: string;

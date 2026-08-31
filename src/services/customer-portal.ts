@@ -30,7 +30,13 @@ const customerRequest = async <T>(path: string, init?: RequestInit): Promise<T> 
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || `Erro ${response.status}`);
+    // O status vai junto: quem trata a sessao precisa separar "credencial
+    // recusada" de "backend fora do ar" para nao deslogar sem motivo.
+    const erro = new Error(errorData.error || `Erro ${response.status}`) as Error & {
+      status?: number;
+    };
+    erro.status = response.status;
+    throw erro;
   }
 
   return response.json();

@@ -437,8 +437,14 @@ const Assinaturas: React.FC = () => {
         Cobranca manual: sem gateway, e o dono quem diz se o dinheiro entrou.
         Este painel e onde ele resolve isso — por isso vem antes de tudo.
       */}
-      {(atencaoLoading || atencao.vencendo.length > 0 || atencao.em_aberto.length > 0) && (
-        <Card>
+      {/*
+        Sempre visivel, mesmo sem nada pendente. Escondendo o card quando as
+        duas listas vinham vazias, a tela ficava identica a de antes e nao
+        havia como saber se a cobranca manual estava funcionando ou se a
+        chamada tinha falhado — e o estado vazio que escrevi aqui embaixo
+        nunca chegava a aparecer.
+      */}
+      <Card>
           <CardHeader>
             <CardTitle>Precisam de atencao</CardTitle>
             <CardDescription>
@@ -504,7 +510,6 @@ const Assinaturas: React.FC = () => {
             )}
           </CardContent>
         </Card>
-      )}
 
       <Card>
         <CardHeader>

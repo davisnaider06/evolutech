@@ -2,6 +2,16 @@
 import { UserRole, AuthState, Company } from '@/types/auth';
 import { toast } from 'sonner';
 import { API_URL } from '@/config/api';
+import {
+  decodeJwt,
+  tokenExpirado,
+  salvarSessao,
+  lerSessao,
+  limparSessao,
+} from '@/lib/session';
+
+/** Ultima resposta boa de /auth/me, para reabrir o app sem esperar a rede. */
+const SESSAO_CACHE_KEY = 'evolutech_sessao';
 
 interface AuthContextType extends AuthState {
   login: (token: string, userData: any, companyData?: any) => void;
@@ -40,34 +50,62 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const decodeTokenPayload = (token: string): any | null => {
-    try {
-      const parts = token.split('.');
-      if (parts.length < 2) return null;
-      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-      const json = decodeURIComponent(
-        atob(base64)
-          .split('')
-          .map((char) => `%${`00${char.charCodeAt(0).toString(16)}`.slice(-2)}`)
-          .join('')
-      );
-      return JSON.parse(json);
-    } catch (_error) {
-      return null;
-    }
-  };
+  const decodeTokenPayload = (token: string): any | null => decodeJwt(token);
+
+  /** Derruba a sessao de verdade: token invalido ou usuario sem acesso. */
+  const encerrarSessao = useCallback(() => {
+    localStorage.removeItem('evolutech_token');
+    limparSessao(SESSAO_CACHE_KEY);
+    setAuthState({ user: null, isAuthenticated: false, isLoading: false });
+    setCompany(null);
+  }, []);
+
+  /** Monta o estado a partir do payload de /auth/me (fresco ou em cache). */
+  const aplicarPayload = useCallback(
+    (data: any) => {
+      setAuthState({
+        user: {
+          id: data.user.id,
+          email: data.user.email,
+          name: data.user.name,
+          role: data.user.role as UserRole,
+          tenantId: data.user.tenantId,
+          tenantName: data.user.tenantName,
+          tenantSlug: data.user.tenantSlug,
+          avatar: null,
+          createdAt: new Date(data.user.created_at || Date.now()),
+        },
+        isAuthenticated: true,
+        isLoading: false,
+      });
+      if (data.company) setCompany(normalizeCompany(data.company));
+    },
+    [normalizeCompany]
+  );
 
   // Verifica se existe um token salvo ao carregar a página.
   const checkAuth = useCallback(async () => {
     const token = localStorage.getItem('evolutech_token');
 
     if (!token) {
+      limparSessao(SESSAO_CACHE_KEY);
       setAuthState({ user: null, isAuthenticated: false, isLoading: false });
       return;
     }
 
-    try {
-      // Bootstrap rápido via claims do JWT para evitar atraso visual no login/reload.
+    // Validade lida do proprio token, sem rede. Sessao vencida cai aqui, e nao
+    // depois por causa de um erro de conexao que nao tem nada a ver.
+    if (tokenExpirado(token)) {
+      encerrarSessao();
+      return;
+    }
+
+    // Abre já: primeiro o último payload bom, senão as claims do token.
+    // O app da tela de inicio precisa abrir logado mesmo antes da rede subir.
+    const cache = lerSessao<any>(SESSAO_CACHE_KEY);
+    if (cache?.user) {
+      aplicarPayload(cache);
+    } else {
       const tokenData = decodeTokenPayload(token);
       if (tokenData?.userId && tokenData?.role) {
         setAuthState({
@@ -86,46 +124,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isLoading: false,
         });
       }
+    }
 
-      // Valida token e puxa dados frescos do backend.
+    // Revalida em segundo plano e atualiza o cache.
+    try {
       const response = await fetch(`${API_URL}/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
       if (response.ok) {
         const data = await response.json();
-
-        const userData = {
-          id: data.user.id,
-          email: data.user.email,
-          name: data.user.name,
-          role: data.user.role as UserRole,
-          tenantId: data.user.tenantId,
-          tenantName: data.user.tenantName,
-          tenantSlug: data.user.tenantSlug,
-          avatar: null,
-          createdAt: new Date(data.user.created_at || Date.now()),
-        };
-
-        setAuthState({
-          user: userData,
-          isAuthenticated: true,
-          isLoading: false,
-        });
-
-        if (data.company) {
-          setCompany(normalizeCompany(data.company));
-        }
-      } else {
-        throw new Error('Sessão expirada');
+        salvarSessao(SESSAO_CACHE_KEY, data);
+        aplicarPayload(data);
+        return;
       }
+
+      // Só o servidor recusando a credencial encerra a sessao.
+      if (response.status === 401 || response.status === 403) {
+        encerrarSessao();
+        return;
+      }
+
+      // 500, 502, 503: backend indisponivel. A sessao continua de pe.
+      console.warn(`[auth] /auth/me respondeu ${response.status}; mantendo a sessao local`);
     } catch (error) {
-      console.error('Erro de auth:', error);
-      localStorage.removeItem('evolutech_token');
-      setAuthState({ user: null, isAuthenticated: false, isLoading: false });
-      setCompany(null);
+      // Falha de rede — offline, backend acordando, Neon saindo da hibernacao.
+      // Apagar o token aqui era o que fazia o PWA pedir login a cada abertura.
+      console.warn('[auth] nao foi possivel revalidar a sessao agora:', error);
     }
-  }, [normalizeCompany]);
+
+    // Sem cache nem claims utilizaveis, nao ha o que exibir: sai do loading.
+    setAuthState((prev) => (prev.isLoading ? { ...prev, isLoading: false } : prev));
+  }, [aplicarPayload, encerrarSessao]);
 
   useEffect(() => {
     checkAuth();
@@ -133,6 +163,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = (token: string, userData: any, companyData?: any) => {
     localStorage.setItem('evolutech_token', token);
+    // O cache antigo pode ser de outro usuario; o proximo /auth/me repoe.
+    limparSessao(SESSAO_CACHE_KEY);
 
     const normalizedUser = {
       ...userData,
@@ -155,9 +187,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
-    localStorage.removeItem('evolutech_token');
-    setAuthState({ user: null, isAuthenticated: false, isLoading: false });
-    setCompany(null);
+    encerrarSessao();
     toast.info('Você saiu do sistema');
   };
 
