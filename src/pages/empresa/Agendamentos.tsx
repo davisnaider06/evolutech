@@ -51,13 +51,6 @@ interface CustomerOption {
   phone?: string | null;
 }
 
-interface AvailabilityRow {
-  weekday: number;
-  start_time: string;
-  end_time: string;
-  is_active: boolean;
-}
-
 const WEEKDAYS = [
   { value: 0, label: 'Domingo' },
   { value: 1, label: 'Segunda' },
@@ -92,16 +85,6 @@ const Agendamentos: React.FC = () => {
   const [serviceLoading, setServiceLoading] = useState(false);
   const [serviceForm, setServiceForm] = useState({ name: '', durationMinutes: 30, price: 0 });
   const [professionals, setProfessionals] = useState<ProfessionalOption[]>([]);
-  const [selectedProfessionalId, setSelectedProfessionalId] = useState('');
-  const [availability, setAvailability] = useState<AvailabilityRow[]>(
-    WEEKDAYS.map((day) => ({
-      weekday: day.value,
-      start_time: '08:00',
-      end_time: '17:00',
-      is_active: day.value >= 1 && day.value <= 5,
-    }))
-  );
-  const [savingAvailability, setSavingAvailability] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -166,16 +149,10 @@ const Agendamentos: React.FC = () => {
       const options = await appointmentsService.getPublicBookingOptions(bookingSlug);
       const list = Array.isArray(options?.professionals) ? options.professionals : [];
       setProfessionals(list);
-      if (!selectedProfessionalId && list.length > 0) {
-        const fallback = user?.role === 'FUNCIONARIO_EMPRESA'
-          ? list.find((item: any) => item.id === user.id)?.id || list[0].id
-          : list[0].id;
-        setSelectedProfessionalId(fallback);
-      }
     } catch (error: any) {
       toast.error(error.message || 'Erro ao carregar profissionais');
     }
-  }, [bookingSlug, selectedProfessionalId, user?.id, user?.role]);
+  }, [bookingSlug]);
 
   const fetchCustomers = useCallback(async () => {
     try {
@@ -198,34 +175,6 @@ const Agendamentos: React.FC = () => {
     }
   }, []);
 
-  const fetchAvailability = useCallback(async () => {
-    if (!selectedProfessionalId) return;
-    try {
-      const rows = await companyService.listAppointmentAvailability(selectedProfessionalId);
-      const map = new Map<number, AvailabilityRow>();
-      (Array.isArray(rows) ? rows : []).forEach((row: any) => {
-        map.set(Number(row.weekday), {
-          weekday: Number(row.weekday),
-          start_time: row.start_time,
-          end_time: row.end_time,
-          is_active: row.is_active !== false,
-        });
-      });
-      setAvailability(
-        WEEKDAYS.map((day) =>
-          map.get(day.value) || {
-            weekday: day.value,
-            start_time: '08:00',
-            end_time: '17:00',
-            is_active: false,
-          }
-        )
-      );
-    } catch (error: any) {
-      toast.error(error.message || 'Erro ao carregar disponibilidade');
-    }
-  }, [selectedProfessionalId]);
-
   useEffect(() => {
     fetchAppointments();
   }, [fetchAppointments]);
@@ -241,10 +190,6 @@ const Agendamentos: React.FC = () => {
   useEffect(() => {
     fetchCustomers();
   }, [fetchCustomers]);
-
-  useEffect(() => {
-    fetchAvailability();
-  }, [fetchAvailability]);
 
   const handleCreateService = async () => {
     const name = serviceForm.name.trim();
@@ -265,23 +210,6 @@ const Agendamentos: React.FC = () => {
       fetchServices();
     } catch (error: any) {
       toast.error(error.message || 'Erro ao cadastrar servico');
-    }
-  };
-
-  const handleSaveAvailability = async () => {
-    if (!selectedProfessionalId) {
-      toast.error('Selecione um profissional');
-      return;
-    }
-    setSavingAvailability(true);
-    try {
-      await companyService.saveAppointmentAvailability(selectedProfessionalId, availability);
-      toast.success('Disponibilidade salva');
-      fetchAvailability();
-    } catch (error: any) {
-      toast.error(error.message || 'Erro ao salvar disponibilidade');
-    } finally {
-      setSavingAvailability(false);
     }
   };
 
@@ -524,86 +452,6 @@ const Agendamentos: React.FC = () => {
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Disponibilidade dos Profissionais</CardTitle>
-          <CardDescription>
-            Defina os horarios de trabalho. O cliente so vera horarios livres dentro dessas janelas.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="space-y-1 md:col-span-2">
-              <Label>Profissional</Label>
-              <select
-                value={selectedProfessionalId}
-                onChange={(e) => setSelectedProfessionalId(e.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                disabled={user?.role === 'FUNCIONARIO_EMPRESA'}
-              >
-                <option value="">Selecione</option>
-                {professionals.map((prof) => (
-                  <option key={prof.id} value={prof.id}>
-                    {prof.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <Button onClick={handleSaveAvailability} disabled={savingAvailability || !selectedProfessionalId}>
-              {savingAvailability ? 'Salvando...' : 'Salvar Disponibilidade'}
-            </Button>
-          </div>
-
-          <div className="space-y-2">
-            {availability.map((row) => (
-              <div key={row.weekday} className="grid gap-2 rounded border p-3 md:grid-cols-4">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={row.is_active}
-                    onChange={(e) =>
-                      setAvailability((prev) =>
-                        prev.map((item) =>
-                          item.weekday === row.weekday ? { ...item, is_active: e.target.checked } : item
-                        )
-                      )
-                    }
-                  />
-                  <span>{WEEKDAYS.find((day) => day.value === row.weekday)?.label}</span>
-                </div>
-                <Input
-                  type="time"
-                  value={row.start_time}
-                  disabled={!row.is_active}
-                  onChange={(e) =>
-                    setAvailability((prev) =>
-                      prev.map((item) =>
-                        item.weekday === row.weekday ? { ...item, start_time: e.target.value } : item
-                      )
-                    )
-                  }
-                />
-                <Input
-                  type="time"
-                  value={row.end_time}
-                  disabled={!row.is_active}
-                  onChange={(e) =>
-                    setAvailability((prev) =>
-                      prev.map((item) =>
-                        item.weekday === row.weekday ? { ...item, end_time: e.target.value } : item
-                      )
-                    )
-                  }
-                />
-                <div className="text-xs text-muted-foreground flex items-center">
-                  {row.is_active ? 'Disponivel' : 'Folga'}
-                </div>
-              </div>
-            ))}
-          </div>
         </CardContent>
       </Card>
 

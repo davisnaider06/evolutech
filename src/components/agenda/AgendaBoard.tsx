@@ -69,10 +69,6 @@ interface BoardResponse {
 
 const WEEKDAYS = ['Domingo', 'Segunda', 'Terca', 'Quarta', 'Quinta', 'Sexta', 'Sabado'];
 
-/** Altura de um minuto na grade, em pixels. 1.4 deixa um corte de 30 min com 42px. */
-const PIXELS_PER_MINUTE = 1.4;
-/** De quanto em quanto tempo desenhar a regua da esquerda. */
-const RULER_STEP_MINUTES = 30;
 /** Tamanho da fatia no celular quando nao da para deduzir dos servicos. */
 const SLOT_PADRAO_MINUTOS = 30;
 
@@ -232,19 +228,6 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
 
   const dayStart = board?.day_start_minutes ?? 8 * 60;
   const dayEnd = board?.day_end_minutes ?? 18 * 60;
-  const totalMinutes = Math.max(60, dayEnd - dayStart);
-  const gridHeight = totalMinutes * PIXELS_PER_MINUTE;
-
-  /** Marcas da regua horaria a esquerda. */
-  const ruler = useMemo(() => {
-    const marks: number[] = [];
-    const first = Math.ceil(dayStart / RULER_STEP_MINUTES) * RULER_STEP_MINUTES;
-    for (let cursor = first; cursor <= dayEnd; cursor += RULER_STEP_MINUTES) {
-      marks.push(cursor);
-    }
-    return marks;
-  }, [dayStart, dayEnd]);
-
   /**
    * Transforma janelas, bloqueios e agendamentos numa lista de fatias.
    *
@@ -474,26 +457,6 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
     setBarbeiroAtivoId(columns[proximo].professional_id);
   };
 
-  /** Clique num ponto vazio da coluna, no desktop: vira a hora daquele ponto. */
-  const cliqueNaColuna = (event: React.MouseEvent<HTMLDivElement>, column: BoardColumn) => {
-    const alvo = event.target as HTMLElement;
-    // Cliques em cima de um agendamento ja tem dono.
-    if (alvo.closest('[data-agendamento]')) return;
-
-    const caixa = event.currentTarget.getBoundingClientRect();
-    const minutosBrutos = dayStart + (event.clientY - caixa.top) / PIXELS_PER_MINUTE;
-    // Encaixa na fatia mais proxima para baixo.
-    const inicio = Math.floor(minutosBrutos / slotMinutos) * slotMinutos;
-    if (inicio < dayStart || inicio >= dayEnd) return;
-
-    const ocupado =
-      column.appointments.some((item) => inicio >= item.start_minutes && inicio < item.end_minutes) ||
-      column.blocks.some((item) => inicio >= item.start_minutes && inicio < item.end_minutes);
-    if (ocupado) return;
-
-    abrirAcao(column, inicio, Math.min(inicio + slotMinutos, dayEnd));
-  };
-
   const cabecalhoData = board
     ? `${WEEKDAYS[board.weekday]} - ${new Date(`${board.date}T12:00:00`).toLocaleDateString('pt-BR')}`
     : '';
@@ -508,9 +471,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
               Agenda do dia
             </CardTitle>
             <CardDescription>
-              {isMobile
-                ? 'Escolha o barbeiro acima e toque num horario para agendar ou bloquear.'
-                : 'Uma coluna por barbeiro. Clique num horario vazio para agendar ou bloquear.'}
+              Escolha o barbeiro acima e toque num horario para agendar ou bloquear.
             </CardDescription>
           </div>
 
@@ -542,8 +503,10 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
             <p className="text-sm text-muted-foreground">
               Nenhum profissional ativo para exibir. Cadastre a equipe em Equipe.
             </p>
-          ) : isMobile ? (
-            /* ---------------- CELULAR: um barbeiro por vez ---------------- */
+          ) : (
+            /* Uma agenda por vez, em qualquer largura. Ver todos os barbeiros
+               lado a lado so cabia no desktop e obrigava a apertar cada coluna;
+               escolher de quem e a agenda ficou melhor nos dois tamanhos. */
             <div className="space-y-4">
               {/* Tira de barbeiros. O carrossel aqui e a escolha de quem, nao a agenda. */}
               <div className="-mx-2 flex gap-3 overflow-x-auto px-2 pb-2">
@@ -583,13 +546,13 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
               </div>
 
               {colunaAtiva && (
-                <div onTouchStart={aoTocar} onTouchEnd={aoSoltar} className="space-y-3">
+                <div onTouchStart={aoTocar} onTouchEnd={aoSoltar} className="max-w-2xl space-y-3">
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate font-medium">{colunaAtiva.professional_name}</p>
                       <p className="text-xs text-muted-foreground">
                         {colunaAtiva.summary.appointments} atendimentos
-                        {columns.length > 1 && ` - arraste para o proximo barbeiro`}
+                        {columns.length > 1 && isMobile && ' - arraste para o proximo barbeiro'}
                       </p>
                     </div>
                     <Button
@@ -700,160 +663,6 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                   )}
                 </div>
               )}
-            </div>
-          ) : (
-            /* ---------------- DESKTOP: grade proporcional ---------------- */
-            <div className="overflow-x-auto">
-              <div className="flex min-w-max gap-2">
-                {/* Regua de horarios */}
-                <div className="w-16 shrink-0 pt-12">
-                  <div className="relative" style={{ height: gridHeight }}>
-                    {ruler.map((mark) => (
-                      <div
-                        key={mark}
-                        className="absolute left-0 w-full pr-2 text-right text-xs text-muted-foreground"
-                        style={{ top: (mark - dayStart) * PIXELS_PER_MINUTE - 8 }}
-                      >
-                        {minutesToLabel(mark)}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {columns.map((column) => {
-                  const ocupacao =
-                    column.summary.available_minutes > 0
-                      ? Math.round(
-                          (column.summary.booked_minutes / column.summary.available_minutes) * 100
-                        )
-                      : 0;
-
-                  return (
-                    <div key={column.professional_id} className="w-56 shrink-0">
-                      {/* Cabecalho da coluna */}
-                      <div className="mb-2 h-12 rounded-t border-b bg-muted/50 px-2 py-1">
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            style={corDoProfissional(column.professional_id)}
-                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold"
-                          >
-                            {iniciais(column.professional_name)}
-                          </span>
-                          <p className="truncate text-sm font-medium">{column.professional_name}</p>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-muted-foreground">
-                            {column.summary.appointments} atend. - {ocupacao}% ocupado
-                          </span>
-                          <button
-                            type="button"
-                            title="Bloquear periodo"
-                            className="text-muted-foreground hover:text-destructive"
-                            onClick={() => openBlockDialog(column.professional_id)}
-                          >
-                            <Ban className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Corpo da coluna. Clicar num vazio abre o modal de acao. */}
-                      <div
-                        className="relative cursor-pointer rounded border bg-background"
-                        style={{ height: gridHeight }}
-                        onClick={(event) => cliqueNaColuna(event, column)}
-                      >
-                        {/* Linhas da regua */}
-                        {ruler.map((mark) => (
-                          <div
-                            key={mark}
-                            className="absolute left-0 w-full border-t border-dashed border-border/60"
-                            style={{ top: (mark - dayStart) * PIXELS_PER_MINUTE }}
-                          />
-                        ))}
-
-                        {/* Janela de trabalho: o que esta fora fica apagado */}
-                        {column.windows.map((window, index) => (
-                          <div
-                            key={`w-${index}`}
-                            className="absolute left-0 w-full bg-emerald-50/40"
-                            style={{
-                              top: (window.start_minutes - dayStart) * PIXELS_PER_MINUTE,
-                              height:
-                                (window.end_minutes - window.start_minutes) * PIXELS_PER_MINUTE,
-                            }}
-                          />
-                        ))}
-
-                        {column.windows.length === 0 && (
-                          <div className="absolute inset-0 flex items-center justify-center px-2 text-center text-xs text-muted-foreground">
-                            Sem expediente neste dia
-                          </div>
-                        )}
-
-                        {/* Bloqueios */}
-                        {column.blocks.map((block, index) => (
-                          <div
-                            key={`b-${index}`}
-                            title={block.reason || 'Horario bloqueado'}
-                            className="absolute left-0 w-full border-y border-dashed border-destructive/50 bg-[repeating-linear-gradient(45deg,transparent,transparent_6px,rgba(239,68,68,0.15)_6px,rgba(239,68,68,0.15)_12px)] px-1"
-                            style={{
-                              top: (block.start_minutes - dayStart) * PIXELS_PER_MINUTE,
-                              height:
-                                (block.end_minutes - block.start_minutes) * PIXELS_PER_MINUTE,
-                            }}
-                          >
-                            <span className="text-[10px] font-medium text-destructive">
-                              {block.reason || 'Bloqueado'}
-                            </span>
-                          </div>
-                        ))}
-
-                        {/* Agendamentos */}
-                        {column.appointments.map((appointment) => {
-                          const tone =
-                            statusStyles[appointment.status] ||
-                            'bg-primary/10 border-primary text-foreground';
-                          const height = Math.max(
-                            22,
-                            appointment.duration_minutes * PIXELS_PER_MINUTE - 2
-                          );
-                          return (
-                            <button
-                              key={appointment.id}
-                              type="button"
-                              data-agendamento
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                onSelectAppointment?.({
-                                  ...appointment,
-                                  professional_id: column.professional_id,
-                                  professional_name: column.professional_name,
-                                });
-                              }}
-                              className={`absolute left-1 right-1 overflow-hidden rounded border-l-4 px-1.5 py-0.5 text-left text-xs shadow-sm transition hover:shadow ${tone}`}
-                              style={{
-                                top:
-                                  (appointment.start_minutes - dayStart) * PIXELS_PER_MINUTE + 1,
-                                height,
-                              }}
-                            >
-                              <span className="block truncate font-medium">
-                                {minutesToLabel(appointment.start_minutes)}{' '}
-                                {appointment.customer_name}
-                              </span>
-                              {height > 32 && (
-                                <span className="block truncate opacity-80">
-                                  {appointment.service_name || 'Servico'}
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
             </div>
           )}
 
