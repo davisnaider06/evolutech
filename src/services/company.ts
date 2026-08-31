@@ -247,6 +247,24 @@ export const companyService = {
     return request(`/subscriptions/customers${suffix}`);
   },
 
+  // --- Pendencias e notificacoes ---
+
+  /** O que precisa da atencao de quem acabou de abrir o app. */
+  getPendencias: async () => request('/pendencias'),
+
+  getPushPublicKey: async () => request('/push/public-key'),
+  subscribePush: async (subscription: unknown) =>
+    request('/push/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({ subscription }),
+    }),
+  unsubscribePush: async (endpoint: string) =>
+    request('/push/unsubscribe', {
+      method: 'POST',
+      body: JSON.stringify({ endpoint }),
+    }),
+  sendPushTest: async () => request('/push/test', { method: 'POST' }),
+
   // --- Agenda em grade e bloqueios de horario ---
   getAgendaBoard: async (params?: { date?: string; professionalId?: string }) => {
     const searchParams = new URLSearchParams();

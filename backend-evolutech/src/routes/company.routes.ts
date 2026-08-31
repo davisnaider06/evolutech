@@ -3,11 +3,13 @@ import { CompanyController } from '../controllers/company.controller';
 import { DashboardController } from '../controllers/dashboard.controller';
 import { authenticateToken } from '../middlewares/auth.middleware';
 import { MediaController } from '../controllers/media.controller';
+import { PushController } from '../controllers/push.controller';
 
 const router = Router();
 const companyController = new CompanyController();
 const dashboardController = new DashboardController();
 const mediaController = new MediaController();
+const pushController = new PushController();
 const COMPANY_PERF_DEBUG = process.env.COMPANY_PERF_DEBUG === 'true';
 const COMPANY_SLOW_MS = Number(process.env.COMPANY_SLOW_MS || 300);
 
@@ -46,6 +48,17 @@ router.get('/dashboard/metrics', dashboardController.getMetrics.bind(dashboardCo
 router.get('/appointments/availability', companyController.listAppointmentAvailability.bind(companyController));
 router.put('/appointments/availability/:professionalId', companyController.saveAppointmentAvailability.bind(companyController));
 router.get('/appointments/board', companyController.getAgendaBoard.bind(companyController));
+
+// O que precisa da atencao do dono agora: agenda de hoje, mensalidade em
+// aberto, agendamento que entrou pelo link publico e ninguem viu ainda.
+router.get('/pendencias', companyController.getPendencias.bind(companyController));
+
+// Push: inscricao por aparelho. Sem modulo associado de proposito — receber
+// aviso nao e funcionalidade contratavel, e parte de usar o sistema.
+router.get('/push/public-key', pushController.getPublicKey.bind(pushController));
+router.post('/push/subscribe', pushController.subscribe.bind(pushController));
+router.post('/push/unsubscribe', pushController.unsubscribe.bind(pushController));
+router.post('/push/test', pushController.sendTest.bind(pushController));
 router.get('/appointments/blocks', companyController.listAppointmentBlocks.bind(companyController));
 router.post('/appointments/blocks', companyController.createAppointmentBlock.bind(companyController));
 router.delete('/appointments/blocks/:blockId', companyController.deleteAppointmentBlock.bind(companyController));

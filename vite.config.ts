@@ -16,6 +16,16 @@ export default defineConfig(() => ({
       injectRegister: "auto",
       workbox: {
         navigateFallback: "/index.html",
+        // O service worker continua gerado pelo Workbox (generateSW), que e o
+        // que mantem o precache do app funcionando. O generateSW nao aceita
+        // handler de `push`, entao o nosso entra por importScripts: um arquivo
+        // escrito a mao, sem build, carregado dentro do SW gerado.
+        //
+        // A alternativa seria migrar para injectManifest e reescrever o SW
+        // inteiro. Nao compensa o risco para dois listeners.
+        importScripts: ["/push-sw.js"],
+        // Ja e carregado via importScripts; precachear de novo so duplicaria.
+        globIgnores: ["**/push-sw.js"],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         globPatterns: ["**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,woff2}"],
         runtimeCaching: [

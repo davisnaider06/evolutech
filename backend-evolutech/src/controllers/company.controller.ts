@@ -625,6 +625,15 @@ export class CompanyController {
     }
   }
 
+  async getPendencias(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.getPendencias(req.user!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   async listPublicAvailableSlots(req: AuthedRequest, res: Response) {
     try {
       const { slug } = req.params;

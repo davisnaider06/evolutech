@@ -19,6 +19,8 @@ import {
 } from '../config/paymentGatewayCatalog';
 import { getBlockedIntervals, isIntervalBlocked } from '../utils/appointment-blocks.util';
 import { invalidateRoleCache } from '../middlewares/auth.middleware';
+import { pushService } from './push.service';
+import { notificationService } from './notification.service';
 
 class CompanyServiceError extends Error {
   statusCode: number;
@@ -9400,6 +9402,14 @@ export class CompanyService {
       return appointment;
     });
 
+    // Aviso depois do commit e sem await: o agendamento ja esta gravado, e
+    // e-mail ou push fora do ar nao pode transformar uma marcacao boa em erro
+    // para o cliente. Antes disto ninguem era avisado — o dono so descobria
+    // abrindo a agenda.
+    this.avisarNovoAgendamento(company.id, company.name, created).catch((error) => {
+      console.warn('[agendamento] falha ao avisar a equipe:', error?.message);
+    });
+
     return {
       id: created.id,
       company_name: company.name,
@@ -9410,6 +9420,187 @@ export class CompanyService {
       professional_id: created.professionalId,
       scheduled_at: created.scheduledAt,
       status: created.status,
+    };
+  }
+
+  /**
+   * Avisa dono e barbeiro que entrou agendamento novo.
+   *
+   * Dois canais com alcances diferentes: push chega na hora mas so em quem
+   * ligou as notificacoes (e, no iPhone, so em quem instalou na tela de
+   * inicio); e-mail chega sempre. Por isso os dois, e nao um ou outro.
+   */
+  private async avisarNovoAgendamento(companyId: string, companyName: string, appointment: any) {
+    const professionalId = appointment.professionalId || null;
+    const quando = new Date(appointment.scheduledAt).toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    await pushService.enviarParaEquipe(
+      companyId,
+      {
+        title: 'Novo agendamento',
+        body: `${appointment.customerName} - ${appointment.serviceName} - ${quando}`,
+        url: '/empresa/agendamentos',
+        // Sem tag fixa: dois agendamentos diferentes sao dois avisos, e um
+        // nao pode substituir o outro na bandeja.
+        tag: `agendamento-${appointment.id}`,
+      },
+      professionalId ? [professionalId] : []
+    );
+
+    const destinatarios = await prisma.userRole.findMany({
+      where: {
+        companyId,
+        OR: [{ role: 'DONO_EMPRESA' }, ...(professionalId ? [{ userId: professionalId }] : [])],
+      },
+      select: { user: { select: { email: true } } },
+    });
+
+    const emails = Array.from(
+      new Set(
+        destinatarios
+          .map((item) => String(item.user?.email || '').trim())
+          .filter((email) => email.includes('@'))
+      )
+    );
+
+    await Promise.all(
+      emails.map((email) =>
+        notificationService.novoAgendamento({
+          to: email,
+          companyName,
+          customerName: appointment.customerName,
+          customerPhone: appointment.customerPhone || null,
+          serviceName: appointment.serviceName || 'Servico',
+          professionalName: appointment.professionalName || 'A definir',
+          scheduledAt: new Date(appointment.scheduledAt),
+          origem: 'link publico',
+        })
+      )
+    );
+  }
+
+  /**
+   * O que precisa da atencao do dono agora.
+   *
+   * Existe porque push nao chega em todo mundo: no iPhone so vale para quem
+   * instalou o app na tela de inicio, e ninguem garante que a equipe inteira
+   * fez isso. Esta consulta e a rede de seguranca — abriu o app, ve o que
+   * aconteceu enquanto esteve fora, sem depender de permissao nenhuma.
+   *
+   * Funcionario ve so a propria agenda; dono ve a barbearia inteira.
+   */
+  async getPendencias(user: AuthenticatedUser, queryParams: { company_id?: string } = {}) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+
+    const agora = new Date();
+    const inicioDoDia = new Date(agora);
+    inicioDoDia.setHours(0, 0, 0, 0);
+    const fimDoDia = new Date(agora);
+    fimDoDia.setHours(23, 59, 59, 999);
+
+    // "Novo" = entrou nas ultimas 24h. Sem uma marca de leitura por usuario,
+    // uma janela fixa e honesta: nao promete que ele nao viu, so mostra o que
+    // e recente o bastante para valer o olhar.
+    const desde = new Date(agora.getTime() - 24 * 60 * 60 * 1000);
+
+    const soMinhaAgenda = user.role === 'FUNCIONARIO_EMPRESA' ? { professionalId: user.id } : {};
+    const ativos = { notIn: ['cancelado', 'cancelled', 'no_show', 'no-show'] };
+
+    const [hoje, aConfirmar, novos, proximo] = await Promise.all([
+      (prisma as any).appointment.count({
+        where: {
+          companyId,
+          ...soMinhaAgenda,
+          scheduledAt: { gte: inicioDoDia, lte: fimDoDia },
+          status: ativos,
+        },
+      }),
+      (prisma as any).appointment.count({
+        where: {
+          companyId,
+          ...soMinhaAgenda,
+          scheduledAt: { gte: agora },
+          status: 'pendente',
+        },
+      }),
+      (prisma as any).appointment.findMany({
+        where: {
+          companyId,
+          ...soMinhaAgenda,
+          createdAt: { gte: desde },
+          status: ativos,
+        },
+        select: {
+          id: true,
+          customerName: true,
+          serviceName: true,
+          professionalName: true,
+          scheduledAt: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      }),
+      (prisma as any).appointment.findFirst({
+        where: {
+          companyId,
+          ...soMinhaAgenda,
+          scheduledAt: { gte: agora },
+          status: ativos,
+        },
+        select: {
+          id: true,
+          customerName: true,
+          serviceName: true,
+          professionalName: true,
+          scheduledAt: true,
+        },
+        orderBy: { scheduledAt: 'asc' },
+      }),
+    ]);
+
+    // Mensalidade e assunto do dono: o barbeiro nao cobra ninguem.
+    let mensalidadesEmAberto = 0;
+    if (user.role !== 'FUNCIONARIO_EMPRESA') {
+      mensalidadesEmAberto = await (prisma as any).customerSubscription.count({
+        where: { companyId, status: 'overdue' },
+      });
+    }
+
+    const itens = {
+      agendamentos_hoje: hoje,
+      agendamentos_a_confirmar: aConfirmar,
+      agendamentos_novos: novos.length,
+      mensalidades_em_aberto: mensalidadesEmAberto,
+    };
+
+    return {
+      ...itens,
+      // O badge do menu: uma soma so do que pede acao, sem contar a agenda
+      // do dia, que e informacao e nao pendencia.
+      total: itens.agendamentos_a_confirmar + itens.mensalidades_em_aberto,
+      novos: novos.map((item: any) => ({
+        id: item.id,
+        customer_name: item.customerName,
+        service_name: item.serviceName,
+        professional_name: item.professionalName,
+        scheduled_at: item.scheduledAt,
+        created_at: item.createdAt,
+      })),
+      proximo: proximo
+        ? {
+            id: proximo.id,
+            customer_name: proximo.customerName,
+            service_name: proximo.serviceName,
+            professional_name: proximo.professionalName,
+            scheduled_at: proximo.scheduledAt,
+          }
+        : null,
     };
   }
 

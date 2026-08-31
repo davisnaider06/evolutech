@@ -30,6 +30,7 @@ model User {
   preferredByCustomers                Customer[]             @relation("CustomerPreferredProfessional")
   subscriptionsAsProfessional         CustomerSubscription[] @relation("SubscriptionProfessional")
   appointmentBlocks                   AppointmentBlock[]     @relation("AppointmentBlockProfessional")
+  pushSubscriptions                   PushSubscription[]
 
   @@map("profiles")
 }
@@ -961,4 +962,33 @@ enum CourseAccessStatus {
   pending
   canceled
   expired
+}
+
+/// Um aparelho inscrito para receber push.
+///
+/// A inscricao e por APARELHO, nao por pessoa: o mesmo barbeiro no celular e
+/// no computador gera duas linhas, e as duas devem receber. Por isso a chave
+/// unica e o `endpoint`, que o proprio navegador gera e que muda quando o
+/// usuario reinstala o app ou limpa os dados.
+///
+/// `p256dh` e `auth` sao as chaves de criptografia que o navegador entrega
+/// junto do endpoint — sem elas o push nao pode ser cifrado e o envio falha.
+///
+/// Inscricao morta (o servico de push responde 404 ou 410) e apagada no
+/// proprio envio: nao existe evento de "desinstalei o app" para escutar.
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  companyId String?  @map("company_id")
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+  lastSeenAt DateTime @default(now()) @map("last_seen_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([companyId])
+  @@map("push_subscriptions")
 }

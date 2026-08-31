@@ -10,6 +10,8 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { CheckCircle, ListTodo, LoaderCircle, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { PainelPendencias } from '@/components/notificacoes/PainelPendencias';
+import { AtivarNotificacoes } from '@/components/notificacoes/AtivarNotificacoes';
 
 type TaskStatus = 'todo' | 'doing' | 'done';
 
@@ -118,6 +120,11 @@ const EmpresaApp: React.FC = () => {
         <h1 className="text-2xl font-bold tracking-tight">Olá, {user?.name?.split(' ')[0]}</h1>
         <p className="text-muted-foreground">Dashboard pessoal de tarefas em formato Kanban</p>
       </div>
+
+      {/* Antes das tarefas: e a primeira coisa que a pessoa quer saber ao
+          abrir o app, e o convite de notificacao some sozinho depois de ligado. */}
+      <PainelPendencias />
+      <AtivarNotificacoes />
 
       <div className="grid gap-4 md:grid-cols-3">
         <StatsCard title="Tarefas Pendentes" value={todoCount} change={{ value: 0, label: 'a fazer' }} icon={ListTodo} />

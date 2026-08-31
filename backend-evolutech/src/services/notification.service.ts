@@ -445,6 +445,55 @@ export class NotificationService {
       }),
     });
   }
+
+  /**
+   * Entrou agendamento pelo link publico.
+   *
+   * Ate aqui ninguem era avisado: o cliente marcava e o dono so descobria
+   * abrindo a agenda. Vale para o barbeiro escolhido e para o dono.
+   */
+  async novoAgendamento(params: {
+    to: string;
+    companyName: string;
+    customerName: string;
+    customerPhone?: string | null;
+    serviceName: string;
+    professionalName: string;
+    scheduledAt: Date;
+    origem: 'link publico' | 'portal do cliente';
+  }) {
+    const quando = params.scheduledAt.toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    const telefone = String(params.customerPhone || '').trim();
+
+    return this.enviar({
+      to: params.to,
+      contexto: 'novo agendamento',
+      subject: `Novo agendamento: ${params.customerName} - ${quando}`,
+      html: montarLayout({
+        companyName: params.companyName,
+        title: 'Novo agendamento',
+        body: `
+          <p>Um cliente acabou de marcar pelo ${escapeHtml(params.origem)}.</p>
+          <table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:12px;">
+            <tr><td style="padding:8px 0;border-bottom:1px solid #E4E4E7;color:#71717A;">Cliente</td>
+                <td style="padding:8px 0;border-bottom:1px solid #E4E4E7;text-align:right;">${escapeHtml(params.customerName)}</td></tr>
+            ${telefone ? `<tr><td style="padding:8px 0;border-bottom:1px solid #E4E4E7;color:#71717A;">Telefone</td>
+                <td style="padding:8px 0;border-bottom:1px solid #E4E4E7;text-align:right;">${escapeHtml(telefone)}</td></tr>` : ''}
+            <tr><td style="padding:8px 0;border-bottom:1px solid #E4E4E7;color:#71717A;">Servico</td>
+                <td style="padding:8px 0;border-bottom:1px solid #E4E4E7;text-align:right;">${escapeHtml(params.serviceName)}</td></tr>
+            <tr><td style="padding:8px 0;border-bottom:1px solid #E4E4E7;color:#71717A;">Profissional</td>
+                <td style="padding:8px 0;border-bottom:1px solid #E4E4E7;text-align:right;">${escapeHtml(params.professionalName)}</td></tr>
+          </table>`,
+        callout: { tone: 'info', text: `Horario marcado: <strong>${quando}</strong>.` },
+      }),
+    });
+  }
 }
 
 export const notificationService = new NotificationService();
