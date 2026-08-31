@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { companyService } from '@/services/company';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { iniciais, corDoProfissional } from '@/lib/profissional';
 import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight, Ban, CalendarDays, Plus, Clock } from 'lucide-react';
 
@@ -100,32 +101,6 @@ const statusStyles: Record<string, string> = {
   concluido: 'bg-sky-100 border-sky-500 text-sky-900',
   cancelado: 'bg-muted border-border text-muted-foreground line-through',
   no_show: 'bg-rose-100 border-rose-400 text-rose-900',
-};
-
-/** Iniciais do barbeiro, para o avatar enquanto nao existe foto no cadastro. */
-const iniciais = (nome: string) => {
-  const partes = String(nome || '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  if (partes.length === 0) return '?';
-  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
-  return `${partes[0][0]}${partes[partes.length - 1][0]}`.toUpperCase();
-};
-
-/**
- * Cor estavel por profissional.
- *
- * Derivada do id para que o mesmo barbeiro tenha sempre a mesma cor, em
- * qualquer dia e em qualquer aparelho — e o dono aprende a reconhecer pela cor
- * antes mesmo de ler o nome.
- */
-const corDoProfissional = (id: string) => {
-  let hash = 0;
-  for (let i = 0; i < id.length; i += 1) {
-    hash = (hash * 31 + id.charCodeAt(i)) % 360;
-  }
-  return { backgroundColor: `hsl(${hash} 62% 92%)`, color: `hsl(${hash} 68% 28%)` };
 };
 
 /** Uma fatia da agenda do dia: agendamento, bloqueio, livre ou fora do expediente. */

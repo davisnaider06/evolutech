@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
+import { iniciais, corDoProfissional } from '@/lib/profissional';
 
 type CommissionProfile = {
   professional_id: string;
@@ -57,6 +58,107 @@ const currentMonth = () => {
 
 const toMoney = (value: number) =>
   value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+/**
+ * Resultado de um profissional no mes.
+ *
+ * Para o dono, e a leitura que ele faz primeiro: quanto o barbeiro produziu,
+ * quanto fica com ele e quanto sobra para a casa. Para o barbeiro, e o proprio
+ * extrato — e ele nunca ve o card de outro colega, nem aqui nem na API, que
+ * responde so a linha dele quando o papel e FUNCIONARIO_EMPRESA.
+ */
+const CardResultado: React.FC<{
+  linha: CommissionOverviewItem;
+  mostrarParteDaCasa: boolean;
+}> = ({ linha, mostrarParteDaCasa }) => {
+  const receitaTotal = Number(linha.service_revenue || 0) + Number(linha.product_revenue || 0);
+  const doBarbeiro = Number(linha.total_commission || 0);
+  // O que sobra para a casa sai da receita menos TUDO que o barbeiro leva —
+  // inclusive fixo e ajustes, que nao sao percentual de venda mas saem do
+  // mesmo bolo. Pode ficar negativo num mes fraco com fixo alto, e nesse caso
+  // e exatamente isso que o dono precisa enxergar.
+  const daCasa = receitaTotal - doBarbeiro;
+  const pago = String(linha.payout_status || 'pending').toLowerCase() === 'paid';
+
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <span
+          style={corDoProfissional(linha.professional_id)}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+        >
+          {iniciais(linha.professional_name)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium leading-tight">{linha.professional_name}</p>
+          <p className="text-xs text-muted-foreground">
+            {linha.service_commission_pct}% servico
+            {Number(linha.product_revenue || 0) > 0
+              ? ` - ${linha.product_commission_pct}% produto`
+              : ''}
+          </p>
+        </div>
+        <span
+          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+            pago ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+          }`}
+        >
+          {pago ? 'Pago' : 'A pagar'}
+        </span>
+      </div>
+
+      <dl className="space-y-1.5 text-sm">
+        <div className="flex items-baseline justify-between gap-2">
+          <dt className="text-muted-foreground">Vendeu em servicos</dt>
+          <dd className="font-medium tabular-nums">{toMoney(Number(linha.service_revenue || 0))}</dd>
+        </div>
+
+        {Number(linha.product_revenue || 0) > 0 && (
+          <div className="flex items-baseline justify-between gap-2">
+            <dt className="text-muted-foreground">Vendeu em produtos</dt>
+            <dd className="font-medium tabular-nums">
+              {toMoney(Number(linha.product_revenue || 0))}
+            </dd>
+          </div>
+        )}
+
+        {Number(linha.monthly_fixed_amount || 0) > 0 && (
+          <div className="flex items-baseline justify-between gap-2">
+            <dt className="text-muted-foreground">Fixo mensal</dt>
+            <dd className="tabular-nums">{toMoney(Number(linha.monthly_fixed_amount || 0))}</dd>
+          </div>
+        )}
+
+        {Number(linha.monthly_adjustments || 0) !== 0 && (
+          <div className="flex items-baseline justify-between gap-2">
+            <dt className="text-muted-foreground">Ajustes do mes</dt>
+            <dd className="tabular-nums">{toMoney(Number(linha.monthly_adjustments || 0))}</dd>
+          </div>
+        )}
+
+        <div className="mt-2 flex items-baseline justify-between gap-2 border-t pt-2">
+          <dt className="font-medium">Do barbeiro</dt>
+          <dd className="text-base font-semibold tabular-nums text-primary">
+            {toMoney(doBarbeiro)}
+          </dd>
+        </div>
+
+        {mostrarParteDaCasa && (
+          <div className="flex items-baseline justify-between gap-2">
+            <dt className="font-medium">Da casa</dt>
+            <dd
+              className={`text-base font-semibold tabular-nums ${
+                daCasa < 0 ? 'text-destructive' : ''
+              }`}
+            >
+              {toMoney(daCasa)}
+            </dd>
+          </div>
+        )}
+      </dl>
+    </div>
+  );
+};
 
 const Comissoes: React.FC = () => {
   const { user } = useAuth();
@@ -266,7 +368,74 @@ const Comissoes: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Comissoes" description="Controle mensal por barbeiro/profissional" />
+      <PageHeader
+        title="Comissoes"
+        description={
+          isOwner
+            ? 'Controle mensal por barbeiro/profissional'
+            : 'Seu resultado do mes. Cada profissional ve apenas os proprios numeros.'
+        }
+      />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{isOwner ? 'Resultado por barbeiro' : 'Seu resultado do mes'}</CardTitle>
+          <CardDescription>
+            {isOwner
+              ? 'Quanto cada um produziu no mes, quanto fica com ele e quanto sobra para a casa.'
+              : 'Quanto voce produziu no mes e quanto disso e sua comissao.'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Carregando...</p>
+          ) : rows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Nenhum resultado neste mes. A comissao de servico vem dos agendamentos marcados
+              como concluidos; a de produto, das vendas no PDV.
+            </p>
+          ) : (
+            <>
+              <div
+                className={`grid gap-3 ${
+                  isOwner ? 'sm:grid-cols-2 xl:grid-cols-3' : 'max-w-md'
+                }`}
+              >
+                {rows.map((linha) => (
+                  <CardResultado
+                    key={linha.professional_id}
+                    linha={linha}
+                    mostrarParteDaCasa={isOwner}
+                  />
+                ))}
+              </div>
+
+              {isOwner && rows.length > 1 && (
+                <div className="mt-4 flex flex-wrap gap-x-8 gap-y-2 border-t pt-3 text-sm">
+                  <span className="text-muted-foreground">
+                    Receita do mes:{' '}
+                    <strong className="tabular-nums text-foreground">
+                      {toMoney(summary.service + summary.product)}
+                    </strong>
+                  </span>
+                  <span className="text-muted-foreground">
+                    Comissoes:{' '}
+                    <strong className="tabular-nums text-foreground">
+                      {toMoney(summary.total)}
+                    </strong>
+                  </span>
+                  <span className="text-muted-foreground">
+                    Fica com a casa:{' '}
+                    <strong className="tabular-nums text-foreground">
+                      {toMoney(summary.service + summary.product - summary.total)}
+                    </strong>
+                  </span>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
