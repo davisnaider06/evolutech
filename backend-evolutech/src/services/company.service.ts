@@ -694,6 +694,8 @@ export class CompanyService {
       if (user.role === 'FUNCIONARIO_EMPRESA') {
         payload.professionalId = user.id;
         payload.professionalName = user.fullName;
+      } else {
+        await this.resolveAppointmentProfessional(payload, companyId);
       }
     }
     if (table === 'cash_transactions') {
@@ -767,6 +769,12 @@ export class CompanyService {
     delete payload.id;
     delete payload.companyId;
     delete payload.company_id;
+
+    // Editar tambem precisa manter o vinculo, senao trocar o barbeiro pelo
+    // formulario devolveria o agendamento ao limbo de professionalId nulo.
+    if (table === 'appointments' && user.role !== 'FUNCIONARIO_EMPRESA') {
+      await this.resolveAppointmentProfessional(payload, existing.companyId);
+    }
     const targetType = String(payload.type || '').trim().toLowerCase();
     if (table === 'appointments' && payload.status !== undefined) {
       payload.status = this.normalizeAppointmentStatus(payload.status);
@@ -889,6 +897,62 @@ export class CompanyService {
 
   // Normaliza preferred_professional_id vindo do front e garante que o barbeiro
   // informado pertence mesmo a esta empresa (evita vincular cliente a alguem de fora).
+  /**
+   * Garante que o agendamento saiba de QUEM ele e, nao so o nome escrito.
+   *
+   * A grade monta as colunas filtrando por professionalId. O formulario da
+   * tela mandava apenas professional_name, entao todo agendamento criado pelo
+   * dono nascia com professionalId nulo e sumia da agenda — existia na lista,
+   * nao aparecia em coluna nenhuma. So o funcionario escapava, porque para ele
+   * o backend carimba o proprio id.
+   *
+   * Resolver aqui, e nao so no formulario, conserta tambem o que vier de
+   * qualquer outro caminho que ainda mande so o nome.
+   */
+  private async resolveAppointmentProfessional(payload: any, companyId: string) {
+    const idInformado = String(payload.professionalId || payload.professional_id || '').trim();
+    const nomeInformado = String(payload.professionalName || payload.professional_name || '').trim();
+    delete payload.professional_id;
+    delete payload.professional_name;
+
+    if (idInformado) {
+      const vinculo = await prisma.userRole.findFirst({
+        where: {
+          companyId,
+          userId: idInformado,
+          role: { in: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+        },
+        select: { userId: true, user: { select: { fullName: true } } },
+      });
+      if (!vinculo) {
+        throw new CompanyServiceError('Profissional nao encontrado nesta empresa', 404);
+      }
+      payload.professionalId = vinculo.userId;
+      payload.professionalName = vinculo.user.fullName;
+      return;
+    }
+
+    if (!nomeInformado) {
+      payload.professionalId = null;
+      payload.professionalName = null;
+      return;
+    }
+
+    const porNome = await prisma.userRole.findFirst({
+      where: {
+        companyId,
+        role: { in: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+        user: { fullName: { equals: nomeInformado, mode: 'insensitive' }, isActive: true },
+      },
+      select: { userId: true, user: { select: { fullName: true } } },
+    });
+
+    // Nome que nao corresponde a ninguem da equipe continua sendo aceito como
+    // texto livre: agenda antiga tem registro assim e nao vale recusar agora.
+    payload.professionalId = porNome?.userId || null;
+    payload.professionalName = porNome?.user.fullName || nomeInformado;
+  }
+
   private async applyCustomerProfessionalPayload(payload: any, companyId: string) {
     const raw =
       payload.preferred_professional_id !== undefined

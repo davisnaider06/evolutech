@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,13 +13,15 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { companyService } from '@/services/company';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { toast } from 'sonner';
-import { ChevronLeft, ChevronRight, Ban, CalendarDays } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Ban, CalendarDays, Plus, Clock } from 'lucide-react';
 
 interface BoardAppointment {
   id: string;
   customer_id: string | null;
   customer_name: string;
+  service_id?: string | null;
   service_name: string | null;
   status: string;
   scheduled_at: string;
@@ -70,6 +72,8 @@ const WEEKDAYS = ['Domingo', 'Segunda', 'Terca', 'Quarta', 'Quinta', 'Sexta', 'S
 const PIXELS_PER_MINUTE = 1.4;
 /** De quanto em quanto tempo desenhar a regua da esquerda. */
 const RULER_STEP_MINUTES = 30;
+/** Tamanho da fatia no celular quando nao da para deduzir dos servicos. */
+const SLOT_PADRAO_MINUTOS = 30;
 
 const minutesToLabel = (value: number) => {
   const h = Math.floor(value / 60);
@@ -98,6 +102,39 @@ const statusStyles: Record<string, string> = {
   no_show: 'bg-rose-100 border-rose-400 text-rose-900',
 };
 
+/** Iniciais do barbeiro, para o avatar enquanto nao existe foto no cadastro. */
+const iniciais = (nome: string) => {
+  const partes = String(nome || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (partes.length === 0) return '?';
+  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+  return `${partes[0][0]}${partes[partes.length - 1][0]}`.toUpperCase();
+};
+
+/**
+ * Cor estavel por profissional.
+ *
+ * Derivada do id para que o mesmo barbeiro tenha sempre a mesma cor, em
+ * qualquer dia e em qualquer aparelho — e o dono aprende a reconhecer pela cor
+ * antes mesmo de ler o nome.
+ */
+const corDoProfissional = (id: string) => {
+  let hash = 0;
+  for (let i = 0; i < id.length; i += 1) {
+    hash = (hash * 31 + id.charCodeAt(i)) % 360;
+  }
+  return { backgroundColor: `hsl(${hash} 62% 92%)`, color: `hsl(${hash} 68% 28%)` };
+};
+
+/** Uma fatia da agenda do dia: agendamento, bloqueio, livre ou fora do expediente. */
+type Fatia =
+  | { tipo: 'agendamento'; inicio: number; fim: number; agendamento: BoardAppointment }
+  | { tipo: 'bloqueio'; inicio: number; fim: number; motivo: string | null }
+  | { tipo: 'livre'; inicio: number; fim: number }
+  | { tipo: 'fora'; inicio: number; fim: number };
+
 interface AgendaBoardProps {
   /**
    * Chamado quando um agendamento e clicado. Recebe o registro completo da grade,
@@ -107,17 +144,34 @@ interface AgendaBoardProps {
   onSelectAppointment?: (
     appointment: BoardAppointment & { professional_id: string; professional_name: string }
   ) => void;
+  /**
+   * Chamado quando um horario vazio e tocado e o usuario escolhe "Agendar".
+   * Ja vem com barbeiro, data e hora resolvidos: o formulario abre faltando
+   * so cliente e servico.
+   */
+  onCreateAppointment?: (slot: {
+    professional_id: string;
+    professional_name: string;
+    scheduled_at: string;
+  }) => void;
   /** Incrementar para forcar recarga externa (apos criar/editar um agendamento). */
   refreshToken?: number;
 }
 
 export const AgendaBoard: React.FC<AgendaBoardProps> = ({
   onSelectAppointment,
+  onCreateAppointment,
   refreshToken = 0,
 }) => {
+  const isMobile = useIsMobile();
   const [date, setDate] = useState(todayISO());
   const [board, setBoard] = useState<BoardResponse | null>(null);
   const [loading, setLoading] = useState(true);
+
+  /** No celular a agenda e de um barbeiro por vez; este e o escolhido. */
+  const [barbeiroAtivoId, setBarbeiroAtivoId] = useState<string | null>(null);
+  /** Fatia da agenda usada no celular, deduzida do menor servico ativo. */
+  const [slotMinutos, setSlotMinutos] = useState(SLOT_PADRAO_MINUTOS);
 
   const [blockDialogOpen, setBlockDialogOpen] = useState(false);
   const [blockSaving, setBlockSaving] = useState(false);
@@ -128,6 +182,15 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
     reason: '',
     is_recurring: false,
   });
+
+  /** Horario vazio que o usuario tocou. Abre o modal de acao rapida. */
+  const [acaoSlot, setAcaoSlot] = useState<{
+    professionalId: string;
+    professionalName: string;
+    inicio: number;
+    fim: number;
+  } | null>(null);
+  const [bloqueandoRapido, setBloqueandoRapido] = useState(false);
 
   const loadBoard = useCallback(async () => {
     setLoading(true);
@@ -146,6 +209,52 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
     loadBoard();
   }, [loadBoard, refreshToken]);
 
+  /**
+   * Fatia do dia = menor servico ativo, limitada entre 10 e 60 minutos.
+   * Barbearia que trabalha com corte de 20 minutos nao deve ver a agenda
+   * quebrada de 30 em 30.
+   */
+  useEffect(() => {
+    let ativo = true;
+    companyService
+      .list('appointment_services', { page: 1, pageSize: 100, is_active: 'true' })
+      .then((resposta: any) => {
+        if (!ativo) return;
+        const duracoes = (resposta?.data || [])
+          .map((item: any) => Number(item.durationMinutes ?? item.duration_minutes ?? 0))
+          .filter((valor: number) => Number.isFinite(valor) && valor > 0);
+        if (duracoes.length === 0) return;
+        setSlotMinutos(Math.min(60, Math.max(10, Math.min(...duracoes))));
+      })
+      .catch(() => {
+        // Sem a lista de servicos a fatia padrao de 30 min resolve.
+      });
+    return () => {
+      ativo = false;
+    };
+  }, []);
+
+  const columns = useMemo(() => board?.columns || [], [board]);
+
+  // Mantem um barbeiro selecionado sempre que a lista muda de tamanho ou de dia.
+  useEffect(() => {
+    if (columns.length === 0) {
+      setBarbeiroAtivoId(null);
+      return;
+    }
+    setBarbeiroAtivoId((atual) =>
+      atual && columns.some((column) => column.professional_id === atual)
+        ? atual
+        : columns[0].professional_id
+    );
+  }, [columns]);
+
+  const indiceAtivo = Math.max(
+    0,
+    columns.findIndex((column) => column.professional_id === barbeiroAtivoId)
+  );
+  const colunaAtiva = columns[indiceAtivo] || null;
+
   const dayStart = board?.day_start_minutes ?? 8 * 60;
   const dayEnd = board?.day_end_minutes ?? 18 * 60;
   const totalMinutes = Math.max(60, dayEnd - dayStart);
@@ -160,6 +269,78 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
     }
     return marks;
   }, [dayStart, dayEnd]);
+
+  /**
+   * Transforma janelas, bloqueios e agendamentos numa lista de fatias.
+   *
+   * No celular a grade posicional nao serve: um vazio de 15 minutos vira uma
+   * faixa de 21px, pequena demais para o dedo. A lista da a cada fatia uma
+   * altura confortavel e mantem a ordem do dia.
+   */
+  const fatiasDoDia = useCallback(
+    (column: BoardColumn): Fatia[] => {
+      const fatias: Fatia[] = [];
+      const dentroDoExpediente = (minuto: number) =>
+        column.windows.some((janela) => minuto >= janela.start_minutes && minuto < janela.end_minutes);
+
+      let cursor = dayStart;
+      let guarda = 0;
+
+      while (cursor < dayEnd && guarda < 500) {
+        guarda += 1;
+
+        const agendamento = column.appointments.find(
+          (item) => cursor >= item.start_minutes && cursor < item.end_minutes
+        );
+        if (agendamento) {
+          fatias.push({
+            tipo: 'agendamento',
+            inicio: agendamento.start_minutes,
+            fim: agendamento.end_minutes,
+            agendamento,
+          });
+          cursor = Math.max(agendamento.end_minutes, cursor + 1);
+          continue;
+        }
+
+        const bloqueio = column.blocks.find(
+          (item) => cursor >= item.start_minutes && cursor < item.end_minutes
+        );
+        if (bloqueio) {
+          fatias.push({
+            tipo: 'bloqueio',
+            inicio: bloqueio.start_minutes,
+            fim: bloqueio.end_minutes,
+            motivo: bloqueio.reason,
+          });
+          cursor = Math.max(bloqueio.end_minutes, cursor + 1);
+          continue;
+        }
+
+        const fim = Math.min(cursor + slotMinutos, dayEnd);
+        // O proximo compromisso pode comecar antes do fim da fatia cheia.
+        const proximoInicio = Math.min(
+          ...column.appointments
+            .filter((item) => item.start_minutes > cursor)
+            .map((item) => item.start_minutes),
+          ...column.blocks
+            .filter((item) => item.start_minutes > cursor)
+            .map((item) => item.start_minutes),
+          fim
+        );
+
+        fatias.push({
+          tipo: dentroDoExpediente(cursor) ? 'livre' : 'fora',
+          inicio: cursor,
+          fim: proximoInicio,
+        });
+        cursor = Math.max(proximoInicio, cursor + 1);
+      }
+
+      return fatias;
+    },
+    [dayStart, dayEnd, slotMinutos]
+  );
 
   const openBlockDialog = (professionalId: string) => {
     setBlockForm({
@@ -221,7 +402,126 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
     }
   };
 
-  const columns = board?.columns || [];
+  /** Data e hora ISO local de uma fatia, no formato que o formulario espera. */
+  const isoDoSlot = (minutos: number) => {
+    const hora = String(Math.floor(minutos / 60)).padStart(2, '0');
+    const minuto = String(Math.round(minutos % 60)).padStart(2, '0');
+    return `${date}T${hora}:${minuto}`;
+  };
+
+  const abrirAcao = (column: BoardColumn, inicio: number, fim: number) => {
+    setAcaoSlot({
+      professionalId: column.professional_id,
+      professionalName: column.professional_name,
+      inicio,
+      fim: Math.max(fim, inicio + slotMinutos),
+    });
+  };
+
+  const confirmarAgendar = () => {
+    if (!acaoSlot) return;
+    onCreateAppointment?.({
+      professional_id: acaoSlot.professionalId,
+      professional_name: acaoSlot.professionalName,
+      scheduled_at: isoDoSlot(acaoSlot.inicio),
+    });
+    setAcaoSlot(null);
+  };
+
+  /**
+   * Bloqueia a fatia tocada na hora, sem pedir motivo.
+   *
+   * E a agilidade que a tela precisa ter: o barbeiro tem um compromisso e
+   * bloqueia em dois toques. O desfazer no toast cobre o toque errado, e quem
+   * quiser motivo ou recorrencia usa "Bloquear periodo".
+   */
+  const bloquearRapido = async () => {
+    if (!acaoSlot) return;
+    setBloqueandoRapido(true);
+    try {
+      const criado: any = await companyService.createAppointmentBlock({
+        professional_id: acaoSlot.professionalId,
+        start_at: new Date(`${isoDoSlot(acaoSlot.inicio)}:00`).toISOString(),
+        end_at: new Date(`${isoDoSlot(acaoSlot.fim)}:00`).toISOString(),
+      });
+
+      const inicioLabel = minutesToLabel(acaoSlot.inicio);
+      const fimLabel = minutesToLabel(acaoSlot.fim);
+      setAcaoSlot(null);
+      await loadBoard();
+
+      toast.success(`Bloqueado das ${inicioLabel} as ${fimLabel}`, {
+        action: criado?.id
+          ? {
+              label: 'Desfazer',
+              onClick: async () => {
+                try {
+                  await companyService.deleteAppointmentBlock(criado.id);
+                  toast.success('Bloqueio removido');
+                  await loadBoard();
+                } catch (error: any) {
+                  toast.error(error?.message || 'Erro ao desfazer o bloqueio');
+                }
+              },
+            }
+          : undefined,
+      });
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao bloquear horario');
+    } finally {
+      setBloqueandoRapido(false);
+    }
+  };
+
+  // --- Arrastar para trocar de barbeiro (celular) ---
+  const toqueRef = useRef<{ x: number; y: number } | null>(null);
+
+  const aoTocar = (event: React.TouchEvent) => {
+    const toque = event.touches[0];
+    toqueRef.current = { x: toque.clientX, y: toque.clientY };
+  };
+
+  const aoSoltar = (event: React.TouchEvent) => {
+    const inicio = toqueRef.current;
+    toqueRef.current = null;
+    if (!inicio || columns.length < 2) return;
+
+    const fim = event.changedTouches[0];
+    const dx = fim.clientX - inicio.x;
+    const dy = fim.clientY - inicio.y;
+
+    // So conta como troca de barbeiro se for claramente horizontal:
+    // rolar a agenda na vertical nao pode mudar de coluna sem querer.
+    if (Math.abs(dx) < 60 || Math.abs(dy) > Math.abs(dx) * 0.6) return;
+
+    const proximo = dx < 0 ? indiceAtivo + 1 : indiceAtivo - 1;
+    if (proximo < 0 || proximo >= columns.length) return;
+    setBarbeiroAtivoId(columns[proximo].professional_id);
+  };
+
+  /** Clique num ponto vazio da coluna, no desktop: vira a hora daquele ponto. */
+  const cliqueNaColuna = (event: React.MouseEvent<HTMLDivElement>, column: BoardColumn) => {
+    const alvo = event.target as HTMLElement;
+    // Cliques em cima de um agendamento ja tem dono.
+    if (alvo.closest('[data-agendamento]')) return;
+
+    const caixa = event.currentTarget.getBoundingClientRect();
+    const minutosBrutos = dayStart + (event.clientY - caixa.top) / PIXELS_PER_MINUTE;
+    // Encaixa na fatia mais proxima para baixo.
+    const inicio = Math.floor(minutosBrutos / slotMinutos) * slotMinutos;
+    if (inicio < dayStart || inicio >= dayEnd) return;
+
+    const ocupado =
+      column.appointments.some((item) => inicio >= item.start_minutes && inicio < item.end_minutes) ||
+      column.blocks.some((item) => inicio >= item.start_minutes && inicio < item.end_minutes);
+    if (ocupado) return;
+
+    abrirAcao(column, inicio, Math.min(inicio + slotMinutos, dayEnd));
+  };
+
+  const cabecalhoData = board
+    ? `${WEEKDAYS[board.weekday]} - ${new Date(`${board.date}T12:00:00`).toLocaleDateString('pt-BR')}`
+    : '';
 
   return (
     <>
@@ -233,8 +533,9 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
               Agenda do dia
             </CardTitle>
             <CardDescription>
-              Uma coluna por barbeiro. Clique num atendimento para abrir, ou bloqueie um
-              horario para almoco e folga.
+              {isMobile
+                ? 'Escolha o barbeiro acima e toque num horario para agendar ou bloquear.'
+                : 'Uma coluna por barbeiro. Clique num horario vazio para agendar ou bloquear.'}
             </CardDescription>
           </div>
 
@@ -258,10 +559,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
         </CardHeader>
 
         <CardContent>
-          <p className="mb-3 text-sm text-muted-foreground">
-            {board ? WEEKDAYS[board.weekday] : ''}
-            {board ? ` - ${new Date(`${board.date}T12:00:00`).toLocaleDateString('pt-BR')}` : ''}
-          </p>
+          <p className="mb-3 text-sm text-muted-foreground">{cabecalhoData}</p>
 
           {loading ? (
             <p className="text-sm text-muted-foreground">Carregando agenda...</p>
@@ -269,8 +567,167 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
             <p className="text-sm text-muted-foreground">
               Nenhum profissional ativo para exibir. Cadastre a equipe em Equipe.
             </p>
+          ) : isMobile ? (
+            /* ---------------- CELULAR: um barbeiro por vez ---------------- */
+            <div className="space-y-4">
+              {/* Tira de barbeiros. O carrossel aqui e a escolha de quem, nao a agenda. */}
+              <div className="-mx-2 flex gap-3 overflow-x-auto px-2 pb-2">
+                {columns.map((column) => {
+                  const ativo = column.professional_id === barbeiroAtivoId;
+                  return (
+                    <button
+                      key={column.professional_id}
+                      type="button"
+                      onClick={() => setBarbeiroAtivoId(column.professional_id)}
+                      aria-pressed={ativo}
+                      className="flex w-16 shrink-0 flex-col items-center gap-1 focus-visible:outline-none"
+                    >
+                      <span
+                        style={corDoProfissional(column.professional_id)}
+                        className={`flex h-14 w-14 items-center justify-center rounded-full text-base font-semibold transition ${
+                          ativo
+                            ? 'ring-2 ring-primary ring-offset-2 ring-offset-background'
+                            : 'opacity-60'
+                        }`}
+                      >
+                        {iniciais(column.professional_name)}
+                      </span>
+                      <span
+                        className={`w-full truncate text-center text-[11px] ${
+                          ativo ? 'font-semibold text-foreground' : 'text-muted-foreground'
+                        }`}
+                      >
+                        {column.professional_name.split(' ')[0]}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {column.summary.appointments}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {colunaAtiva && (
+                <div onTouchStart={aoTocar} onTouchEnd={aoSoltar} className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{colunaAtiva.professional_name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {colunaAtiva.summary.appointments} atendimentos
+                        {columns.length > 1 && ` - arraste para o proximo barbeiro`}
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openBlockDialog(colunaAtiva.professional_id)}
+                    >
+                      <Ban className="mr-1.5 h-3.5 w-3.5" />
+                      Bloquear periodo
+                    </Button>
+                  </div>
+
+                  {colunaAtiva.windows.length === 0 ? (
+                    <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+                      Sem expediente neste dia.
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {fatiasDoDia(colunaAtiva).map((fatia, index) => {
+                        const chave = `${fatia.tipo}-${fatia.inicio}-${index}`;
+                        const hora = minutesToLabel(fatia.inicio);
+
+                        if (fatia.tipo === 'agendamento') {
+                          const tone =
+                            statusStyles[fatia.agendamento.status] ||
+                            'bg-primary/10 border-primary text-foreground';
+                          return (
+                            <button
+                              key={chave}
+                              type="button"
+                              onClick={() =>
+                                onSelectAppointment?.({
+                                  ...fatia.agendamento,
+                                  professional_id: colunaAtiva.professional_id,
+                                  professional_name: colunaAtiva.professional_name,
+                                })
+                              }
+                              className={`flex w-full items-center gap-3 rounded-md border-l-4 px-3 py-2.5 text-left ${tone}`}
+                            >
+                              <span className="w-11 shrink-0 font-mono text-xs">{hora}</span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-sm font-medium">
+                                  {fatia.agendamento.customer_name}
+                                </span>
+                                <span className="block truncate text-xs opacity-80">
+                                  {fatia.agendamento.service_name || 'Servico'} -{' '}
+                                  {fatia.agendamento.duration_minutes} min
+                                </span>
+                              </span>
+                            </button>
+                          );
+                        }
+
+                        if (fatia.tipo === 'bloqueio') {
+                          return (
+                            <div
+                              key={chave}
+                              className="flex items-center gap-3 rounded-md border border-dashed border-destructive/50 bg-destructive/5 px-3 py-2.5"
+                            >
+                              <span className="w-11 shrink-0 font-mono text-xs text-muted-foreground">
+                                {hora}
+                              </span>
+                              <span className="flex items-center gap-1.5 text-sm text-destructive">
+                                <Ban className="h-3.5 w-3.5" />
+                                {fatia.motivo || 'Bloqueado'}
+                                <span className="text-xs opacity-70">
+                                  ate {minutesToLabel(fatia.fim)}
+                                </span>
+                              </span>
+                            </div>
+                          );
+                        }
+
+                        if (fatia.tipo === 'fora') {
+                          return (
+                            <div
+                              key={chave}
+                              className="flex items-center gap-3 px-3 py-1.5 opacity-45"
+                            >
+                              <span className="w-11 shrink-0 font-mono text-xs text-muted-foreground">
+                                {hora}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                Fora do expediente
+                              </span>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <button
+                            key={chave}
+                            type="button"
+                            onClick={() => abrirAcao(colunaAtiva, fatia.inicio, fatia.fim)}
+                            className="flex w-full items-center gap-3 rounded-md border border-dashed px-3 py-2.5 text-left transition hover:border-primary hover:bg-primary/5"
+                          >
+                            <span className="w-11 shrink-0 font-mono text-xs text-muted-foreground">
+                              {hora}
+                            </span>
+                            <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                              <Plus className="h-3.5 w-3.5" />
+                              Livre
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           ) : (
-            // A grade rola na horizontal quando ha muitos barbeiros.
+            /* ---------------- DESKTOP: grade proporcional ---------------- */
             <div className="overflow-x-auto">
               <div className="flex min-w-max gap-2">
                 {/* Regua de horarios */}
@@ -300,14 +757,22 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                     <div key={column.professional_id} className="w-56 shrink-0">
                       {/* Cabecalho da coluna */}
                       <div className="mb-2 h-12 rounded-t border-b bg-muted/50 px-2 py-1">
-                        <p className="truncate text-sm font-medium">{column.professional_name}</p>
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            style={corDoProfissional(column.professional_id)}
+                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold"
+                          >
+                            {iniciais(column.professional_name)}
+                          </span>
+                          <p className="truncate text-sm font-medium">{column.professional_name}</p>
+                        </div>
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-muted-foreground">
                             {column.summary.appointments} atend. - {ocupacao}% ocupado
                           </span>
                           <button
                             type="button"
-                            title="Bloquear horario"
+                            title="Bloquear periodo"
                             className="text-muted-foreground hover:text-destructive"
                             onClick={() => openBlockDialog(column.professional_id)}
                           >
@@ -316,10 +781,11 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                         </div>
                       </div>
 
-                      {/* Corpo da coluna */}
+                      {/* Corpo da coluna. Clicar num vazio abre o modal de acao. */}
                       <div
-                        className="relative rounded border bg-background"
+                        className="relative cursor-pointer rounded border bg-background"
                         style={{ height: gridHeight }}
+                        onClick={(event) => cliqueNaColuna(event, column)}
                       >
                         {/* Linhas da regua */}
                         {ruler.map((mark) => (
@@ -380,13 +846,15 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                             <button
                               key={appointment.id}
                               type="button"
-                              onClick={() =>
+                              data-agendamento
+                              onClick={(event) => {
+                                event.stopPropagation();
                                 onSelectAppointment?.({
                                   ...appointment,
                                   professional_id: column.professional_id,
                                   professional_name: column.professional_name,
-                                })
-                              }
+                                });
+                              }}
                               className={`absolute left-1 right-1 overflow-hidden rounded border-l-4 px-1.5 py-0.5 text-left text-xs shadow-sm transition hover:shadow ${tone}`}
                               style={{
                                 top:
@@ -436,10 +904,45 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
         </CardContent>
       </Card>
 
+      {/* Acao rapida do horario tocado: agendar ou bloquear, sem sair da agenda. */}
+      <Dialog open={Boolean(acaoSlot)} onOpenChange={(aberto) => !aberto && setAcaoSlot(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Clock className="h-4 w-4" />
+              {acaoSlot ? `${minutesToLabel(acaoSlot.inicio)} - ${acaoSlot.professionalName}` : ''}
+            </DialogTitle>
+            <DialogDescription>
+              {cabecalhoData}
+              {acaoSlot ? ` - ${acaoSlot.fim - acaoSlot.inicio} min` : ''}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-2 py-2">
+            <Button onClick={confirmarAgendar} disabled={bloqueandoRapido} className="justify-start">
+              <Plus className="mr-2 h-4 w-4" />
+              Agendar horario
+            </Button>
+            <Button
+              variant="outline"
+              onClick={bloquearRapido}
+              disabled={bloqueandoRapido}
+              className="justify-start"
+            >
+              <Ban className="mr-2 h-4 w-4" />
+              {bloqueandoRapido ? 'Bloqueando...' : 'Bloquear horario'}
+            </Button>
+            <p className="px-1 pt-1 text-xs text-muted-foreground">
+              O bloqueio e gravado na hora. Da para desfazer no aviso que aparece em seguida.
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={blockDialogOpen} onOpenChange={setBlockDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Bloquear horario</DialogTitle>
+            <DialogTitle>Bloquear periodo</DialogTitle>
             <DialogDescription>
               O periodo bloqueado some da agenda: ninguem consegue marcar nele, nem pelo
               portal do cliente nem pelo link publico.

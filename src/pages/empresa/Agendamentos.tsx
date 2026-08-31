@@ -110,6 +110,9 @@ const Agendamentos: React.FC = () => {
   const [formData, setFormData] = useState({
     customer_name: '',
     service_name: '',
+    // O nome sozinho nao bastava: a grade monta as colunas por professional_id,
+    // entao agendamento salvo so com o nome nascia sem dono e sumia da agenda.
+    professional_id: '',
     professional_name: '',
     scheduled_at: '',
     status: 'pendente',
@@ -326,6 +329,7 @@ const Agendamentos: React.FC = () => {
     setFormData({
       customer_name: '',
       service_name: '',
+      professional_id: '',
       professional_name: '',
       scheduled_at: now.toISOString().slice(0, 16),
       status: 'pendente',
@@ -338,6 +342,7 @@ const Agendamentos: React.FC = () => {
     setFormData({
       customer_name: appointment.customer_name || '',
       service_name: appointment.service_name || '',
+      professional_id: appointment.professional_id || '',
       professional_name: appointment.professional_name || '',
       scheduled_at: appointment.scheduled_at.slice(0, 16),
       status: appointment.status || 'pendente',
@@ -429,9 +434,24 @@ const Agendamentos: React.FC = () => {
             setFormData({
               customer_name: appointment.customer_name || '',
               service_name: appointment.service_name || '',
+              professional_id: appointment.professional_id || '',
               professional_name: appointment.professional_name || '',
               scheduled_at: new Date(appointment.scheduled_at).toISOString().slice(0, 16),
               status: appointment.status || 'pendente',
+            });
+            setIsFormOpen(true);
+          }}
+          onCreateAppointment={(slot) => {
+            // Veio de um toque num horario vazio: barbeiro, data e hora ja
+            // resolvidos. O formulario abre faltando so cliente e servico.
+            setEditingAppointment(null);
+            setFormData({
+              customer_name: '',
+              service_name: '',
+              professional_id: slot.professional_id,
+              professional_name: slot.professional_name,
+              scheduled_at: slot.scheduled_at,
+              status: 'pendente',
             });
             setIsFormOpen(true);
           }}
@@ -678,7 +698,13 @@ const Agendamentos: React.FC = () => {
             <Label htmlFor="professional_name">Profissional *</Label>
             <SearchableSelect
               value={formData.professional_name}
-              onValueChange={(value) => setFormData({ ...formData, professional_name: value })}
+              onValueChange={(value) =>
+                setFormData({
+                  ...formData,
+                  professional_name: value,
+                  professional_id: professionals.find((item) => item.name === value)?.id || '',
+                })
+              }
               options={professionals.map((professional) => ({ value: professional.name, label: professional.name }))}
               placeholder="Selecionar profissional"
               searchPlaceholder="Buscar profissional..."
