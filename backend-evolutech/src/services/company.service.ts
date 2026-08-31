@@ -1,6 +1,12 @@
 import { prisma } from '../db';
 import { AuthenticatedUser } from '../types';
 import { TABLE_CONFIG } from '../config/tableConfig';
+import {
+  AGENDA_INICIO_MINUTOS,
+  AGENDA_FIM_MINUTOS,
+  CLIENTE_INICIO_MINUTOS,
+  CLIENTE_FIM_MINUTOS,
+} from '../config/agenda';
 import bcrypt from 'bcryptjs';
 import { Prisma, TaskStatus } from '@prisma/client';
 import * as XLSX from 'xlsx';
@@ -1203,17 +1209,13 @@ export class CompanyService {
       return {
         date: dayStart.toISOString().slice(0, 10),
         weekday,
-        day_start_minutes: 8 * 60,
-        day_end_minutes: 18 * 60,
+        day_start_minutes: AGENDA_INICIO_MINUTOS,
+        day_end_minutes: AGENDA_FIM_MINUTOS,
         columns: [],
       };
     }
 
-    const [availability, appointments, services] = await Promise.all([
-      (prisma as any).appointmentAvailability.findMany({
-        where: { companyId, professionalId: { in: professionalIds }, weekday, isActive: true },
-        orderBy: { startTime: 'asc' },
-      }),
+    const [appointments, services] = await Promise.all([
       (prisma as any).appointment.findMany({
         where: {
           companyId,
@@ -1238,19 +1240,19 @@ export class CompanyService {
     };
 
     const columns = [];
-    let earliest = 24 * 60;
-    let latest = 0;
+
+    // Mesma faixa para todo mundo, todo dia. Quem sai mais cedo bloqueia o
+    // proprio horario; a grade nao tenta adivinhar o expediente de ninguem.
+    const windows = [
+      {
+        start_minutes: AGENDA_INICIO_MINUTOS,
+        end_minutes: AGENDA_FIM_MINUTOS,
+        start_time: this.minutesToTimeString(AGENDA_INICIO_MINUTOS),
+        end_time: this.minutesToTimeString(AGENDA_FIM_MINUTOS),
+      },
+    ];
 
     for (const professional of professionals) {
-      const windows = (availability as any[])
-        .filter((item: any) => item.professionalId === professional.userId)
-        .map((item: any) => ({
-          start_minutes: this.timeStringToMinutes(item.startTime),
-          end_minutes: this.timeStringToMinutes(item.endTime),
-          start_time: item.startTime,
-          end_time: item.endTime,
-        }));
-
       const blocks = (
         await getBlockedIntervals(companyId, professional.userId, dayStart)
       ).map((item) => ({
@@ -1280,14 +1282,11 @@ export class CompanyService {
           };
         });
 
-      for (const window of windows) {
-        earliest = Math.min(earliest, window.start_minutes);
-        latest = Math.max(latest, window.end_minutes);
-      }
-      for (const item of items) {
-        earliest = Math.min(earliest, item.start_minutes);
-        latest = Math.max(latest, item.end_minutes);
-      }
+      // Quanto ainda cabe no dia: a faixa inteira menos o que ja foi vendido e
+      // o que o barbeiro fechou. Constante nao ajudaria ninguem no cabecalho.
+      const minutosOcupados =
+        items.reduce((sum, item) => sum + item.duration_minutes, 0) +
+        blocks.reduce((sum, item) => sum + Math.max(0, item.end_minutes - item.start_minutes), 0);
 
       columns.push({
         professional_id: professional.userId,
@@ -1300,26 +1299,19 @@ export class CompanyService {
         summary: {
           appointments: items.length,
           booked_minutes: items.reduce((sum, item) => sum + item.duration_minutes, 0),
-          available_minutes: windows.reduce(
-            (sum, item) => sum + (item.end_minutes - item.start_minutes),
-            0
+          available_minutes: Math.max(
+            0,
+            AGENDA_FIM_MINUTOS - AGENDA_INICIO_MINUTOS - minutosOcupados
           ),
         },
       });
     }
 
-    // Se ninguem trabalha nesse dia, cai numa janela padrao para a grade nao ficar vazia.
-    if (earliest > latest) {
-      earliest = 8 * 60;
-      latest = 18 * 60;
-    }
-
     return {
       date: dayStart.toISOString().slice(0, 10),
       weekday,
-      // Uma folga de 30 min de cada lado deixa a grade respirar.
-      day_start_minutes: Math.max(0, earliest - 30),
-      day_end_minutes: Math.min(24 * 60, latest + 30),
+      day_start_minutes: AGENDA_INICIO_MINUTOS,
+      day_end_minutes: AGENDA_FIM_MINUTOS,
       columns,
     };
   }
@@ -9057,14 +9049,11 @@ export class CompanyService {
     });
     if (!professional) throw new CompanyServiceError('Profissional invalido', 400);
 
-    const weekday = date.getDay();
-    const schedules = await (prisma as any).appointmentAvailability.findMany({
-      where: { companyId: company.id, professionalId, weekday, isActive: true },
-      orderBy: { startTime: 'asc' },
-    });
-    if (schedules.length === 0) {
-      return { company, slots: [] };
-    }
+    // Faixa unica de auto-atendimento. O que decide se o horario aparece nao e
+    // expediente cadastrado, e sim nao estar bloqueado nem ja agendado.
+    const schedules = [
+      { startMinutes: CLIENTE_INICIO_MINUTOS, endMinutes: CLIENTE_FIM_MINUTOS },
+    ];
 
     const startDate = new Date(date);
     startDate.setHours(0, 0, 0, 0);
@@ -9105,8 +9094,8 @@ export class CompanyService {
       aStart < bEnd && bStart < aEnd;
 
     for (const schedule of schedules) {
-      const windowStart = this.timeStringToMinutes(schedule.startTime);
-      const windowEnd = this.timeStringToMinutes(schedule.endTime);
+      const windowStart = schedule.startMinutes;
+      const windowEnd = schedule.endMinutes;
 
       for (let cursor = windowStart; cursor + slotDuration <= windowEnd; cursor += slotDuration) {
         const slotStart = new Date(startDate);
@@ -9280,6 +9269,17 @@ export class CompanyService {
     const newStart = scheduledAt.getTime();
     const newDuration = Number((service as any).durationMinutes || 30);
     const newEnd = newStart + newDuration * 60 * 1000;
+
+    // Mesma faixa que /slots oferece. A rota e publica e sem login: sem esta
+    // checagem, um POST na mao marcava as 3h da manha.
+    const inicioEmMinutos = scheduledAt.getHours() * 60 + scheduledAt.getMinutes();
+    if (
+      inicioEmMinutos < CLIENTE_INICIO_MINUTOS ||
+      inicioEmMinutos + newDuration > CLIENTE_FIM_MINUTOS
+    ) {
+      throw new CompanyServiceError('Horario fora da janela de agendamento', 409);
+    }
+
     const dayStart = new Date(scheduledAt);
     dayStart.setHours(0, 0, 0, 0);
     const dayEnd = new Date(scheduledAt);

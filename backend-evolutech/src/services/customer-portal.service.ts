@@ -1,6 +1,7 @@
 import { prisma } from '../db';
 import { AuthenticatedCustomer } from '../types';
 import { PaymentService } from './payment.service';
+import { CLIENTE_INICIO_MINUTOS, CLIENTE_FIM_MINUTOS } from '../config/agenda';
 import { getBlockedIntervals, isIntervalBlocked } from '../utils/appointment-blocks.util';
 
 class CustomerPortalError extends Error {
@@ -578,29 +579,12 @@ export class CustomerPortalService {
       throw new CustomerPortalError('Servico ou profissional invalido', 400);
     }
 
-    const weekday = scheduledAt.getDay();
-    const schedules = await (prisma as any).appointmentAvailability.findMany({
-      where: {
-        companyId: context.companyId,
-        professionalId: professional.userId,
-        weekday,
-        isActive: true,
-      },
-      orderBy: { startTime: 'asc' },
-    });
-    if (schedules.length === 0) {
-      throw new CustomerPortalError('Profissional sem disponibilidade para esta data', 409);
-    }
-
+    // Espelha a faixa que listAvailableSlots oferece. Sem esta checagem o
+    // cliente poderia forjar um horario fora dela mandando o payload na mao.
     const slotStartMinutes = scheduledAt.getHours() * 60 + scheduledAt.getMinutes();
     const slotEndMinutes = slotStartMinutes + Number(service.durationMinutes || 30);
-    const insideAnyWindow = schedules.some((item: any) => {
-      const wStart = this.timeStringToMinutes(item.startTime);
-      const wEnd = this.timeStringToMinutes(item.endTime);
-      return slotStartMinutes >= wStart && slotEndMinutes <= wEnd;
-    });
-    if (!insideAnyWindow) {
-      throw new CustomerPortalError('Horario fora da disponibilidade do profissional', 409);
+    if (slotStartMinutes < CLIENTE_INICIO_MINUTOS || slotEndMinutes > CLIENTE_FIM_MINUTOS) {
+      throw new CustomerPortalError('Horario fora da janela de agendamento', 409);
     }
 
     const dayStart = new Date(scheduledAt);
@@ -747,17 +731,11 @@ export class CustomerPortalService {
     });
     if (!professional) throw new CustomerPortalError('Profissional invalido', 400);
 
-    const weekday = date.getDay();
-    const schedules = await (prisma as any).appointmentAvailability.findMany({
-      where: {
-        companyId: context.companyId,
-        professionalId: professional.userId,
-        weekday,
-        isActive: true,
-      },
-      orderBy: { startTime: 'asc' },
-    });
-    if (schedules.length === 0) return { slots: [] as Array<{ time: string; scheduled_at: string }> };
+    // Mesma faixa do link publico: o cliente agenda das 7h as 19h. Quem filtra
+    // e o bloqueio do barbeiro e o agendamento ja existente, logo abaixo.
+    const schedules = [
+      { startMinutes: CLIENTE_INICIO_MINUTOS, endMinutes: CLIENTE_FIM_MINUTOS },
+    ];
 
     const startDate = new Date(date);
     startDate.setHours(0, 0, 0, 0);
@@ -802,8 +780,8 @@ export class CustomerPortalService {
     const slots: Array<{ time: string; scheduled_at: string }> = [];
 
     for (const schedule of schedules) {
-      const windowStart = this.timeStringToMinutes(schedule.startTime);
-      const windowEnd = this.timeStringToMinutes(schedule.endTime);
+      const windowStart = schedule.startMinutes;
+      const windowEnd = schedule.endMinutes;
       for (let cursor = windowStart; cursor + slotDuration <= windowEnd; cursor += slotDuration) {
         const slotStart = new Date(startDate);
         slotStart.setHours(0, cursor, 0, 0);

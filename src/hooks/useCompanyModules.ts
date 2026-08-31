@@ -11,7 +11,11 @@ export interface CompanyModule {
   is_pro?: boolean;
 }
 
-const OWNER_DEFAULT_CODES = ['dashboard', 'reports', 'users', 'permissions', 'finance', 'gateways', 'commissions_owner'];
+// Modulos que todo DONO_EMPRESA enxerga sem depender de empresa_modulos.
+// Precisa espelhar OWNER_DEFAULT_MODULES em backend/src/services/auth.service.ts:
+// se um code sair de la e ficar aqui, o front torna a exibir o item.
+// 'gateways' saiu da lista: agora e concedido por empresa, como os demais.
+const OWNER_DEFAULT_CODES = ['dashboard', 'reports', 'users', 'permissions', 'finance', 'commissions_owner'];
 
 const MODULE_ALIASES: Record<string, string[]> = {
   customers: ['customers', 'clientes'],

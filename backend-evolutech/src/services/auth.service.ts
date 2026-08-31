@@ -14,7 +14,9 @@ const OWNER_DEFAULT_MODULES = [
   { codigo: 'finance', nome: 'Financeiro' },
   { codigo: 'users', nome: 'Equipe' },
   { codigo: 'permissions', nome: 'Permissoes' },
-  { codigo: 'gateways', nome: 'Gateways' },
+  // 'gateways' saiu daqui: virou modulo concedido por empresa, via
+  // empresa_modulos. O espelho desta lista vive em src/hooks/useCompanyModules.ts
+  // (OWNER_DEFAULT_CODES) e as duas precisam andar juntas.
   { codigo: 'commissions_owner', nome: 'Comissoes' },
 ];
 const COMPANY_DEFAULT_MODULES = [

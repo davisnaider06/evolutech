@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,7 @@ const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, isAuthenticated, isLoading: verificandoSessao, getRedirectPath } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -31,6 +31,22 @@ const Login: React.FC = () => {
       window.clearTimeout(timer);
     };
   }, []);
+
+  // Quem ja tem sessao valida nunca deve ver o formulario. Enquanto o
+  // AuthProvider confere o token guardado nao da para decidir: mostrar o
+  // formulario aqui e o que fazia o usuario logar de novo por cima de uma
+  // sessao que estava viva.
+  if (verificandoSessao) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (isAuthenticated) {
+    return <Navigate to={getRedirectPath()} replace />;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

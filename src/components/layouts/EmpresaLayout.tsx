@@ -64,7 +64,10 @@ const navItems: NavItem[] = [
   { icon: Gift, label: 'Fidelidade', path: '/empresa/fidelidade', moduleCode: 'loyalty' },
   { icon: Repeat, label: 'Assinaturas', path: '/empresa/assinaturas', moduleCode: 'subscriptions' },
   { icon: BookOpen, label: 'Cursos', path: '/empresa/cursos', moduleCode: 'courses' },
-  { icon: CreditCard, label: 'Gateways', path: '/empresa/gateways', moduleCode: 'finance', ownerOnly: true, alwaysShow: true },
+  // Gateways e um modulo como outro qualquer: so aparece para quem recebeu.
+  // Antes vinha com `alwaysShow` e o codigo 'finance', entao todo dono via a
+  // tela de gateways mesmo sem nunca ter contratado meio de pagamento.
+  { icon: CreditCard, label: 'Gateways', path: '/empresa/gateways', moduleCode: 'gateways', ownerOnly: true },
   { icon: BarChart3, label: 'Relatórios', path: '/empresa/relatorios', moduleCode: 'reports' },
   
   // Team management (core for owners)
