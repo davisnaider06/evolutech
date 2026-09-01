@@ -471,8 +471,12 @@ model Task {
 model Appointment {
   id               String    @id @default(uuid())
   companyId        String    @map("empresa_id")
-  customerName     String    @map("customer_name")
+  // Opcional: agendamento feito pelo barbeiro na propria agenda costuma nao
+  // ter cadastro. NULL aparece como "Sem cadastro" na agenda.
+  customerName     String?   @map("customer_name")
   serviceName      String    @map("service_name")
+  // Valor combinado deste atendimento. NULL = vale o preco do servico.
+  price            Decimal?  @db.Decimal(10, 2)
   scheduledAt      DateTime  @map("scheduled_at")
   status           String    @default("scheduled")
   createdAt        DateTime  @default(now()) @map("created_at")

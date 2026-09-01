@@ -341,6 +341,38 @@ export class CompanyService {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   }
 
+  /**
+   * Cliente e valor de um agendamento, os dois opcionais.
+   *
+   * Cliente em branco vira NULL em vez de string vazia: a agenda decide entre
+   * mostrar o nome e mostrar "Sem cadastro" testando o campo, e "" passaria
+   * pelo teste como se fosse um nome.
+   *
+   * Valor em branco tambem vira NULL, que quer dizer "cobra o preco do
+   * servico". Sem isso, apagar o campo gravaria 0 e o atendimento viraria
+   * cortesia sem ninguem ter pedido.
+   */
+  private normalizeAppointmentCustomerAndPrice(payload: any) {
+    if (payload.customerName !== undefined || payload.customer_name !== undefined) {
+      const nome = String(payload.customerName ?? payload.customer_name ?? '').trim();
+      payload.customerName = nome || null;
+      delete payload.customer_name;
+    }
+
+    if (payload.price !== undefined) {
+      const bruto = payload.price;
+      if (bruto === null || String(bruto).trim() === '') {
+        payload.price = null;
+      } else {
+        const valor = this.toNumber(bruto);
+        if (!Number.isFinite(valor) || valor < 0) {
+          throw new CompanyServiceError('price deve ser um valor maior ou igual a zero', 400);
+        }
+        payload.price = valor;
+      }
+    }
+  }
+
   private normalizeAppointmentStatus(input?: string, fallback = 'pendente') {
     const raw = String(input || '')
       .trim()
@@ -699,6 +731,7 @@ export class CompanyService {
     payload.companyId = companyId;
     if (table === 'appointments') {
       payload.status = this.normalizeAppointmentStatus(payload.status, 'pendente');
+      this.normalizeAppointmentCustomerAndPrice(payload);
       if (user.role === 'FUNCIONARIO_EMPRESA') {
         payload.professionalId = user.id;
         payload.professionalName = user.fullName;
@@ -786,6 +819,9 @@ export class CompanyService {
     const targetType = String(payload.type || '').trim().toLowerCase();
     if (table === 'appointments' && payload.status !== undefined) {
       payload.status = this.normalizeAppointmentStatus(payload.status);
+    }
+    if (table === 'appointments') {
+      this.normalizeAppointmentCustomerAndPrice(payload);
     }
     if (table === 'cash_transactions') {
       if (payload.transaction_date !== undefined || payload.transactionDate !== undefined) {
@@ -1272,15 +1308,20 @@ export class CompanyService {
           return {
             id: item.id,
             customer_id: item.customerId || null,
-            customer_name: item.customerName,
+            // Sem cadastro: a agenda mostra o rotulo, o banco guarda NULL.
+            customer_name: item.customerName || null,
             service_id: item.serviceId || null,
             service_name: item.serviceName || service?.name || null,
             status: item.status,
             scheduled_at: item.scheduledAt,
+            // Valor combinado; sem ele vale o preco de tabela do servico.
+            price: item.price !== null && item.price !== undefined
+              ? this.toNumber(item.price)
+              : this.toNumber(service?.price),
+            has_custom_price: item.price !== null && item.price !== undefined,
             start_minutes: startMinutes,
             end_minutes: startMinutes + duration,
             duration_minutes: duration,
-            price: this.toNumber(service?.price),
           };
         });
 

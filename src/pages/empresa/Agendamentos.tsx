@@ -23,8 +23,9 @@ interface Appointment {
   company_id: string;
   service_id?: string | null;
   professional_id?: string | null;
-  customer_name: string;
+  customer_name: string | null;
   service_name: string;
+  price?: number | null;
   professional_name?: string;
   scheduled_at: string;
   status: string;
@@ -81,6 +82,9 @@ const Agendamentos: React.FC = () => {
   const [status, setStatus] = useState<string | undefined>(undefined);
   const [formData, setFormData] = useState({
     customer_name: '',
+    // Vazio = cobra o preco de tabela do servico. So vira numero quando o
+    // barbeiro combina outro valor.
+    price: '',
     service_name: '',
     // O nome sozinho nao bastava: a grade monta as colunas por professional_id,
     // entao agendamento salvo so com o nome nascia sem dono e sumia da agenda.
@@ -193,8 +197,21 @@ const Agendamentos: React.FC = () => {
         </div>
       ),
     },
-    { key: 'customer_name', label: 'Cliente' },
+    {
+      key: 'customer_name',
+      label: 'Cliente',
+      render: (item) =>
+        item.customer_name || <span className="text-muted-foreground">Sem cadastro</span>,
+    },
     { key: 'service_name', label: 'Servico' },
+    {
+      key: 'price',
+      label: 'Valor',
+      render: (item) =>
+        item.price === null || item.price === undefined
+          ? <span className="text-muted-foreground">-</span>
+          : item.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+    },
     { key: 'professional_name', label: 'Profissional' },
     {
       key: 'scheduled_time',
@@ -220,6 +237,7 @@ const Agendamentos: React.FC = () => {
     setEditingAppointment(null);
     setFormData({
       customer_name: '',
+      price: '',
       service_name: '',
       professional_id: '',
       professional_name: '',
@@ -233,6 +251,7 @@ const Agendamentos: React.FC = () => {
     setEditingAppointment(appointment);
     setFormData({
       customer_name: appointment.customer_name || '',
+      price: appointment.price === null || appointment.price === undefined ? '' : String(appointment.price),
       service_name: appointment.service_name || '',
       professional_id: appointment.professional_id || '',
       professional_name: appointment.professional_name || '',
@@ -254,18 +273,34 @@ const Agendamentos: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    if (!formData.customer_name.trim() || !formData.service_name.trim() || !formData.professional_name.trim() || !formData.scheduled_at) {
-      toast.error('Preencha cliente, servico, profissional e data/hora');
+    // Cliente saiu da lista de obrigatorios: quem agenda pela agenda quase
+    // sempre esta com o cliente na frente e nao quer cadastrar ninguem.
+    if (!formData.service_name.trim() || !formData.professional_name.trim() || !formData.scheduled_at) {
+      toast.error('Preencha servico, profissional e data/hora');
       return;
     }
+
+    const precoDigitado = formData.price.trim();
+    if (precoDigitado && !(Number(precoDigitado) >= 0)) {
+      toast.error('Informe um valor valido');
+      return;
+    }
+
+    const payload = {
+      ...formData,
+      customer_name: formData.customer_name.trim() || null,
+      // Vazio vira null de proposito: null cobra o preco do servico, 0 seria
+      // cortesia.
+      price: precoDigitado ? Number(precoDigitado) : null,
+    };
 
     setIsSubmitting(true);
     try {
       if (editingAppointment) {
-        await appointmentsService.updateInternal(editingAppointment.id, formData);
+        await appointmentsService.updateInternal(editingAppointment.id, payload);
         toast.success('Agendamento atualizado');
       } else {
-        await appointmentsService.createInternal(formData);
+        await appointmentsService.createInternal(payload);
         toast.success('Agendamento criado');
       }
       setIsFormOpen(false);
@@ -277,6 +312,11 @@ const Agendamentos: React.FC = () => {
       setIsSubmitting(false);
     }
   };
+
+  const precoDoServicoSelecionado = (() => {
+    const escolhido = services.find((service) => service.name === formData.service_name);
+    return escolhido ? escolhido.price.toFixed(2) : '0.00';
+  })();
 
   const publicLink = bookingSlug
     ? `${window.location.origin}/agendar/${bookingSlug}`
@@ -325,6 +365,10 @@ const Agendamentos: React.FC = () => {
             setEditingAppointment({ id: appointment.id } as Appointment);
             setFormData({
               customer_name: appointment.customer_name || '',
+              price:
+                appointment.price === null || appointment.price === undefined
+                  ? ''
+                  : String(appointment.price),
               service_name: appointment.service_name || '',
               professional_id: appointment.professional_id || '',
               professional_name: appointment.professional_name || '',
@@ -335,10 +379,11 @@ const Agendamentos: React.FC = () => {
           }}
           onCreateAppointment={(slot) => {
             // Veio de um toque num horario vazio: barbeiro, data e hora ja
-            // resolvidos. O formulario abre faltando so cliente e servico.
+            // resolvidos. Falta so o servico — cliente e valor sao opcionais.
             setEditingAppointment(null);
             setFormData({
               customer_name: '',
+              price: '',
               service_name: '',
               professional_id: slot.professional_id,
               professional_name: slot.professional_name,
@@ -445,7 +490,18 @@ const Agendamentos: React.FC = () => {
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="customer_name">Cliente *</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="customer_name">Cliente</Label>
+              {formData.customer_name ? (
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, customer_name: '' })}
+                  className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                >
+                  Sem cadastro
+                </button>
+              ) : null}
+            </div>
             <SearchableSelect
               value={formData.customer_name}
               onValueChange={(value) => setFormData({ ...formData, customer_name: value })}
@@ -453,21 +509,60 @@ const Agendamentos: React.FC = () => {
                 value: customer.name,
                 label: customer.phone ? `${customer.name} - ${customer.phone}` : customer.name,
               }))}
-              placeholder="Selecionar cliente"
+              placeholder="Sem cadastro"
               searchPlaceholder="Buscar cliente..."
               emptyMessage="Nenhum cliente encontrado."
             />
+            <p className="text-xs text-muted-foreground">
+              Opcional. Sem cliente o agendamento entra como "Sem cadastro".
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="service_name">Servico *</Label>
             <SearchableSelect
               value={formData.service_name}
-              onValueChange={(value) => setFormData({ ...formData, service_name: value })}
+              onValueChange={(value) => {
+                // O servico so sugere o preco de tabela; o campo continua
+                // livre para o desconto combinado no WhatsApp.
+                const escolhido = services.find((service) => service.name === value);
+                setFormData({
+                  ...formData,
+                  service_name: value,
+                  price: escolhido ? String(escolhido.price) : formData.price,
+                });
+              }}
               options={services.map((service) => ({ value: service.name, label: service.name }))}
               placeholder="Selecionar serviço"
               searchPlaceholder="Buscar serviço..."
               emptyMessage="Nenhum serviço encontrado."
             />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="price">Valor</Label>
+              {formData.price ? (
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, price: '' })}
+                  className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                >
+                  Usar preco do servico
+                </button>
+              ) : null}
+            </div>
+            <Input
+              id="price"
+              type="number"
+              min={0}
+              step="0.01"
+              value={formData.price}
+              onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+              placeholder={precoDoServicoSelecionado}
+            />
+            <p className="text-xs text-muted-foreground">
+              Vem do servico e pode ser editado — desconto combinado, cortesia, valor fechado.
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="professional_name">Profissional *</Label>

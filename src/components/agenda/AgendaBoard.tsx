@@ -21,7 +21,7 @@ import { ChevronLeft, ChevronRight, Ban, CalendarDays, Plus, Clock } from 'lucid
 interface BoardAppointment {
   id: string;
   customer_id: string | null;
-  customer_name: string;
+  customer_name: string | null;
   service_id?: string | null;
   service_name: string | null;
   status: string;
@@ -29,7 +29,10 @@ interface BoardAppointment {
   start_minutes: number;
   end_minutes: number;
   duration_minutes: number;
+  /** Valor combinado do atendimento; sem combinado, o preco do servico. */
   price: number;
+  /** true quando o barbeiro negociou um valor diferente do de tabela. */
+  has_custom_price?: boolean;
 }
 
 interface BoardBlock {
@@ -648,11 +651,19 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                               <span className="w-11 shrink-0 font-mono text-xs">{hora}</span>
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate text-sm font-medium">
-                                  {fatia.agendamento.customer_name}
+                                  {fatia.agendamento.customer_name || (
+                                    <span className="italic opacity-70">Sem cadastro</span>
+                                  )}
                                 </span>
                                 <span className="block truncate text-xs opacity-80">
                                   {fatia.agendamento.service_name || 'Servico'} -{' '}
                                   {fatia.agendamento.duration_minutes} min
+                                  {typeof fatia.agendamento.price === 'number'
+                                    ? ` - ${fatia.agendamento.price.toLocaleString('pt-BR', {
+                                        style: 'currency',
+                                        currency: 'BRL',
+                                      })}`
+                                    : ''}
                                 </span>
                               </span>
                             </button>

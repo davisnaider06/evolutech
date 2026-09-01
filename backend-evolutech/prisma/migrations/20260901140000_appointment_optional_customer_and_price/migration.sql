@@ -1,0 +1,24 @@
+-- Agendamento sem cliente cadastrado, e com valor combinado proprio.
+--
+-- CLIENTE OPCIONAL
+-- Quando o barbeiro agenda pela propria agenda, quase sempre o cliente ja
+-- esta na cadeira ou falou pelo WhatsApp. Obrigar a escolher um cadastro
+-- fazia o barbeiro cadastrar "Joao" sem sobrenome nem telefone so para
+-- conseguir salvar, e a base de clientes enchia de lixo.
+--
+-- A coluna passa a aceitar NULL. Quem ja tem nome preenchido continua igual;
+-- NULL e a agenda mostra "Sem cadastro".
+--
+-- VALOR
+-- O preco vinha so do servico e nao dava para mudar. Desconto combinado no
+-- WhatsApp ("faz por 30 que eu levo o menino junto") nao tinha onde ser
+-- registrado, e o barbeiro descobria na hora de fechar.
+--
+-- NULL de proposito: significa "vale o preco do servico". So quem combinou
+-- outro valor grava um numero aqui, entao mudanca de tabela de preco
+-- continua valendo para todo agendamento que nao negociou nada.
+--
+-- Nao alimenta comissao nem PDV: hoje o checkout do PDV nao tem vinculo com
+-- agendamento, e este campo e o valor combinado da agenda, nao a venda.
+ALTER TABLE "appointments" ALTER COLUMN "customer_name" DROP NOT NULL;
+ALTER TABLE "appointments" ADD COLUMN IF NOT EXISTS "price" DECIMAL(10,2);

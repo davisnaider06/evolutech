@@ -16,8 +16,9 @@ const parseInternalAppointment = (raw: any) => ({
   company_id: raw.companyId,
   service_id: raw.serviceId,
   professional_id: raw.professionalId,
-  customer_name: raw.customerName,
+  customer_name: raw.customerName || null,
   service_name: raw.serviceName,
+  price: raw.price === null || raw.price === undefined ? null : Number(raw.price),
   professional_name: raw.professionalName,
   scheduled_at: raw.scheduledAt,
   status: raw.status,
@@ -50,7 +51,8 @@ export const appointmentsService = {
   },
 
   createInternal: async (data: {
-    customer_name?: string;
+    customer_name?: string | null;
+    price?: number | null;
     service_name: string;
     professional_name?: string;
     professional_id?: string;
@@ -83,7 +85,8 @@ export const appointmentsService = {
   updateInternal: async (
     id: string,
     data: {
-      customer_name?: string;
+      customer_name?: string | null;
+      price?: number | null;
       service_name?: string;
       professional_name?: string;
       professional_id?: string;
