@@ -23,6 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 .env
-# Prints e material enviado pelo cliente. Tem foto, telefone e e-mail
-# de gente real, e o repositorio e publico.
+# Prints e videos enviados pelo cliente. Tem foto, telefone, e-mail e a
+# agenda com nome dos clientes dele. O repositorio e publico.
 prints/
+videos/
