@@ -34,7 +34,6 @@ import {
   Repeat,
   BookOpen,
   Scissors,
-  Clock,
 } from 'lucide-react';
 
 interface NavItem {
@@ -57,10 +56,14 @@ const navItems: NavItem[] = [
   { icon: Package, label: 'Produtos', path: '/empresa/produtos', moduleCode: 'products' },
   { icon: Warehouse, label: 'Estoque', path: '/empresa/estoque', moduleCode: 'inventory' },
   { icon: Calendar, label: 'Agendamentos', path: '/empresa/agendamentos', moduleCode: 'appointments' },
-  // Servicos e horarios eram cards dentro de Agendamentos. Como itens de menu
-  // proprios cada um abre direto no assunto, o que no celular faz diferenca.
+  // Servicos era um card dentro de Agendamentos. Como item de menu proprio
+  // abre direto no assunto, o que no celular faz diferenca.
+  //
+  // 'Horarios' saiu: a barbearia abre das 9h30 as 21h para todo mundo, e quem
+  // nao pode num horario usa Bloquear horario na propria agenda. Expediente
+  // por barbeiro criava barbeiro sem agenda nenhuma. A tela existe no historico
+  // (commit cb129f4) se outra barbearia precisar.
   { icon: Scissors, label: 'Servicos', path: '/empresa/servicos', moduleCode: 'appointments' },
-  { icon: Clock, label: 'Horarios', path: '/empresa/horarios', moduleCode: 'appointments' },
   { icon: ReceiptText, label: 'PDV', path: '/empresa/pdv', moduleCode: 'pdv' },
   { icon: ReceiptText, label: 'Cobranças', path: '/empresa/cobrancas', moduleCode: 'billing' },
   { icon: ShoppingCart, label: 'Pedidos', path: '/empresa/pedidos', moduleCode: 'orders' },

@@ -56,7 +56,6 @@ import Clientes from "./pages/empresa/Clientes";
 import Produtos from "./pages/empresa/Produtos";
 import Agendamentos from "./pages/empresa/Agendamentos";
 import ServicosAgendamento from "./pages/empresa/ServicosAgendamento";
-import HorariosAtendimento from "./pages/empresa/HorariosAtendimento";
 import AgendamentoCliente from "./pages/empresa/AgedamentoCliente";
 import Pedidos from "./pages/empresa/Pedidos";
 import Pdv from "./pages/empresa/Pdv";
@@ -227,8 +226,8 @@ const App = () => (
                       </ModuleGuard>
                     }
                   />
-                  {/* Servicos e horarios saem da tela de Agendamentos e viram
-                      modulos proprios; o acesso continua preso a 'appointments'. */}
+                  {/* Servicos sai da tela de Agendamentos e vira modulo proprio;
+                      o acesso continua preso a 'appointments'. */}
                   <Route
                     path="/empresa/servicos"
                     element={
@@ -237,14 +236,7 @@ const App = () => (
                       </ModuleGuard>
                     }
                   />
-                  <Route
-                    path="/empresa/horarios"
-                    element={
-                      <ModuleGuard moduleCode="appointments">
-                        <HorariosAtendimento />
-                      </ModuleGuard>
-                    }
-                  />
+
                   <Route
                     path="/empresa/pdv"
                     element={

@@ -395,10 +395,9 @@ const Agendamentos: React.FC = () => {
         />
       )}
 
-      {/* Servicos e horarios saem daqui: cada um virou tela propria. No celular
-          esta pagina empilhava agenda, cadastro de servico e jornada, e nada
-          disso era encontravel. Ficam os atalhos. */}
-      <div className="grid gap-3 sm:grid-cols-2">
+      {/* Servicos sai daqui e vira tela propria: no celular esta pagina
+          empilhava agenda e cadastro de servico, e nada era encontravel. */}
+      <div className="grid gap-3">
         <button
           type="button"
           onClick={() => navigate('/empresa/servicos')}
@@ -409,19 +408,6 @@ const Agendamentos: React.FC = () => {
             <p className="font-medium">Servicos</p>
             <p className="text-sm text-muted-foreground">
               Nome, duracao e preco do que o cliente agenda
-            </p>
-          </div>
-        </button>
-        <button
-          type="button"
-          onClick={() => navigate('/empresa/horarios')}
-          className="flex items-center gap-3 rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted"
-        >
-          <Clock className="h-5 w-5 shrink-0 text-primary" />
-          <div>
-            <p className="font-medium">Horarios de atendimento</p>
-            <p className="text-sm text-muted-foreground">
-              Dias e faixas de horario de cada profissional
             </p>
           </div>
         </button>

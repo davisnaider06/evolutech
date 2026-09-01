@@ -731,8 +731,8 @@ export class CustomerPortalService {
     });
     if (!professional) throw new CustomerPortalError('Profissional invalido', 400);
 
-    // Mesma faixa do link publico: o cliente agenda das 7h as 19h. Quem filtra
-    // e o bloqueio do barbeiro e o agendamento ja existente, logo abaixo.
+    // Mesmo horario da casa do link publico. Quem filtra e o bloqueio do
+    // barbeiro e o agendamento ja existente, logo abaixo.
     const schedules = [
       { startMinutes: CLIENTE_INICIO_MINUTOS, endMinutes: CLIENTE_FIM_MINUTOS },
     ];

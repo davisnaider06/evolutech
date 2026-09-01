@@ -1283,8 +1283,9 @@ export class CompanyService {
 
     const columns = [];
 
-    // Mesma faixa para todo mundo, todo dia. Quem sai mais cedo bloqueia o
-    // proprio horario; a grade nao tenta adivinhar o expediente de ninguem.
+    // Uma faixa so, igual para todo mundo: e o horario da casa. Barbeiro que
+    // nao pode num pedaco do dia fecha aquele pedaco em Bloquear horario, que
+    // e a excecao do dia — nao um expediente proprio.
     const windows = [
       {
         start_minutes: AGENDA_INICIO_MINUTOS,
@@ -1329,8 +1330,8 @@ export class CompanyService {
           };
         });
 
-      // Quanto ainda cabe no dia: a faixa inteira menos o que ja foi vendido e
-      // o que o barbeiro fechou. Constante nao ajudaria ninguem no cabecalho.
+      // Quanto ainda cabe no dia: o horario da casa menos o que ja foi vendido
+      // e o que o barbeiro fechou.
       const minutosOcupados =
         items.reduce((sum, item) => sum + item.duration_minutes, 0) +
         blocks.reduce((sum, item) => sum + Math.max(0, item.end_minutes - item.start_minutes), 0);
@@ -9112,8 +9113,8 @@ export class CompanyService {
     });
     if (!professional) throw new CompanyServiceError('Profissional invalido', 400);
 
-    // Faixa unica de auto-atendimento. O que decide se o horario aparece nao e
-    // expediente cadastrado, e sim nao estar bloqueado nem ja agendado.
+    // Horario da casa, igual para todo barbeiro. O que decide se o slot
+    // aparece e nao estar bloqueado nem ja agendado.
     const schedules = [
       { startMinutes: CLIENTE_INICIO_MINUTOS, endMinutes: CLIENTE_FIM_MINUTOS },
     ];
