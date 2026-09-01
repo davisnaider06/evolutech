@@ -11,4 +11,5 @@
 --
 -- NULL de proposito: sem foto a tela volta para as iniciais, que continuam
 -- valendo. Ninguem precisa subir imagem para o sistema funcionar.
-ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "avatar_url" TEXT;
+-- A tabela e "profiles", nao "users": o model User tem @@map("profiles").
+ALTER TABLE "profiles" ADD COLUMN IF NOT EXISTS "avatar_url" TEXT;
