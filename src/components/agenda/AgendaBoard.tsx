@@ -51,6 +51,7 @@ interface BoardWindow {
 interface BoardColumn {
   professional_id: string;
   professional_name: string;
+  professional_avatar_url?: string | null;
   role: string;
   windows: BoardWindow[];
   blocks: BoardBlock[];
@@ -560,14 +561,27 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                       className="flex w-16 shrink-0 flex-col items-center gap-1 focus-visible:outline-none"
                     >
                       <span
-                        style={corDoProfissional(column.professional_id)}
-                        className={`flex h-14 w-14 items-center justify-center rounded-full text-base font-semibold transition ${
+                        style={
+                          column.professional_avatar_url
+                            ? undefined
+                            : corDoProfissional(column.professional_id)
+                        }
+                        className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded-full text-base font-semibold transition ${
                           ativo
                             ? 'ring-2 ring-primary ring-offset-2 ring-offset-background'
                             : 'opacity-60'
                         }`}
                       >
-                        {iniciais(column.professional_name)}
+                        {column.professional_avatar_url ? (
+                          <img
+                            src={column.professional_avatar_url}
+                            alt={column.professional_name}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          iniciais(column.professional_name)
+                        )}
                       </span>
                       <span
                         className={`w-full truncate text-center text-[11px] ${

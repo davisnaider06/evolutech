@@ -23,13 +23,17 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { UserPlus, Copy, Pencil, Trash2 } from 'lucide-react';
+import { UserPlus, Copy, Pencil, Trash2, Camera, Loader2, X } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { uploadImagem } from '@/lib/uploadImagem';
+import { iniciais, corDoProfissional } from '@/lib/profissional';
 
 interface TeamMember {
   id: string;
   email: string;
   fullName: string;
   role: 'DONO_EMPRESA' | 'FUNCIONARIO_EMPRESA';
+  avatarUrl?: string | null;
   isActive: boolean;
   createdAt: string;
 }
@@ -47,11 +51,14 @@ export default function ConvitesEquipe() {
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null);
   const [credentials, setCredentials] = useState<AccessCredentials | null>(null);
+  const [enviandoFoto, setEnviandoFoto] = useState(false);
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
     password: '',
     isActive: true,
+    // '' quer dizer sem foto. Vai como null no salvamento.
+    avatarUrl: '',
   });
 
   const fetchMembers = async () => {
@@ -77,6 +84,7 @@ export default function ConvitesEquipe() {
       email: '',
       password: '',
       isActive: true,
+      avatarUrl: '',
     });
   };
 
@@ -92,8 +100,25 @@ export default function ConvitesEquipe() {
       email: member.email,
       password: '',
       isActive: member.isActive,
+      avatarUrl: member.avatarUrl || '',
     });
     setIsDialogOpen(true);
+  };
+
+  const handleEscolherFoto = async (arquivo: File | undefined) => {
+    if (!arquivo) return;
+    setEnviandoFoto(true);
+    try {
+      // A imagem sobe na hora, antes de salvar o membro: assim o dono ve o
+      // resultado antes de confirmar, e nao descobre depois que ficou torta.
+      const { url } = await uploadImagem(arquivo, 'professional_photo');
+      setFormData((prev) => ({ ...prev, avatarUrl: url }));
+      toast.success('Foto enviada');
+    } catch (error: any) {
+      toast.error(error.message || 'Nao consegui enviar a foto');
+    } finally {
+      setEnviandoFoto(false);
+    }
   };
 
   const handleSaveMember = async (e: React.FormEvent) => {
@@ -114,6 +139,7 @@ export default function ConvitesEquipe() {
           email,
           password: formData.password.trim() || undefined,
           isActive: formData.isActive,
+          avatarUrl: formData.avatarUrl || null,
         });
         toast.success('Membro atualizado com sucesso');
       } else {
@@ -121,6 +147,7 @@ export default function ConvitesEquipe() {
           fullName,
           email,
           password: formData.password.trim() || undefined,
+          avatarUrl: formData.avatarUrl || null,
         });
         setCredentials({
           email: result.credentials.email,
@@ -192,6 +219,71 @@ export default function ConvitesEquipe() {
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSaveMember} className="space-y-4">
+              <div className="flex items-center gap-4">
+                <Avatar className="h-20 w-20">
+                  <AvatarImage src={formData.avatarUrl || undefined} alt={formData.fullName} />
+                  <AvatarFallback
+                    style={corDoProfissional(editingMemberId || formData.fullName || 'novo')}
+                    className="text-lg font-semibold"
+                  >
+                    {iniciais(formData.fullName)}
+                  </AvatarFallback>
+                </Avatar>
+
+                <div className="space-y-2">
+                  {/* Input de arquivo escondido atras do botao: o controle
+                      nativo nao aceita estilo e fica destoando do resto. */}
+                  <input
+                    id="foto-membro"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      handleEscolherFoto(e.target.files?.[0]);
+                      // Zera para o mesmo arquivo poder ser escolhido de novo
+                      // depois de remover.
+                      e.target.value = '';
+                    }}
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      disabled={enviandoFoto}
+                      onClick={() => document.getElementById('foto-membro')?.click()}
+                    >
+                      {enviandoFoto ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Camera className="h-4 w-4" />
+                      )}
+                      {enviandoFoto
+                        ? 'Enviando...'
+                        : formData.avatarUrl
+                        ? 'Trocar foto'
+                        : 'Adicionar foto'}
+                    </Button>
+                    {formData.avatarUrl ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1 text-muted-foreground"
+                        onClick={() => setFormData((prev) => ({ ...prev, avatarUrl: '' }))}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        Remover
+                      </Button>
+                    ) : null}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    JPG, PNG ou WEBP, ate 3 MB. Sem foto, valem as iniciais.
+                  </p>
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <Label>Nome</Label>
                 <Input
@@ -271,7 +363,20 @@ export default function ConvitesEquipe() {
               <TableBody>
                 {members.map((member) => (
                   <TableRow key={member.id}>
-                    <TableCell className="font-medium">{member.fullName}</TableCell>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-9 w-9">
+                          <AvatarImage src={member.avatarUrl || undefined} alt={member.fullName} />
+                          <AvatarFallback
+                            style={corDoProfissional(member.id)}
+                            className="text-xs font-semibold"
+                          >
+                            {iniciais(member.fullName)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span>{member.fullName}</span>
+                      </div>
+                    </TableCell>
                     <TableCell>{member.email}</TableCell>
                     <TableCell>
                       <Badge variant={member.role === 'DONO_EMPRESA' ? 'default' : 'secondary'}>

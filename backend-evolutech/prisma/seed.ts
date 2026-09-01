@@ -67,28 +67,32 @@ async function ensureSuperAdmin() {
 }
 
 async function ensureBaseCatalog() {
+  // A definicao da barbearia mora em prisma/barbearia-modulos.js, junto com o
+  // script que aplica ela numa empresa. Aqui ela so e materializada no catalogo.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { MODULOS_BARBEARIA } = require('./barbearia-modulos');
+
+  // 'vendas' e 'courses' nao fazem parte da barbearia, mas seguem no catalogo:
+  // outros nichos usam, e apagar modulo do catalogo derrubaria as empresas
+  // que ja receberam. Catalogo cresce, sistema base e que escolhe.
+  const extras = [
+    { nome: 'Vendas', codigo: 'vendas', descricao: 'Gestao de vendas e comissoes', isCore: false, preco: 49.9, roles: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+    { nome: 'Cursos', codigo: 'courses', descricao: 'Gestao e venda de cursos', isCore: false, preco: 79.9, roles: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+  ];
+
   const modules = [
-    { nome: 'Dashboard', codigo: 'dashboard', descricao: 'Visao geral de indicadores do negocio', isCore: true, preco: 0 },
-    { nome: 'Clientes', codigo: 'clientes', descricao: 'Cadastro e historico de clientes', isCore: true, preco: 0 },
-    { nome: 'Agendamentos', codigo: 'agendamentos', descricao: 'Agenda de servicos e confirmacoes', isCore: true, preco: 0 },
-    { nome: 'Vendas', codigo: 'vendas', descricao: 'Gestao de vendas e comissoes', isCore: false, preco: 49.9 },
-    { nome: 'PDV', codigo: 'pdv', descricao: 'Operacao de caixa e fechamento', isCore: false, preco: 79.9 },
-    { nome: 'Produtos', codigo: 'produtos', descricao: 'Cadastro de produtos e estoque', isCore: false, preco: 39.9 },
-    { nome: 'Financeiro', codigo: 'financeiro', descricao: 'Contas a pagar e receber', isCore: false, preco: 59.9 },
-    { nome: 'Relatorios', codigo: 'relatorios', descricao: 'Relatorios gerenciais e operacionais', isCore: false, preco: 29.9 },
-    { nome: 'Fidelidade', codigo: 'fidelidade', descricao: 'Programa de fidelidade e cashback', isCore: false, preco: 29.9 },
-    { nome: 'Assinaturas', codigo: 'assinaturas', descricao: 'Planos e assinaturas de clientes', isCore: false, preco: 49.9 },
-    { nome: 'Comissoes Dono', codigo: 'comissoes_dono', descricao: 'Gestao de comissoes pelo dono', isCore: false, preco: 29.9 },
-    { nome: 'Comissoes Staff', codigo: 'commissions_staff', descricao: 'Consulta de comissoes pelo funcionario', isCore: false, preco: 0 },
-    { nome: 'Permissoes de Equipe', codigo: 'permissions', descricao: 'Gestao de permissoes dos funcionarios por modulo', isCore: true, preco: 0 },
-    { nome: 'Suporte', codigo: 'support', descricao: 'Abertura e acompanhamento de chamados com a Evolutech', isCore: true, preco: 0 },
-    { nome: 'Cobranca e Inadimplencia', codigo: 'collections', descricao: 'Gestao de cobrancas, vencimentos e recuperacao', isCore: false, preco: 59.9 },
-    { nome: 'Portal Cliente', codigo: 'customer_portal', descricao: 'Portal de login para cliente final', isCore: false, preco: 39.9 },
-    { nome: 'Cursos', codigo: 'courses', descricao: 'Gestao e venda de cursos', isCore: false, preco: 79.9 }
+    ...MODULOS_BARBEARIA.map((m: any) => ({
+      nome: m.nome,
+      codigo: m.codigo,
+      descricao: m.descricao,
+      isCore: m.core,
+      preco: m.preco,
+      roles: m.roles,
+    })),
+    ...extras,
   ];
 
   for (const item of modules) {
-    const isPermissionsModule = item.codigo === 'permissions';
     const isCollectionsModule = item.codigo === 'collections';
     await prisma.modulo.upsert({
       where: { codigo: item.codigo },
@@ -98,7 +102,7 @@ async function ensureBaseCatalog() {
         isCore: item.isCore,
         precoMensal: item.preco,
         isPro: isCollectionsModule,
-        allowedRoles: isPermissionsModule ? ['DONO_EMPRESA'] : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
+        allowedRoles: item.roles as any,
         status: 'active' as Status
       },
       create: {
@@ -108,7 +112,7 @@ async function ensureBaseCatalog() {
         isCore: item.isCore,
         precoMensal: item.preco,
         isPro: isCollectionsModule,
-        allowedRoles: isPermissionsModule ? ['DONO_EMPRESA'] : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
+        allowedRoles: item.roles as any,
         status: 'active' as Status
       }
     });
@@ -131,35 +135,22 @@ async function ensureBaseCatalog() {
     }
   });
 
-  const moduleCodes = [
-    'dashboard',
-    'clientes',
-    'agendamentos',
-    'vendas',
-    'pdv',
-    'produtos',
-    'financeiro',
-    'relatorios',
-    'fidelidade',
-    'assinaturas',
-    'comissoes_dono',
-    'commissions_staff',
-    'permissions',
-    'support',
-    'collections',
-    'customer_portal',
-    'courses',
-  ];
+  const moduleCodes = MODULOS_BARBEARIA.map((m: any) => m.codigo);
+
   const moduloRecords = await prisma.modulo.findMany({ where: { codigo: { in: moduleCodes } } });
 
   await prisma.sistemaBaseModulo.deleteMany({ where: { sistemaBaseId: barbearia.id } });
 
   await prisma.sistemaBaseModulo.createMany({
-    data: moduloRecords.map((modulo) => ({
-      sistemaBaseId: barbearia.id,
-      moduloId: modulo.id,
-          isMandatory: ['dashboard', 'clientes', 'agendamentos', 'customer_portal', 'permissions', 'support'].includes(modulo.codigo)
-        })),
+    data: moduloRecords.map((modulo) => {
+      const def = MODULOS_BARBEARIA.find((m: any) => m.codigo === modulo.codigo);
+      return {
+        sistemaBaseId: barbearia.id,
+        moduloId: modulo.id,
+        isMandatory: Boolean(def?.obrigatorio),
+        allowedRoles: (def?.roles || ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA']) as any,
+      };
+    }),
     skipDuplicates: true
   });
 

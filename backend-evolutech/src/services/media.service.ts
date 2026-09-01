@@ -32,7 +32,15 @@ const TIPOS_PERMITIDOS = new Set([
   'image/vnd.microsoft.icon',
 ]);
 
-const FINALIDADES = new Set(['logo', 'favicon', 'login_cover', 'course_cover', 'course_media']);
+const FINALIDADES = new Set([
+  'logo',
+  'favicon',
+  'login_cover',
+  'course_cover',
+  'course_media',
+  // Foto do barbeiro, exibida na Equipe e na agenda.
+  'professional_photo',
+]);
 
 /** 3 MB ja e generoso para logo; segura o banco de crescer sem controle. */
 const TAMANHO_MAXIMO = Number(process.env.MEDIA_MAX_BYTES || 3 * 1024 * 1024);

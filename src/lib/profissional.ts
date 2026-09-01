@@ -1,10 +1,10 @@
 /**
  * Identidade visual do profissional nas telas.
  *
- * Enquanto nao existe foto no cadastro, o barbeiro e reconhecido pelas
- * iniciais numa cor propria. A cor sai do id, entao e a mesma na agenda, nas
- * comissoes e em qualquer tela nova — e o dono aprende a reconhecer pela cor
- * antes de ler o nome.
+ * Quem tem foto no cadastro aparece com ela. Quem nao tem e reconhecido pelas
+ * iniciais numa cor propria, e e este o caso padrao: foto e opcional. A cor
+ * sai do id, entao e a mesma na agenda, nas comissoes e em qualquer tela nova
+ * — e o dono aprende a reconhecer pela cor antes de ler o nome.
  */
 
 /** Iniciais do nome: primeira letra do primeiro e do ultimo nome. */

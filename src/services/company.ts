@@ -587,11 +587,23 @@ export const companyService = {
     const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
     return request(`/customers/follow-ups${suffix}`);
   },
-  createTeamMember: async (data: { fullName: string; email: string; password?: string }) =>
+  createTeamMember: async (data: {
+    fullName: string;
+    email: string;
+    password?: string;
+    avatarUrl?: string | null;
+  }) =>
     request('/team/members', { method: 'POST', body: JSON.stringify(data) }),
   updateTeamMember: async (
     memberId: string,
-    data: { fullName: string; email: string; password?: string; isActive?: boolean }
+    data: {
+      fullName: string;
+      email: string;
+      password?: string;
+      isActive?: boolean;
+      // '' apaga a foto; ausente mantem a que ja esta la.
+      avatarUrl?: string | null;
+    }
   ) =>
     request(`/team/members/${encodeURIComponent(memberId)}`, {
       method: 'PUT',

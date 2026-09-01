@@ -13,7 +13,8 @@ export type FinalidadeImagem =
   | 'favicon'
   | 'login_cover'
   | 'course_cover'
-  | 'course_media';
+  | 'course_media'
+  | 'professional_photo';
 
 const LIMITE_PADRAO = 3 * 1024 * 1024;
 

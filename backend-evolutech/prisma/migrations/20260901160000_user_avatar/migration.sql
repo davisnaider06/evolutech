@@ -1,0 +1,14 @@
+-- Foto do barbeiro.
+--
+-- A agenda identificava cada profissional por iniciais num circulo colorido.
+-- Funciona com tres barbeiros; com cinco, "F" e "Fe" param de distinguir
+-- ninguem a distancia, e e a distancia que o barbeiro olha a agenda.
+--
+-- Guarda URL e nao o binario: a imagem vai para media_assets como a logo e a
+-- capa de login, e aqui fica so o endereco publico dela. Assim trocar de foto
+-- nao reescreve a linha do usuario e a coluna nao engorda a tabela de login,
+-- que e lida em todo request autenticado.
+--
+-- NULL de proposito: sem foto a tela volta para as iniciais, que continuam
+-- valendo. Ninguem precisa subir imagem para o sistema funcionar.
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "avatar_url" TEXT;

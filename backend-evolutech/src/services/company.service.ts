@@ -1239,7 +1239,11 @@ export class CompanyService {
         user: { isActive: true },
         ...(professionalFilter ? { userId: professionalFilter } : {}),
       },
-      select: { userId: true, role: true, user: { select: { fullName: true } } },
+      select: {
+        userId: true,
+        role: true,
+        user: { select: { fullName: true, avatarUrl: true } },
+      },
     });
 
     const professionalIds = professionals.map((item) => item.userId);
@@ -1334,6 +1338,7 @@ export class CompanyService {
       columns.push({
         professional_id: professional.userId,
         professional_name: professional.user.fullName,
+        professional_avatar_url: professional.user.avatarUrl || null,
         role: professional.role,
         windows,
         blocks,
@@ -8093,6 +8098,7 @@ export class CompanyService {
             id: true,
             email: true,
             fullName: true,
+            avatarUrl: true,
             isActive: true,
             createdAt: true,
           },
@@ -8105,6 +8111,7 @@ export class CompanyService {
       id: member.user.id,
       email: member.user.email,
       fullName: member.user.fullName,
+      avatarUrl: member.user.avatarUrl || null,
       role: member.role,
       isActive: member.user.isActive,
       createdAt: member.user.createdAt,
@@ -8113,7 +8120,7 @@ export class CompanyService {
 
   async createTeamMember(
     user: AuthenticatedUser,
-    data: { fullName: string; email: string; password?: string }
+    data: { fullName: string; email: string; password?: string; avatarUrl?: string | null }
   ) {
     this.ensureOwner(user);
     const companyId = user.companyId;
@@ -8154,6 +8161,7 @@ export class CompanyService {
           data: {
             email,
             fullName,
+            avatarUrl: String(data.avatarUrl || '').trim() || null,
             passwordHash,
             isActive: true,
           },
@@ -8225,7 +8233,13 @@ export class CompanyService {
   async updateTeamMember(
     user: AuthenticatedUser,
     memberId: string,
-    data: { fullName?: string; email?: string; password?: string; isActive?: boolean }
+    data: {
+      fullName?: string;
+      email?: string;
+      password?: string;
+      isActive?: boolean;
+      avatarUrl?: string | null;
+    }
   ) {
     this.ensureOwner(user);
     const companyId = user.companyId;
@@ -8274,6 +8288,11 @@ export class CompanyService {
       };
       if (data.isActive !== undefined) {
         payload.isActive = Boolean(data.isActive);
+      }
+      // String vazia e "tirei a foto"; undefined e "nao mexi nela". Sem essa
+      // distincao, salvar o nome apagaria a foto de quem tem uma.
+      if (data.avatarUrl !== undefined) {
+        payload.avatarUrl = String(data.avatarUrl || '').trim() || null;
       }
       if (password) {
         payload.passwordHash = await bcrypt.hash(password, 10);
@@ -9025,7 +9044,7 @@ export class CompanyService {
         },
         select: {
           userId: true,
-          user: { select: { fullName: true } },
+          user: { select: { fullName: true, avatarUrl: true } },
         },
         orderBy: { user: { fullName: 'asc' } },
       }),
@@ -9046,6 +9065,7 @@ export class CompanyService {
       professionals: professionals.map((item: any) => ({
         id: item.userId,
         name: item.user.fullName,
+        avatar_url: item.user.avatarUrl || null,
       })),
       services: services.map((item: any) => ({
         id: item.id,
