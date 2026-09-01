@@ -21,6 +21,8 @@ interface AuthContextType extends AuthState {
   getRedirectPath: () => string;
   isEvolutechUser: boolean;
   isCompanyUser: boolean;
+  /** Rebusca /auth/me. Usado depois de editar o proprio cadastro. */
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -161,6 +163,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     checkAuth();
   }, [checkAuth]);
 
+  /**
+   * Busca /auth/me de novo e reaplica o estado e o cache de sessao.
+   *
+   * Sem isto a tela de Configuracoes salvava o nome no banco e continuava
+   * mostrando o antigo no menu ate o proximo login.
+   */
+  const refreshUser = useCallback(async () => {
+    const token = localStorage.getItem('evolutech_token');
+    if (!token) return;
+
+    const response = await fetch(`${API_URL}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) return;
+
+    const data = await response.json();
+    salvarSessao(SESSAO_CACHE_KEY, data);
+    aplicarPayload(data);
+  }, [aplicarPayload]);
+
   const login = (token: string, userData: any, companyData?: any) => {
     localStorage.setItem('evolutech_token', token);
     // O cache antigo pode ser de outro usuario; o proximo /auth/me repoe.
@@ -215,6 +237,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       hasPermission,
       company,
       getRedirectPath,
+      refreshUser,
       isEvolutechUser: ['SUPER_ADMIN_EVOLUTECH', 'ADMIN_EVOLUTECH'].includes(authState.user?.role || ''),
       isCompanyUser: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'].includes(authState.user?.role || ''),
     }}>

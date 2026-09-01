@@ -33,6 +33,8 @@ import {
   Gift,
   Repeat,
   BookOpen,
+  Scissors,
+  Clock,
 } from 'lucide-react';
 
 interface NavItem {
@@ -55,6 +57,10 @@ const navItems: NavItem[] = [
   { icon: Package, label: 'Produtos', path: '/empresa/produtos', moduleCode: 'products' },
   { icon: Warehouse, label: 'Estoque', path: '/empresa/estoque', moduleCode: 'inventory' },
   { icon: Calendar, label: 'Agendamentos', path: '/empresa/agendamentos', moduleCode: 'appointments' },
+  // Servicos e horarios eram cards dentro de Agendamentos. Como itens de menu
+  // proprios cada um abre direto no assunto, o que no celular faz diferenca.
+  { icon: Scissors, label: 'Servicos', path: '/empresa/servicos', moduleCode: 'appointments' },
+  { icon: Clock, label: 'Horarios', path: '/empresa/horarios', moduleCode: 'appointments' },
   { icon: ReceiptText, label: 'PDV', path: '/empresa/pdv', moduleCode: 'pdv' },
   { icon: ReceiptText, label: 'Cobranças', path: '/empresa/cobrancas', moduleCode: 'billing' },
   { icon: ShoppingCart, label: 'Pedidos', path: '/empresa/pedidos', moduleCode: 'orders' },
@@ -80,7 +86,7 @@ const navItems: NavItem[] = [
   
   // Customization & Settings (always for owners)
   { icon: Palette, label: 'Temas', path: '/empresa/temas', moduleCode: 'design', ownerOnly: true, alwaysShow: true },
-  { icon: Settings, label: 'Configurações', path: '/empresa/configuracoes', moduleCode: 'settings', ownerOnly: true, alwaysShow: true },
+  { icon: Settings, label: 'Configurações', path: '/empresa/configuracoes', moduleCode: 'settings', alwaysShow: true },
 ];
 
 export const EmpresaLayout: React.FC = () => {
@@ -103,8 +109,10 @@ export const EmpresaLayout: React.FC = () => {
     // App is always available for owner and funcionario
     if (item.path === '/empresa/app' && item.alwaysShow) return true;
 
-    // Always show utility items only for owners
-    if (item.alwaysShow && isOwner) return true;
+    // Itens marcados como alwaysShow nao dependem de modulo contratado.
+    // Antes isto valia so para o dono, e por isso o funcionario nao enxergava
+    // Configuracoes — a tela onde ele edita o proprio nome e e-mail.
+    if (item.alwaysShow) return true;
     
     if (item.moduleCode && !hasModuleForCurrentRole(item.moduleCode)) return false;
     

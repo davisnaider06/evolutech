@@ -7,11 +7,16 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { API_URL } from '@/config/api';
 import { companyService } from '@/services/company';
-import { Settings, Shield, Save, RefreshCw, Bell } from 'lucide-react';
+import { Shield, Save, RefreshCw, Bell, User } from 'lucide-react';
 
 const Configuracoes: React.FC = () => {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const isOwner = user?.role === 'DONO_EMPRESA';
+
+  // Perfil proprio. Vale para qualquer papel: o barbeiro corrige o proprio
+  // nome sem depender do dono. Antes estes dois campos eram so leitura.
+  const [perfil, setPerfil] = useState({ name: '', email: '' });
+  const [savingPerfil, setSavingPerfil] = useState(false);
   const [form, setForm] = useState({
     current_password: '',
     new_password: '',
@@ -25,6 +30,12 @@ const Configuracoes: React.FC = () => {
   const [notificationPhone, setNotificationPhone] = useState('');
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
+
+  // O /auth/me pode chegar depois da primeira renderizacao; sem isto o
+  // formulario nasceria vazio e um "Salvar" apagaria o nome no banco.
+  useEffect(() => {
+    setPerfil({ name: user?.name || '', email: user?.email || '' });
+  }, [user?.name, user?.email]);
 
   useEffect(() => {
     if (!isOwner) {
@@ -47,6 +58,54 @@ const Configuracoes: React.FC = () => {
       ativo = false;
     };
   }, [isOwner]);
+
+  const perfilAlterado =
+    perfil.name.trim() !== (user?.name || '') || perfil.email.trim() !== (user?.email || '');
+
+  const handleSavePerfil = async () => {
+    const nome = perfil.name.trim();
+    const email = perfil.email.trim();
+
+    if (nome.length < 2) {
+      toast.error('Informe seu nome completo');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error('Informe um e-mail valido');
+      return;
+    }
+
+    const trocouEmail = email.toLowerCase() !== (user?.email || '').toLowerCase();
+
+    setSavingPerfil(true);
+    try {
+      const token = localStorage.getItem('evolutech_token');
+      const response = await fetch(`${API_URL}/auth/me`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name: nome, email }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || 'Nao foi possivel salvar o perfil');
+      }
+
+      // Recarrega a sessao para o nome novo aparecer no menu na hora.
+      await refreshUser();
+      toast.success(
+        trocouEmail
+          ? 'Perfil salvo. A partir de agora entre com o novo e-mail.'
+          : 'Perfil salvo'
+      );
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao salvar o perfil');
+    } finally {
+      setSavingPerfil(false);
+    }
+  };
 
   const handleSaveSettings = async () => {
     setSavingSettings(true);
@@ -120,21 +179,56 @@ const Configuracoes: React.FC = () => {
         <p className="text-muted-foreground">Gerencie suas configuracoes de conta.</p>
       </div>
 
-      <div className="glass rounded-xl p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <Settings className="h-5 w-5 text-primary" />
-          <h2 className="text-lg font-semibold">Perfil</h2>
+      <div className="glass rounded-xl p-4 sm:p-6">
+        <div className="flex items-center gap-3 mb-2">
+          <User className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-semibold">Meu perfil</h2>
         </div>
+        <p className="mb-6 text-sm text-muted-foreground">
+          Como seu nome aparece no sistema e para os clientes, e o e-mail que voce usa
+          para entrar.
+        </p>
 
-        <div className="grid gap-6 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="name">Nome</Label>
-            <Input id="name" defaultValue={user?.name} disabled />
+            <Input
+              id="name"
+              value={perfil.name}
+              onChange={(e) => setPerfil((old) => ({ ...old, name: e.target.value }))}
+              placeholder="Seu nome completo"
+              autoComplete="name"
+            />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" defaultValue={user?.email} disabled />
+            <Label htmlFor="email">E-mail</Label>
+            <Input
+              id="email"
+              type="email"
+              value={perfil.email}
+              onChange={(e) => setPerfil((old) => ({ ...old, email: e.target.value }))}
+              placeholder="voce@exemplo.com"
+              autoComplete="email"
+            />
+            <p className="text-xs text-muted-foreground">
+              Este e o e-mail de login. Se mudar, use o novo no proximo acesso.
+            </p>
           </div>
+        </div>
+
+        <div className="mt-4 flex justify-end">
+          <Button
+            onClick={handleSavePerfil}
+            disabled={savingPerfil || !perfilAlterado}
+            className="w-full gap-2 sm:w-auto"
+          >
+            {savingPerfil ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            {savingPerfil ? 'Salvando...' : 'Salvar perfil'}
+          </Button>
         </div>
       </div>
 

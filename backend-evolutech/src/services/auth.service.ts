@@ -324,6 +324,73 @@ export class AuthService {
     return payload;
   }
 
+  /**
+   * Limpa o /auth/me em cache do usuario. O cache e chaveado por papel e
+   * empresa, que nao mudam aqui, mas varrer por prefixo evita depender disso.
+   */
+  private invalidateMeCache(userId: string) {
+    for (const key of Array.from(this.meCache.keys())) {
+      if (key.startsWith(`${userId}:`)) this.meCache.delete(key);
+    }
+  }
+
+  /**
+   * Edicao do proprio cadastro: nome e e-mail. Vale para qualquer papel —
+   * o barbeiro corrige o proprio nome sem depender do dono.
+   *
+   * O e-mail e a credencial de login, entao trocar aqui troca o login. O token
+   * atual continua valendo porque o middleware resolve o usuario pelo id.
+   */
+  async updateMyProfile(userId: string, data: { name?: string; email?: string }) {
+    const nome = String(data.name ?? '').trim();
+    const emailBruto = String(data.email ?? '').trim().toLowerCase();
+
+    if (!nome && !emailBruto) {
+      throw new Error('Informe ao menos um campo: name ou email');
+    }
+    if (data.name !== undefined && nome.length < 2) {
+      throw new Error('O nome deve ter pelo menos 2 caracteres');
+    }
+    if (data.email !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailBruto)) {
+      throw new Error('E-mail invalido');
+    }
+
+    const atual = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, fullName: true },
+    });
+    if (!atual) throw new Error('Usuario nao encontrado');
+
+    // Colisao de e-mail derruba o login de duas contas de uma vez; barra antes.
+    if (emailBruto && emailBruto !== atual.email) {
+      const jaUsado = await prisma.user.findUnique({
+        where: { email: emailBruto },
+        select: { id: true },
+      });
+      if (jaUsado && jaUsado.id !== userId) {
+        throw new Error('Este e-mail ja esta em uso por outra conta');
+      }
+    }
+
+    const atualizado = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(nome ? { fullName: nome } : {}),
+        ...(emailBruto ? { email: emailBruto } : {}),
+      },
+      select: { id: true, fullName: true, email: true },
+    });
+
+    this.invalidateMeCache(userId);
+
+    return {
+      id: atualizado.id,
+      name: atualizado.fullName,
+      email: atualizado.email,
+      email_changed: atualizado.email !== atual.email,
+    };
+  }
+
   async changeMyPassword(
     userId: string,
     data: { current_password?: string; new_password?: string }

@@ -8,6 +8,9 @@ const controller = new AuthController();
 
 router.post('/login', loginRateLimit, controller.login.bind(controller));
 router.get('/me', authenticateToken, controller.me.bind(controller)); // Rota protegida
+// Edicao do proprio cadastro (nome e e-mail). Aberta a qualquer papel: o
+// funcionario corrige o proprio nome sem precisar do dono.
+router.put('/me', authenticateToken, controller.updateMe.bind(controller));
 // Tambem limitado: a rota confere a senha atual, entao serve de oraculo.
 router.post(
   '/change-password',

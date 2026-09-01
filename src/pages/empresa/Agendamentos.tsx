@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { DataTable, Column } from '@/components/crud/DataTable';
 import { PageHeader } from '@/components/crud/PageHeader';
 import { SearchFilters } from '@/components/crud/SearchFilters';
@@ -8,10 +9,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { SearchableSelect } from '@/components/ui/searchable-select';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Calendar, Clock, Copy } from 'lucide-react';
+import { Calendar, Clock, Copy, Scissors } from 'lucide-react';
 import { toast } from 'sonner';
 import { appointmentsService } from '@/services/appointments';
 import { useAuth } from '@/contexts/AuthContext';
@@ -51,16 +51,6 @@ interface CustomerOption {
   phone?: string | null;
 }
 
-const WEEKDAYS = [
-  { value: 0, label: 'Domingo' },
-  { value: 1, label: 'Segunda' },
-  { value: 2, label: 'Terca' },
-  { value: 3, label: 'Quarta' },
-  { value: 4, label: 'Quinta' },
-  { value: 5, label: 'Sexta' },
-  { value: 6, label: 'Sabado' },
-];
-
 const statusOptions = [
   { value: 'pendente', label: 'Pendente' },
   { value: 'confirmado', label: 'Confirmado' },
@@ -71,6 +61,7 @@ const statusOptions = [
 
 const Agendamentos: React.FC = () => {
   const { user, company } = useAuth();
+  const navigate = useNavigate();
   const bookingSlug = user?.tenantSlug || company?.slug;
   const [isFormOpen, setIsFormOpen] = useState(false);
   // 'board' = grade por barbeiro (padrao da operacao); 'list' = tabela com busca.
@@ -82,8 +73,6 @@ const Agendamentos: React.FC = () => {
   const [data, setData] = useState<Appointment[]>([]);
   const [services, setServices] = useState<AppointmentServiceItem[]>([]);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
-  const [serviceLoading, setServiceLoading] = useState(false);
-  const [serviceForm, setServiceForm] = useState({ name: '', durationMinutes: 30, price: 0 });
   const [professionals, setProfessionals] = useState<ProfessionalOption[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -120,7 +109,6 @@ const Agendamentos: React.FC = () => {
   }, [page, pageSize, search, status]);
 
   const fetchServices = useCallback(async () => {
-    setServiceLoading(true);
     try {
       const result = await companyService.list('appointment_services', {
         page: 1,
@@ -138,8 +126,6 @@ const Agendamentos: React.FC = () => {
       );
     } catch (error: any) {
       toast.error(error.message || 'Erro ao carregar servicos');
-    } finally {
-      setServiceLoading(false);
     }
   }, []);
 
@@ -190,28 +176,6 @@ const Agendamentos: React.FC = () => {
   useEffect(() => {
     fetchCustomers();
   }, [fetchCustomers]);
-
-  const handleCreateService = async () => {
-    const name = serviceForm.name.trim();
-    if (!name) {
-      toast.error('Informe o nome do servico');
-      return;
-    }
-
-    try {
-      await companyService.create('appointment_services', {
-        name,
-        durationMinutes: Math.max(5, Number(serviceForm.durationMinutes || 30)),
-        price: Math.max(0, Number(serviceForm.price || 0)),
-        isActive: true,
-      });
-      setServiceForm({ name: '', durationMinutes: 30, price: 0 });
-      toast.success('Servico cadastrado');
-      fetchServices();
-    } catch (error: any) {
-      toast.error(error.message || 'Erro ao cadastrar servico');
-    }
-  };
 
   const columns: Column<Appointment>[] = [
     {
@@ -386,74 +350,37 @@ const Agendamentos: React.FC = () => {
         />
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Servicos para Agendamento Publico</CardTitle>
-          <CardDescription>
-            Cadastre os servicos que o cliente podera selecionar no link publico.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {user?.role === 'DONO_EMPRESA' ? (
-            <div className="grid gap-3 md:grid-cols-4">
-              <div className="space-y-1">
-                <Label>Nome do servico</Label>
-                <p className="text-xs text-muted-foreground">Como o cliente vera no link publico.</p>
-                <Input
-                  placeholder="Ex: Corte masculino"
-                  value={serviceForm.name}
-                  onChange={(e) => setServiceForm((prev) => ({ ...prev, name: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Duracao (min)</Label>
-                <p className="text-xs text-muted-foreground">Tempo usado para calcular horarios disponiveis.</p>
-                <Input
-                  type="number"
-                  min={5}
-                  placeholder="30"
-                  value={serviceForm.durationMinutes}
-                  onChange={(e) =>
-                    setServiceForm((prev) => ({ ...prev, durationMinutes: Number(e.target.value || 30) }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Preco</Label>
-                <p className="text-xs text-muted-foreground">Valor exibido para referencia do cliente.</p>
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  placeholder="0.00"
-                  value={serviceForm.price}
-                  onChange={(e) =>
-                    setServiceForm((prev) => ({ ...prev, price: Number(e.target.value || 0) }))
-                  }
-                />
-              </div>
-              <Button onClick={handleCreateService}>Cadastrar Servico</Button>
-            </div>
-          ) : null}
-
-          {serviceLoading ? (
-            <p className="text-sm text-muted-foreground">Carregando servicos...</p>
-          ) : services.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nenhum servico cadastrado.</p>
-          ) : (
-            <div className="space-y-2">
-              {services.map((service) => (
-                <div key={service.id} className="flex items-center justify-between rounded border px-3 py-2">
-                  <span className="text-sm">
-                    {service.name} - {service.durationMinutes}min - R$ {service.price.toFixed(2)}
-                  </span>
-                  <StatusBadge status={service.isActive ? 'active' : 'inactive'} />
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Servicos e horarios saem daqui: cada um virou tela propria. No celular
+          esta pagina empilhava agenda, cadastro de servico e jornada, e nada
+          disso era encontravel. Ficam os atalhos. */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => navigate('/empresa/servicos')}
+          className="flex items-center gap-3 rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted"
+        >
+          <Scissors className="h-5 w-5 shrink-0 text-primary" />
+          <div>
+            <p className="font-medium">Servicos</p>
+            <p className="text-sm text-muted-foreground">
+              Nome, duracao e preco do que o cliente agenda
+            </p>
+          </div>
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate('/empresa/horarios')}
+          className="flex items-center gap-3 rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted"
+        >
+          <Clock className="h-5 w-5 shrink-0 text-primary" />
+          <div>
+            <p className="font-medium">Horarios de atendimento</p>
+            <p className="text-sm text-muted-foreground">
+              Dias e faixas de horario de cada profissional
+            </p>
+          </div>
+        </button>
+      </div>
 
       <div className="rounded-lg border p-4 bg-card flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-sm text-muted-foreground break-all">

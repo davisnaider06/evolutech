@@ -55,6 +55,8 @@ import PermissoesEquipe from "./pages/empresa/PermissoesEquipe";
 import Clientes from "./pages/empresa/Clientes";
 import Produtos from "./pages/empresa/Produtos";
 import Agendamentos from "./pages/empresa/Agendamentos";
+import ServicosAgendamento from "./pages/empresa/ServicosAgendamento";
+import HorariosAtendimento from "./pages/empresa/HorariosAtendimento";
 import AgendamentoCliente from "./pages/empresa/AgedamentoCliente";
 import Pedidos from "./pages/empresa/Pedidos";
 import Pdv from "./pages/empresa/Pdv";
@@ -225,6 +227,24 @@ const App = () => (
                       </ModuleGuard>
                     }
                   />
+                  {/* Servicos e horarios saem da tela de Agendamentos e viram
+                      modulos proprios; o acesso continua preso a 'appointments'. */}
+                  <Route
+                    path="/empresa/servicos"
+                    element={
+                      <ModuleGuard moduleCode="appointments">
+                        <ServicosAgendamento />
+                      </ModuleGuard>
+                    }
+                  />
+                  <Route
+                    path="/empresa/horarios"
+                    element={
+                      <ModuleGuard moduleCode="appointments">
+                        <HorariosAtendimento />
+                      </ModuleGuard>
+                    }
+                  />
                   <Route
                     path="/empresa/pdv"
                     element={
@@ -337,10 +357,12 @@ const App = () => (
                       </AuthGuard>
                     }
                   />
+                  {/* Funcionario entra aqui para editar o proprio nome e e-mail.
+                      O que e so do dono (avisos e senha) a propria tela esconde. */}
                   <Route 
                     path="/empresa/configuracoes" 
                     element={
-                      <AuthGuard allowedRoles={['DONO_EMPRESA']}>
+                      <AuthGuard allowedRoles={['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA']}>
                         <Configuracoes />
                       </AuthGuard>
                     } 

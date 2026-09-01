@@ -79,6 +79,30 @@ export class AuthController {
     }
   }
 
+  async updateMe(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.updateMyProfile(req.user!.id, req.body || {});
+      return res.json(result);
+    } catch (error: any) {
+      const message = String(error?.message || 'Erro ao salvar o perfil');
+      const lower = message.toLowerCase();
+      if (lower.includes('nao encontrado')) {
+        return res.status(404).json({ error: message });
+      }
+      if (lower.includes('ja esta em uso')) {
+        return res.status(409).json({ error: message });
+      }
+      if (
+        lower.includes('informe ao menos') ||
+        lower.includes('pelo menos') ||
+        lower.includes('invalido')
+      ) {
+        return res.status(400).json({ error: message });
+      }
+      return res.status(500).json({ error: message });
+    }
+  }
+
   async changeMyPassword(req: AuthedRequest, res: Response) {
     try {
       const result = await service.changeMyPassword(req.user!.id, req.body || {});
