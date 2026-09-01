@@ -2,6 +2,11 @@ import { prisma } from '../db';
 import { AuthenticatedUser } from '../types';
 import { TABLE_CONFIG } from '../config/tableConfig';
 import {
+  resolverHorarioDaCasa,
+  horaParaMinutos,
+  minutosParaHora,
+} from '../utils/business-hours.util';
+import {
   AGENDA_INICIO_MINUTOS,
   AGENDA_FIM_MINUTOS,
   CLIENTE_INICIO_MINUTOS,
@@ -1283,15 +1288,20 @@ export class CompanyService {
 
     const columns = [];
 
-    // Uma faixa so, igual para todo mundo: e o horario da casa. Barbeiro que
-    // nao pode num pedaco do dia fecha aquele pedaco em Bloquear horario, que
-    // e a excecao do dia — nao um expediente proprio.
+    // Uma faixa so, igual para todo mundo: e o horario da casa, configurado
+    // pelo dono em Configuracoes. Barbeiro que nao pode num pedaco do dia
+    // fecha aquele pedaco em Bloquear horario — a excecao do dia, nao um
+    // expediente proprio.
+    const casa = await resolverHorarioDaCasa(prisma as any, companyId, {
+      inicioMinutos: AGENDA_INICIO_MINUTOS,
+      fimMinutos: AGENDA_FIM_MINUTOS,
+    });
     const windows = [
       {
-        start_minutes: AGENDA_INICIO_MINUTOS,
-        end_minutes: AGENDA_FIM_MINUTOS,
-        start_time: this.minutesToTimeString(AGENDA_INICIO_MINUTOS),
-        end_time: this.minutesToTimeString(AGENDA_FIM_MINUTOS),
+        start_minutes: casa.inicioMinutos,
+        end_minutes: casa.fimMinutos,
+        start_time: this.minutesToTimeString(casa.inicioMinutos),
+        end_time: this.minutesToTimeString(casa.fimMinutos),
       },
     ];
 
@@ -1350,7 +1360,7 @@ export class CompanyService {
           booked_minutes: items.reduce((sum, item) => sum + item.duration_minutes, 0),
           available_minutes: Math.max(
             0,
-            AGENDA_FIM_MINUTOS - AGENDA_INICIO_MINUTOS - minutosOcupados
+            casa.fimMinutos - casa.inicioMinutos - minutosOcupados
           ),
         },
       });
@@ -1359,8 +1369,8 @@ export class CompanyService {
     return {
       date: dayStart.toISOString().slice(0, 10),
       weekday,
-      day_start_minutes: AGENDA_INICIO_MINUTOS,
-      day_end_minutes: AGENDA_FIM_MINUTOS,
+      day_start_minutes: casa.inicioMinutos,
+      day_end_minutes: casa.fimMinutos,
       columns,
     };
   }
@@ -2792,34 +2802,95 @@ export class CompanyService {
 
     const empresa = await prisma.company.findUnique({
       where: { id: companyId },
-      select: { id: true, name: true, notificationPhone: true, billingDigestSentAt: true },
+      select: {
+        id: true,
+        name: true,
+        notificationPhone: true,
+        billingDigestSentAt: true,
+        agendaStartTime: true,
+        agendaEndTime: true,
+      },
     });
     if (!empresa) throw new CompanyServiceError('Empresa nao encontrada', 404);
+
+    // A tela precisa mostrar o horario que esta VALENDO, nao o campo cru:
+    // quem nunca configurou veria dois campos vazios e nao saberia a que
+    // horas a propria agenda abre.
+    const casa = await resolverHorarioDaCasa(prisma as any, empresa.id, {
+      inicioMinutos: AGENDA_INICIO_MINUTOS,
+      fimMinutos: AGENDA_FIM_MINUTOS,
+    });
 
     return {
       id: empresa.id,
       name: empresa.name,
       notification_phone: empresa.notificationPhone || '',
       billing_digest_sent_at: empresa.billingDigestSentAt,
+      agenda_start_time: minutosParaHora(casa.inicioMinutos),
+      agenda_end_time: minutosParaHora(casa.fimMinutos),
+      // Para a tela dizer se o horario e escolha do dono ou o padrao da casa.
+      agenda_hours_customized: Boolean(empresa.agendaStartTime && empresa.agendaEndTime),
     };
   }
 
   async updateMyCompanySettings(
     user: AuthenticatedUser,
-    data: { notification_phone?: string | null; company_id?: string; companyId?: string }
+    data: {
+      notification_phone?: string | null;
+      agenda_start_time?: string | null;
+      agenda_end_time?: string | null;
+      company_id?: string;
+      companyId?: string;
+    }
   ) {
     this.ensureOwnerCompanyRole(user);
     const companyId = this.resolveCompanyId(user, data);
 
+    const alteracoes: any = {};
+
     // Telefone vazio e uma escolha valida: desliga o resumo por WhatsApp e
     // o dono passa a receber so por e-mail e pelo painel.
-    const bruto = String(data.notification_phone ?? '').trim();
-    const notificationPhone = bruto ? this.normalizePhone(bruto) : null;
+    if (data.notification_phone !== undefined) {
+      const bruto = String(data.notification_phone ?? '').trim();
+      alteracoes.notificationPhone = bruto ? this.normalizePhone(bruto) : null;
+    }
+
+    // Horario da casa. Os dois campos andam juntos: so faz sentido gravar
+    // inicio com fim, e apagar um sem o outro deixaria a empresa num estado
+    // que o resolvedor teria de adivinhar.
+    const mexeuNoHorario =
+      data.agenda_start_time !== undefined || data.agenda_end_time !== undefined;
+    if (mexeuNoHorario) {
+      const inicioTexto = String(data.agenda_start_time ?? '').trim();
+      const fimTexto = String(data.agenda_end_time ?? '').trim();
+
+      if (!inicioTexto && !fimTexto) {
+        // Limpar os dois volta ao padrao da casa. E uma saida valida.
+        alteracoes.agendaStartTime = null;
+        alteracoes.agendaEndTime = null;
+      } else {
+        const inicio = horaParaMinutos(inicioTexto);
+        const fim = horaParaMinutos(fimTexto);
+        if (inicio === null || fim === null) {
+          throw new CompanyServiceError('Informe abertura e fechamento no formato HH:MM', 400);
+        }
+        if (fim <= inicio) {
+          throw new CompanyServiceError('O fechamento precisa ser depois da abertura', 400);
+        }
+        alteracoes.agendaStartTime = minutosParaHora(inicio);
+        alteracoes.agendaEndTime = minutosParaHora(fim);
+      }
+    }
 
     const empresa = await prisma.company.update({
       where: { id: companyId },
-      data: { notificationPhone },
-      select: { id: true, notificationPhone: true },
+      data: alteracoes,
+      select: {
+        id: true,
+        notificationPhone: true,
+        agendaStartTime: true,
+        agendaEndTime: true,
+      },
     });
 
     await prisma.auditLog.create({
@@ -2828,11 +2899,28 @@ export class CompanyService {
         companyId,
         action: 'COMPANY_SETTINGS_UPDATED',
         resource: 'companies',
-        details: { notificationPhoneDefinido: Boolean(notificationPhone) },
+        details: {
+          notificationPhoneDefinido: Boolean(empresa.notificationPhone),
+          horarioDaCasa:
+            empresa.agendaStartTime && empresa.agendaEndTime
+              ? `${empresa.agendaStartTime}-${empresa.agendaEndTime}`
+              : 'padrao',
+        },
       },
     });
 
-    return { id: empresa.id, notification_phone: empresa.notificationPhone || '' };
+    const casa = await resolverHorarioDaCasa(prisma as any, companyId, {
+      inicioMinutos: AGENDA_INICIO_MINUTOS,
+      fimMinutos: AGENDA_FIM_MINUTOS,
+    });
+
+    return {
+      id: empresa.id,
+      notification_phone: empresa.notificationPhone || '',
+      agenda_start_time: minutosParaHora(casa.inicioMinutos),
+      agenda_end_time: minutosParaHora(casa.fimMinutos),
+      agenda_hours_customized: Boolean(empresa.agendaStartTime && empresa.agendaEndTime),
+    };
   }
 
   async listSubscriptionUsage(
@@ -9115,9 +9203,11 @@ export class CompanyService {
 
     // Horario da casa, igual para todo barbeiro. O que decide se o slot
     // aparece e nao estar bloqueado nem ja agendado.
-    const schedules = [
-      { startMinutes: CLIENTE_INICIO_MINUTOS, endMinutes: CLIENTE_FIM_MINUTOS },
-    ];
+    const casa = await resolverHorarioDaCasa(prisma as any, company.id, {
+      inicioMinutos: CLIENTE_INICIO_MINUTOS,
+      fimMinutos: CLIENTE_FIM_MINUTOS,
+    });
+    const schedules = [{ startMinutes: casa.inicioMinutos, endMinutes: casa.fimMinutos }];
 
     const startDate = new Date(date);
     startDate.setHours(0, 0, 0, 0);
@@ -9336,10 +9426,14 @@ export class CompanyService {
 
     // Mesma faixa que /slots oferece. A rota e publica e sem login: sem esta
     // checagem, um POST na mao marcava as 3h da manha.
+    const casaAgendamento = await resolverHorarioDaCasa(prisma as any, company.id, {
+      inicioMinutos: CLIENTE_INICIO_MINUTOS,
+      fimMinutos: CLIENTE_FIM_MINUTOS,
+    });
     const inicioEmMinutos = scheduledAt.getHours() * 60 + scheduledAt.getMinutes();
     if (
-      inicioEmMinutos < CLIENTE_INICIO_MINUTOS ||
-      inicioEmMinutos + newDuration > CLIENTE_FIM_MINUTOS
+      inicioEmMinutos < casaAgendamento.inicioMinutos ||
+      inicioEmMinutos + newDuration > casaAgendamento.fimMinutos
     ) {
       throw new CompanyServiceError('Horario fora da janela de agendamento', 409);
     }

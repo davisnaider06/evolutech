@@ -49,6 +49,10 @@ model Company {
   // Telefone que recebe o resumo de mensalidades a receber, por WhatsApp.
   // O dono tem e-mail pela conta de usuario, mas nao havia telefone da empresa.
   notificationPhone             String?                       @map("notification_phone")
+  // Horario de funcionamento, "HH:MM". NULL = vale o padrao de
+  // config/agenda.ts. O dono edita em Configuracoes.
+  agendaStartTime               String?                       @map("agenda_start_time")
+  agendaEndTime                 String?                       @map("agenda_end_time")
   // Ultimo envio do resumo, para nao repetir a cada volta do job.
   billingDigestSentAt           DateTime?                     @map("billing_digest_sent_at")
   monthlyRevenue                Decimal?                      @default(0) @map("monthly_revenue") @db.Decimal(10, 2)

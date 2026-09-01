@@ -7,7 +7,7 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { API_URL } from '@/config/api';
 import { companyService } from '@/services/company';
-import { Shield, Save, RefreshCw, Bell, User } from 'lucide-react';
+import { Shield, Save, RefreshCw, Bell, User, Clock } from 'lucide-react';
 
 const Configuracoes: React.FC = () => {
   const { user, refreshUser } = useAuth();
@@ -28,6 +28,11 @@ const Configuracoes: React.FC = () => {
   // Sem ele o dono ainda recebe por e-mail e pelo painel de Assinaturas;
   // com ele, o resumo tambem chega no WhatsApp.
   const [notificationPhone, setNotificationPhone] = useState('');
+  // Horario de funcionamento da barbearia. Uma faixa so, valendo para toda a
+  // equipe: quem nao pode num horario fecha o pedaco em Bloquear horario.
+  const [horario, setHorario] = useState({ inicio: '', fim: '' });
+  const [horarioPersonalizado, setHorarioPersonalizado] = useState(false);
+  const [savingHorario, setSavingHorario] = useState(false);
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -46,7 +51,13 @@ const Configuracoes: React.FC = () => {
     companyService
       .getMyCompanySettings()
       .then((dados: any) => {
-        if (ativo) setNotificationPhone(dados?.notification_phone || '');
+        if (!ativo) return;
+        setNotificationPhone(dados?.notification_phone || '');
+        setHorario({
+          inicio: dados?.agenda_start_time || '',
+          fim: dados?.agenda_end_time || '',
+        });
+        setHorarioPersonalizado(Boolean(dados?.agenda_hours_customized));
       })
       .catch(() => {
         // Falha aqui nao impede o resto da tela: o campo fica vazio.
@@ -104,6 +115,40 @@ const Configuracoes: React.FC = () => {
       toast.error(error.message || 'Erro ao salvar o perfil');
     } finally {
       setSavingPerfil(false);
+    }
+  };
+
+  const handleSaveHorario = async () => {
+    if (!horario.inicio || !horario.fim) {
+      toast.error('Informe a abertura e o fechamento');
+      return;
+    }
+    if (horario.fim <= horario.inicio) {
+      // "HH:MM" compara certo como texto, por ser de largura fixa.
+      toast.error('O fechamento precisa ser depois da abertura');
+      return;
+    }
+
+    setSavingHorario(true);
+    try {
+      const salvo: any = await companyService.updateMyCompanySettings({
+        agenda_start_time: horario.inicio,
+        agenda_end_time: horario.fim,
+      });
+      setHorario({
+        inicio: salvo?.agenda_start_time || horario.inicio,
+        fim: salvo?.agenda_end_time || horario.fim,
+      });
+      setHorarioPersonalizado(Boolean(salvo?.agenda_hours_customized));
+      toast.success(
+        `Horario salvo. A agenda e o link publico passam a valer das ${
+          salvo?.agenda_start_time || horario.inicio
+        } as ${salvo?.agenda_end_time || horario.fim}.`
+      );
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao salvar o horario');
+    } finally {
+      setSavingHorario(false);
     }
   };
 
@@ -231,6 +276,63 @@ const Configuracoes: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {isOwner && (
+        <div className="glass rounded-xl p-4 sm:p-6">
+          <div className="flex items-center gap-3 mb-2">
+            <Clock className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-semibold">Horario de funcionamento</h2>
+          </div>
+          <p className="mb-6 text-sm text-muted-foreground">
+            De que horas a que horas a barbearia atende. Vale para a agenda da equipe e
+            para o link publico, e e igual para todos os barbeiros. Se um deles nao puder
+            num horario especifico, ele fecha aquele pedaco em Bloquear horario, na
+            propria agenda.
+          </p>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="flex-1 space-y-2">
+              <Label htmlFor="agenda_start_time">Abre as</Label>
+              <Input
+                id="agenda_start_time"
+                type="time"
+                value={horario.inicio}
+                onChange={(e) => setHorario((old) => ({ ...old, inicio: e.target.value }))}
+                disabled={loadingSettings}
+              />
+            </div>
+            <div className="flex-1 space-y-2">
+              <Label htmlFor="agenda_end_time">Fecha as</Label>
+              <Input
+                id="agenda_end_time"
+                type="time"
+                value={horario.fim}
+                onChange={(e) => setHorario((old) => ({ ...old, fim: e.target.value }))}
+                disabled={loadingSettings}
+              />
+            </div>
+            <Button
+              onClick={handleSaveHorario}
+              disabled={savingHorario || loadingSettings}
+              className="gap-2"
+            >
+              {savingHorario ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              Salvar
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {horarioPersonalizado
+              ? 'Horario definido por voce.'
+              : 'Ainda no horario padrao do sistema.'}{' '}
+            Agendamento ja marcado fora da faixa nova nao e apagado — ele continua na
+            agenda.
+          </p>
+        </div>
+      )}
 
       {isOwner && (
         <div className="glass rounded-xl p-6">

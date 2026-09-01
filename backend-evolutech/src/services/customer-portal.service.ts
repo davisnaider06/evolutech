@@ -2,6 +2,7 @@ import { prisma } from '../db';
 import { AuthenticatedCustomer } from '../types';
 import { PaymentService } from './payment.service';
 import { CLIENTE_INICIO_MINUTOS, CLIENTE_FIM_MINUTOS } from '../config/agenda';
+import { resolverHorarioDaCasa } from '../utils/business-hours.util';
 import { getBlockedIntervals, isIntervalBlocked } from '../utils/appointment-blocks.util';
 
 class CustomerPortalError extends Error {
@@ -583,7 +584,11 @@ export class CustomerPortalService {
     // cliente poderia forjar um horario fora dela mandando o payload na mao.
     const slotStartMinutes = scheduledAt.getHours() * 60 + scheduledAt.getMinutes();
     const slotEndMinutes = slotStartMinutes + Number(service.durationMinutes || 30);
-    if (slotStartMinutes < CLIENTE_INICIO_MINUTOS || slotEndMinutes > CLIENTE_FIM_MINUTOS) {
+    const casa = await resolverHorarioDaCasa(prisma as any, context.companyId, {
+      inicioMinutos: CLIENTE_INICIO_MINUTOS,
+      fimMinutos: CLIENTE_FIM_MINUTOS,
+    });
+    if (slotStartMinutes < casa.inicioMinutos || slotEndMinutes > casa.fimMinutos) {
       throw new CustomerPortalError('Horario fora da janela de agendamento', 409);
     }
 
@@ -733,9 +738,11 @@ export class CustomerPortalService {
 
     // Mesmo horario da casa do link publico. Quem filtra e o bloqueio do
     // barbeiro e o agendamento ja existente, logo abaixo.
-    const schedules = [
-      { startMinutes: CLIENTE_INICIO_MINUTOS, endMinutes: CLIENTE_FIM_MINUTOS },
-    ];
+    const casa = await resolverHorarioDaCasa(prisma as any, context.companyId, {
+      inicioMinutos: CLIENTE_INICIO_MINUTOS,
+      fimMinutos: CLIENTE_FIM_MINUTOS,
+    });
+    const schedules = [{ startMinutes: casa.inicioMinutos, endMinutes: casa.fimMinutos }];
 
     const startDate = new Date(date);
     startDate.setHours(0, 0, 0, 0);

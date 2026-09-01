@@ -336,7 +336,12 @@ export const companyService = {
 
   getMyCompanySettings: async () => request('/settings'),
 
-  updateMyCompanySettings: async (data: { notification_phone?: string }) =>
+  updateMyCompanySettings: async (data: {
+    notification_phone?: string;
+    // Os dois juntos, sempre. Vazios nos dois volta ao padrao da casa.
+    agenda_start_time?: string;
+    agenda_end_time?: string;
+  }) =>
     request('/settings', { method: 'PUT', body: JSON.stringify(data) }),
   getCashOverview: async (params?: {
     dateFrom?: string;
