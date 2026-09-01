@@ -24,7 +24,9 @@ const MODULE_ALIASES: Record<string, string[]> = {
   appointments: ['appointments', 'agendamentos'],
   orders: ['orders', 'pedidos'],
   pdv: ['pdv', 'orders', 'pedidos'],
-  billing: ['billing', 'cobrancas', 'cobranca'],
+  // 'collections' e o codigo do modulo no catalogo; 'billing' e o nome da
+  // tela. Sem ele aqui, conceder Cobrancas nao acendia o menu.
+  billing: ['billing', 'collections', 'cobrancas', 'cobranca'],
   collections: ['collections', 'billing', 'cobrancas', 'cobranca'],
   cash: ['cash', 'caixa'],
   finance: ['finance', 'financeiro'],
