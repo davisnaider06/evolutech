@@ -163,6 +163,10 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
   } | null>(null);
   const [bloqueandoRapido, setBloqueandoRapido] = useState(false);
 
+  /** Caixa rolante da lista de horarios e a linha em que ela deve abrir. */
+  const listaRef = useRef<HTMLDivElement>(null);
+  const linhaFocoRef = useRef<HTMLElement | null>(null);
+
   const loadBoard = useCallback(async () => {
     setLoading(true);
     try {
@@ -299,6 +303,38 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
     },
     [dayStart, dayEnd, slotMinutos]
   );
+
+  /**
+   * Em que minuto a lista deve abrir.
+   *
+   * A faixa da agenda vai das 7h as 22h — 30 linhas. Abrir sempre nas 7h joga
+   * o comeco do expediente para fora da caixa e obriga a rolar toda vez. Hoje
+   * abre na hora atual; outro dia, no primeiro compromisso.
+   */
+  const minutoFoco = useMemo(() => {
+    if (!colunaAtiva) return dayStart;
+
+    if (date === todayISO()) {
+      const agora = new Date();
+      const minutos = agora.getHours() * 60 + agora.getMinutes();
+      if (minutos > dayStart && minutos < dayEnd) return minutos;
+    }
+
+    const primeiro = colunaAtiva.appointments
+      .map((item) => item.start_minutes)
+      .sort((a, b) => a - b)[0];
+    return primeiro ?? dayStart;
+  }, [colunaAtiva, date, dayStart, dayEnd]);
+
+  // Posiciona a caixa sem mexer na rolagem da pagina — scrollIntoView levaria
+  // a tela inteira junto.
+  useEffect(() => {
+    const caixa = listaRef.current;
+    const linha = linhaFocoRef.current;
+    if (!caixa || !linha) return;
+    caixa.scrollTop = Math.max(0, linha.offsetTop - caixa.offsetTop);
+  }, [board, barbeiroAtivoId, minutoFoco]);
+
 
   const openBlockDialog = (professionalId: string) => {
     setBlockForm({
@@ -570,10 +606,26 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                       Sem expediente neste dia.
                     </p>
                   ) : (
-                    <div className="space-y-1.5">
-                      {fatiasDoDia(colunaAtiva).map((fatia, index) => {
+                    /* A agenda rola dentro da propria caixa. Das 7h as 22h sao
+                       30 linhas: solta na pagina, empurrava a legenda, os
+                       atalhos e o link publico para muito abaixo da dobra. */
+                    <div
+                      ref={listaRef}
+                      className="max-h-[60vh] space-y-1.5 overflow-y-auto overscroll-contain pr-1 sm:max-h-[28rem]"
+                    >
+                      {fatiasDoDia(colunaAtiva).map((fatia, index, todas) => {
                         const chave = `${fatia.tipo}-${fatia.inicio}-${index}`;
                         const hora = minutesToLabel(fatia.inicio);
+                        // Primeira fatia que alcanca o minuto de foco: e nela
+                        // que a caixa abre.
+                        const ehFoco =
+                          fatia.fim > minutoFoco &&
+                          !todas.slice(0, index).some((outra) => outra.fim > minutoFoco);
+                        const refFoco = ehFoco
+                          ? (node: HTMLElement | null) => {
+                              linhaFocoRef.current = node;
+                            }
+                          : undefined;
 
                         if (fatia.tipo === 'agendamento') {
                           const tone =
@@ -582,6 +634,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                           return (
                             <button
                               key={chave}
+                              ref={refFoco}
                               type="button"
                               onClick={() =>
                                 onSelectAppointment?.({
@@ -610,6 +663,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                           return (
                             <div
                               key={chave}
+                              ref={refFoco}
                               className="flex items-center gap-3 rounded-md border border-dashed border-destructive/50 bg-destructive/5 px-3 py-2.5"
                             >
                               <span className="w-11 shrink-0 font-mono text-xs text-muted-foreground">
@@ -630,6 +684,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                           return (
                             <div
                               key={chave}
+                              ref={refFoco}
                               className="flex items-center gap-3 px-3 py-1.5 opacity-45"
                             >
                               <span className="w-11 shrink-0 font-mono text-xs text-muted-foreground">
@@ -645,6 +700,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                         return (
                           <button
                             key={chave}
+                            ref={refFoco}
                             type="button"
                             onClick={() => abrirAcao(colunaAtiva, fatia.inicio, fatia.fim)}
                             className="flex w-full items-center gap-3 rounded-md border border-dashed px-3 py-2.5 text-left transition hover:border-primary hover:bg-primary/5"
