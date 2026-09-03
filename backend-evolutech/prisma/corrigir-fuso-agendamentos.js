@@ -24,7 +24,10 @@
  * frente: agendamento passado e historico, e reescrever historico so
  * atrapalha quem for conferir o faturamento depois.
  *
- * RODE UMA VEZ SO. Rodar duas vezes empurra os horarios seis horas.
+ * RODE UMA VEZ SO. Rodar duas vezes empurra os horarios seis horas — e o
+ * estrago e silencioso, porque nada no resultado denuncia hora deslocada.
+ * Por isso a gravacao deixa marca em audit_logs (AGENDA_FUSO_CORRIGIDO) e a
+ * segunda execucao se recusa a rodar. --forcar passa por cima.
  *
  * Precisa de DATABASE_URL. Vem do .env do backend; se a maquina nao tiver
  * .env, da para passar na hora:
@@ -63,6 +66,10 @@ const FUSO = process.env.TZ_BARBEARIA || 'America/Sao_Paulo';
 
 const argumentos = process.argv.slice(2);
 const aplicar = argumentos.includes('--aplicar');
+const forcar = argumentos.includes('--forcar');
+
+/** A marca que diz "este banco ja foi corrigido". */
+const ACAO_AUDITORIA = 'AGENDA_FUSO_CORRIGIDO';
 const valorDe = (nome) => {
   const item = argumentos.find((arg) => arg.startsWith(`--${nome}=`));
   return item ? item.split('=').slice(1).join('=').trim() : '';
@@ -102,11 +109,32 @@ async function main() {
   const desdeTexto = valorDe('desde');
   const empresaId = valorDe('empresa');
 
+  const jaRodou = await prisma.auditLog.findFirst({
+    where: { action: ACAO_AUDITORIA },
+    orderBy: { createdAt: 'desc' },
+    select: { createdAt: true, details: true },
+  });
+
+  if (jaRodou && !forcar) {
+    console.log(`Este banco ja foi corrigido em ${emBrasilia(jaRodou.createdAt)}.`);
+    console.log(`Detalhes: ${JSON.stringify(jaRodou.details)}`);
+    console.log('');
+    console.log('Rodar de novo empurraria tudo mais tres horas. Nada foi feito.');
+    console.log('Se for mesmo necessario, use --forcar.');
+    return;
+  }
+
+  // Meia-noite na barbearia. Com o corte em UTC, rodando de madrugada no
+  // Brasil o "hoje" ja era o dia seguinte e o dia corrente ficava de fora.
   const desde = desdeTexto ? new Date(`${desdeTexto}T00:00:00Z`) : new Date();
   if (Number.isNaN(desde.getTime())) {
     throw new Error('--desde invalido. Use AAAA-MM-DD');
   }
-  if (!desdeTexto) desde.setUTCHours(0, 0, 0, 0);
+  if (!desdeTexto) {
+    desde.setUTCMinutes(desde.getUTCMinutes() + deslocamentoMinutos(desde));
+    desde.setUTCHours(0, 0, 0, 0);
+    desde.setUTCMinutes(desde.getUTCMinutes() - deslocamentoMinutos(desde));
+  }
 
   const agendamentos = await prisma.appointment.findMany({
     where: {
@@ -151,6 +179,24 @@ async function main() {
         data: { scheduledAt: corrigido },
       });
     }
+  }
+
+  // A marca fica no banco, nao num arquivo: quem roda da proxima vez pode
+  // ser outra maquina, e a pergunta "isto ja foi corrigido?" e do banco.
+  if (aplicar && alterados > 0) {
+    await prisma.auditLog.create({
+      data: {
+        action: ACAO_AUDITORIA,
+        resource: 'appointments',
+        details: {
+          fuso: FUSO,
+          agendamentos: alterados,
+          desde: desde.toISOString(),
+          empresa: empresaId || null,
+          forcado: forcar,
+        },
+      },
+    });
   }
 
   console.log('');
