@@ -4,6 +4,7 @@ import { PaymentService } from './payment.service';
 import { CLIENTE_INICIO_MINUTOS, CLIENTE_FIM_MINUTOS } from '../config/agenda';
 import { resolverHorarioDaCasa } from '../utils/business-hours.util';
 import { getBlockedIntervals, isIntervalBlocked } from '../utils/appointment-blocks.util';
+import { interpretarDataHora, limitesDoDia } from '../config/fuso';
 
 class CustomerPortalError extends Error {
   statusCode: number;
@@ -165,27 +166,33 @@ export class CustomerPortalService {
     return account;
   }
 
+  /**
+   * Os agendamentos que sao deste cliente — e so dele.
+   *
+   * Antes o filtro era "meu id OU alguem com o meu nome". Numa barbearia
+   * com dois "Joao Silva" isso significava um ver a agenda do outro no
+   * portal e, pior, poder cancelar o horario do outro: o agendamento sumia
+   * e ninguem entendia por que. Identidade e o id do cadastro, que vem do
+   * telefone; nome nao identifica pessoa nenhuma.
+   *
+   * Agendamento antigo que ficou sem cadastro vinculado nao aparece aqui.
+   * Ele continua na agenda da barbearia, que e onde a equipe resolve.
+   */
+  private escopoDoCliente(context: { companyId: string; customerId: string }) {
+    return { companyId: context.companyId, customerId: context.customerId };
+  }
+
   async getDashboard(auth: AuthenticatedCustomer) {
     const context = await this.getCustomerContext(auth);
 
     const [appointmentsTotal, upcomingAppointments, activeSubscriptions, loyaltyProfile, courseAccesses] =
       await Promise.all([
         (prisma as any).appointment.count({
-          where: {
-            companyId: context.companyId,
-            OR: [
-              { customerId: context.customerId },
-              { customerName: { equals: context.customer.name, mode: 'insensitive' } },
-            ],
-          },
+          where: this.escopoDoCliente(context),
         }),
         (prisma as any).appointment.count({
           where: {
-            companyId: context.companyId,
-            OR: [
-              { customerId: context.customerId },
-              { customerName: { equals: context.customer.name, mode: 'insensitive' } },
-            ],
+            ...this.escopoDoCliente(context),
             scheduledAt: { gte: new Date() },
             status: { in: ['pendente', 'confirmado'] },
           },
@@ -237,21 +244,19 @@ export class CustomerPortalService {
 
   async listMyAppointments(auth: AuthenticatedCustomer, query: { status?: string; from?: string; to?: string }) {
     const context = await this.getCustomerContext(auth);
-    const where: any = {
-      companyId: context.companyId,
-      OR: [
-        { customerId: context.customerId },
-        { customerName: { equals: context.customer.name, mode: 'insensitive' } },
-      ],
-    };
+    const where: any = { ...this.escopoDoCliente(context) };
 
     if (query.status) {
       where.status = this.normalizeAppointmentStatus(query.status);
     }
     if (query.from || query.to) {
       where.scheduledAt = {};
-      if (query.from) where.scheduledAt.gte = new Date(query.from);
-      if (query.to) where.scheduledAt.lte = new Date(query.to);
+      // Datas do filtro tambem no fuso da casa: "de 02/09 ate 02/09" tem de
+      // pegar o dia 2 inteiro da barbearia, nao o dia 2 em UTC.
+      const de = interpretarDataHora(query.from);
+      const ate = interpretarDataHora(query.to);
+      if (de) where.scheduledAt.gte = limitesDoDia(de).inicio;
+      if (ate) where.scheduledAt.lte = limitesDoDia(ate).fim;
     }
 
     const appointments = await (prisma as any).appointment.findMany({
@@ -293,11 +298,7 @@ export class CustomerPortalService {
     const appointment = await (prisma as any).appointment.findFirst({
       where: {
         id,
-        companyId: context.companyId,
-        OR: [
-          { customerId: context.customerId },
-          { customerName: { equals: context.customer.name, mode: 'insensitive' } },
-        ],
+        ...this.escopoDoCliente(context),
       },
       select: {
         id: true,
@@ -535,8 +536,10 @@ export class CustomerPortalService {
       throw new CustomerPortalError('Campos obrigatorios: service_id, professional_id, scheduled_at', 400);
     }
 
-    const scheduledAt = new Date(scheduledAtRaw);
-    if (Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() < Date.now()) {
+    // Mesma leitura do painel e do link publico: com fuso, vale o que veio;
+    // sem fuso, e hora da barbearia. Tres caminhos, uma hora so.
+    const scheduledAt = interpretarDataHora(scheduledAtRaw);
+    if (!scheduledAt || scheduledAt.getTime() < Date.now()) {
       throw new CustomerPortalError('Data/hora invalida para agendamento', 400);
     }
 

@@ -9,8 +9,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { SearchableSelect } from '@/components/ui/searchable-select';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+// Toda hora de agendamento passa por aqui: a tela mostra a hora da
+// barbearia, nao a do aparelho de quem esta olhando.
+import {
+  formatarData,
+  formatarHora,
+  paraCampoDataHora,
+  doCampoDataHora,
+} from '@/lib/horario';
 import { Calendar, Clock, Copy, Scissors } from 'lucide-react';
 import { toast } from 'sonner';
 import { appointmentsService } from '@/services/appointments';
@@ -23,6 +29,8 @@ interface Appointment {
   company_id: string;
   service_id?: string | null;
   professional_id?: string | null;
+  customer_id?: string | null;
+  customer_phone?: string | null;
   customer_name: string | null;
   service_name: string;
   price?: number | null;
@@ -81,10 +89,16 @@ const Agendamentos: React.FC = () => {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<string | undefined>(undefined);
   const [formData, setFormData] = useState({
+    // Cliente por id, nao por nome: dois clientes podem se chamar igual, e
+    // era assim que o agendamento de um caia na ficha do outro.
+    customer_id: '',
     customer_name: '',
     // Vazio = cobra o preco de tabela do servico. So vira numero quando o
     // barbeiro combina outro valor.
     price: '',
+    // O servico tambem por id: e dele que sai a duracao, e duracao errada
+    // e horario livre de mentira na agenda.
+    service_id: '',
     service_name: '',
     // O nome sozinho nao bastava: a grade monta as colunas por professional_id,
     // entao agendamento salvo so com o nome nascia sem dono e sumia da agenda.
@@ -189,9 +203,9 @@ const Agendamentos: React.FC = () => {
         <div className="flex items-center gap-2">
           <Calendar className="h-4 w-4 text-muted-foreground" />
           <div>
-            <div>{format(new Date(item.scheduled_at), 'dd/MM/yyyy', { locale: ptBR })}</div>
+            <div>{formatarData(item.scheduled_at)}</div>
             <div className="text-sm text-muted-foreground">
-              {format(new Date(item.scheduled_at), 'HH:mm', { locale: ptBR })}
+              {formatarHora(item.scheduled_at)}
             </div>
           </div>
         </div>
@@ -201,7 +215,17 @@ const Agendamentos: React.FC = () => {
       key: 'customer_name',
       label: 'Cliente',
       render: (item) =>
-        item.customer_name || <span className="text-muted-foreground">Sem cadastro</span>,
+        item.customer_name ? (
+          <div>
+            <div>{item.customer_name}</div>
+            {/* Dois clientes de mesmo nome so se distinguem pelo telefone. */}
+            {item.customer_phone ? (
+              <div className="text-xs text-muted-foreground">{item.customer_phone}</div>
+            ) : null}
+          </div>
+        ) : (
+          <span className="text-muted-foreground">Sem cadastro</span>
+        ),
     },
     { key: 'service_name', label: 'Servico' },
     {
@@ -219,7 +243,7 @@ const Agendamentos: React.FC = () => {
       render: (item) => (
         <div className="flex items-center gap-1">
           <Clock className="h-4 w-4 text-muted-foreground" />
-          {format(new Date(item.scheduled_at), 'HH:mm', { locale: ptBR })}
+          {formatarHora(item.scheduled_at)}
         </div>
       ),
     },
@@ -231,17 +255,21 @@ const Agendamentos: React.FC = () => {
   ];
 
   const handleNew = () => {
-    const now = new Date();
-    now.setMinutes(0, 0, 0);
-    now.setHours(now.getHours() + 1);
+    // Proxima hora cheia, na barbearia. toISOString() aqui era UTC: o
+    // formulario abria com tres horas a mais do que o relogio da loja.
+    const daquiUmaHora = paraCampoDataHora(new Date(Date.now() + 60 * 60 * 1000));
+    // "2026-09-02T15:37" -> "2026-09-02T15:00"
+    const proximaHoraCheia = `${daquiUmaHora.slice(0, 13)}:00`;
     setEditingAppointment(null);
     setFormData({
+      customer_id: '',
       customer_name: '',
       price: '',
+      service_id: '',
       service_name: '',
       professional_id: '',
       professional_name: '',
-      scheduled_at: now.toISOString().slice(0, 16),
+      scheduled_at: proximaHoraCheia,
       status: 'pendente',
     });
     setIsFormOpen(true);
@@ -250,12 +278,16 @@ const Agendamentos: React.FC = () => {
   const handleEdit = (appointment: Appointment) => {
     setEditingAppointment(appointment);
     setFormData({
+      customer_id: appointment.customer_id || '',
       customer_name: appointment.customer_name || '',
       price: appointment.price === null || appointment.price === undefined ? '' : String(appointment.price),
+      service_id: appointment.service_id || '',
       service_name: appointment.service_name || '',
       professional_id: appointment.professional_id || '',
       professional_name: appointment.professional_name || '',
-      scheduled_at: appointment.scheduled_at.slice(0, 16),
+      // A string do banco vem em UTC. Cortar os 16 primeiros caracteres
+      // jogava a hora de Londres dentro do campo.
+      scheduled_at: paraCampoDataHora(appointment.scheduled_at),
       status: appointment.status || 'pendente',
     });
     setIsFormOpen(true);
@@ -275,7 +307,7 @@ const Agendamentos: React.FC = () => {
   const handleSubmit = async () => {
     // Cliente saiu da lista de obrigatorios: quem agenda pela agenda quase
     // sempre esta com o cliente na frente e nao quer cadastrar ninguem.
-    if (!formData.service_name.trim() || !formData.professional_name.trim() || !formData.scheduled_at) {
+    if (!formData.service_id || !formData.professional_id || !formData.scheduled_at) {
       toast.error('Preencha servico, profissional e data/hora');
       return;
     }
@@ -292,7 +324,15 @@ const Agendamentos: React.FC = () => {
       // Vazio vira null de proposito: null cobra o preco do servico, 0 seria
       // cortesia.
       price: precoDigitado ? Number(precoDigitado) : null,
+      // Sai daqui como instante com fuso. O campo datetime-local nao tem
+      // fuso nenhum, e era essa string solta que chegava no banco.
+      scheduled_at: doCampoDataHora(formData.scheduled_at),
     };
+
+    if (!payload.scheduled_at) {
+      toast.error('Data e hora invalidas');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -314,7 +354,7 @@ const Agendamentos: React.FC = () => {
   };
 
   const precoDoServicoSelecionado = (() => {
-    const escolhido = services.find((service) => service.name === formData.service_name);
+    const escolhido = services.find((service) => service.id === formData.service_id);
     return escolhido ? escolhido.price.toFixed(2) : '0.00';
   })();
 
@@ -364,15 +404,17 @@ const Agendamentos: React.FC = () => {
             // A grade ja traz tudo o que o formulario precisa.
             setEditingAppointment({ id: appointment.id } as Appointment);
             setFormData({
+              customer_id: appointment.customer_id || '',
               customer_name: appointment.customer_name || '',
               price:
                 appointment.price === null || appointment.price === undefined
                   ? ''
                   : String(appointment.price),
+              service_id: appointment.service_id || '',
               service_name: appointment.service_name || '',
               professional_id: appointment.professional_id || '',
               professional_name: appointment.professional_name || '',
-              scheduled_at: new Date(appointment.scheduled_at).toISOString().slice(0, 16),
+              scheduled_at: paraCampoDataHora(appointment.scheduled_at),
               status: appointment.status || 'pendente',
             });
             setIsFormOpen(true);
@@ -382,8 +424,10 @@ const Agendamentos: React.FC = () => {
             // resolvidos. Falta so o servico — cliente e valor sao opcionais.
             setEditingAppointment(null);
             setFormData({
+              customer_id: '',
               customer_name: '',
               price: '',
+              service_id: '',
               service_name: '',
               professional_id: slot.professional_id,
               professional_name: slot.professional_name,
@@ -478,10 +522,10 @@ const Agendamentos: React.FC = () => {
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
               <Label htmlFor="customer_name">Cliente</Label>
-              {formData.customer_name ? (
+              {formData.customer_id || formData.customer_name ? (
                 <button
                   type="button"
-                  onClick={() => setFormData({ ...formData, customer_name: '' })}
+                  onClick={() => setFormData({ ...formData, customer_id: '', customer_name: '' })}
                   className="text-xs text-muted-foreground underline-offset-2 hover:underline"
                 >
                   Sem cadastro
@@ -489,35 +533,56 @@ const Agendamentos: React.FC = () => {
               ) : null}
             </div>
             <SearchableSelect
-              value={formData.customer_name}
-              onValueChange={(value) => setFormData({ ...formData, customer_name: value })}
+              value={formData.customer_id}
+              onValueChange={(value) =>
+                setFormData({
+                  ...formData,
+                  customer_id: value,
+                  // O nome acompanha o cadastro escolhido; quem manda e o id.
+                  customer_name: customers.find((item) => item.id === value)?.name || '',
+                })
+              }
               options={customers.map((customer) => ({
-                value: customer.name,
+                value: customer.id,
                 label: customer.phone ? `${customer.name} - ${customer.phone}` : customer.name,
               }))}
               placeholder="Sem cadastro"
-              searchPlaceholder="Buscar cliente..."
+              searchPlaceholder="Buscar por nome ou telefone..."
               emptyMessage="Nenhum cliente encontrado."
             />
+            {/* Agenda antiga tem agendamento com nome escrito e nenhum cadastro
+                atras. O nome continua valendo; so nao da para saber de quem e. */}
+            {!formData.customer_id && formData.customer_name ? (
+              <p className="text-xs text-amber-600">
+                Anotado como "{formData.customer_name}", sem cadastro vinculado.
+                Escolha o cliente na lista para ligar ao cadastro.
+              </p>
+            ) : null}
             <p className="text-xs text-muted-foreground">
-              Opcional. Sem cliente o agendamento entra como "Sem cadastro".
+              Opcional. Sem cliente o agendamento entra como "Sem cadastro". Clientes
+              de mesmo nome aparecem com o telefone ao lado.
             </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="service_name">Servico *</Label>
             <SearchableSelect
-              value={formData.service_name}
+              value={formData.service_id}
               onValueChange={(value) => {
                 // O servico so sugere o preco de tabela; o campo continua
-                // livre para o desconto combinado no WhatsApp.
-                const escolhido = services.find((service) => service.name === value);
+                // livre para o desconto combinado no WhatsApp. A duracao,
+                // essa sim, vem do id — e ela que reserva o tempo na agenda.
+                const escolhido = services.find((service) => service.id === value);
                 setFormData({
                   ...formData,
-                  service_name: value,
+                  service_id: value,
+                  service_name: escolhido?.name || '',
                   price: escolhido ? String(escolhido.price) : formData.price,
                 });
               }}
-              options={services.map((service) => ({ value: service.name, label: service.name }))}
+              options={services.map((service) => ({
+                value: service.id,
+                label: `${service.name} - ${service.durationMinutes} min`,
+              }))}
               placeholder="Selecionar serviço"
               searchPlaceholder="Buscar serviço..."
               emptyMessage="Nenhum serviço encontrado."
@@ -553,15 +618,18 @@ const Agendamentos: React.FC = () => {
           <div className="space-y-2">
             <Label htmlFor="professional_name">Profissional *</Label>
             <SearchableSelect
-              value={formData.professional_name}
+              value={formData.professional_id}
               onValueChange={(value) =>
                 setFormData({
                   ...formData,
-                  professional_name: value,
-                  professional_id: professionals.find((item) => item.name === value)?.id || '',
+                  professional_id: value,
+                  professional_name: professionals.find((item) => item.id === value)?.name || '',
                 })
               }
-              options={professionals.map((professional) => ({ value: professional.name, label: professional.name }))}
+              options={professionals.map((professional) => ({
+                value: professional.id,
+                label: professional.name,
+              }))}
               placeholder="Selecionar profissional"
               searchPlaceholder="Buscar profissional..."
               emptyMessage="Nenhum profissional encontrado."

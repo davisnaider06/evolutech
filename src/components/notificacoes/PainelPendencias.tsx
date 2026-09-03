@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { CalendarClock, CircleAlert, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { companyService } from '@/services/company';
+import { formatarData, formatarHora } from '@/lib/horario';
 
 type Agendamento = {
   id: string;
@@ -36,16 +37,15 @@ type Pendencias = {
   proximo: Agendamento | null;
 };
 
-const hora = (iso: string) =>
-  new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+// Hora da barbearia. toLocaleString usa o fuso do aparelho: no celular do
+// barbeiro configurado em outro fuso, o painel anunciava um horario e a
+// agenda mostrava outro para o mesmo agendamento.
+const hora = (iso: string) => formatarHora(iso);
 
-const dataHora = (iso: string) =>
-  new Date(iso).toLocaleString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+const dataHora = (iso: string) => {
+  const data = formatarData(iso);
+  return data ? `${data.slice(0, 5)} ${formatarHora(iso)}` : '';
+};
 
 export const PainelPendencias: React.FC = () => {
   const [dados, setDados] = useState<Pendencias | null>(null);

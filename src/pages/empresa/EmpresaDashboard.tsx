@@ -14,6 +14,7 @@ import {
   CalendarClock,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatarDataHora } from '@/lib/horario';
 import { API_URL } from '@/config/api';
 
 interface DashboardMetricsResponse {
@@ -100,7 +101,9 @@ const EmpresaDashboard: React.FC = () => {
               id: `appointment-${item.id}`,
               type: 'agendamento' as const,
               description: `${item.customerName || 'Cliente'} - ${item.serviceName || 'Servico'} (${item.status || 'pendente'})`,
-              timestamp: new Date(item.scheduledAt).toLocaleString('pt-BR'),
+              // Hora da barbearia: o dono e o barbeiro tem de ler o mesmo
+              // horario que o cliente leu quando marcou.
+              timestamp: formatarDataHora(item.scheduledAt),
               sortDate: item.scheduledAt,
               user: 'Agenda',
             }))
@@ -110,7 +113,7 @@ const EmpresaDashboard: React.FC = () => {
               id: `order-${item.id}`,
               type: 'pedido' as const,
               description: `Pedido de ${item.customerName || 'Cliente'} - ${currency.format(Number(item.total || 0))} (${item.status || 'pending'})`,
-              timestamp: new Date(item.createdAt).toLocaleString('pt-BR'),
+              timestamp: formatarDataHora(item.createdAt),
               sortDate: item.createdAt,
               user: 'Vendas',
             }))

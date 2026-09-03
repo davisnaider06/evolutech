@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Textarea } from '@/components/ui/textarea';
 import { CalendarCheck, CheckCircle2 } from 'lucide-react';
 import { appointmentsService } from '@/services/appointments';
+import { hojeNaBarbearia } from '@/lib/horario';
 
 interface AppointmentInput {
   customer_name: string;
@@ -71,10 +72,9 @@ const AgendamentoCliente: React.FC = () => {
     }
   }, [slug]);
 
-  const minDate = useMemo(() => {
-    const now = new Date();
-    return now.toISOString().slice(0, 10);
-  }, []);
+  // Hoje na barbearia. toISOString() e UTC: depois das 21h o campo ja
+  // liberava o dia seguinte, e antes disso podia travar o dia de hoje.
+  const minDate = useMemo(() => hojeNaBarbearia(), []);
 
   useEffect(() => {
     const loadSlots = async () => {

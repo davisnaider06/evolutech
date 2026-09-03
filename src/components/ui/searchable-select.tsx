@@ -34,6 +34,25 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   const [open, setOpen] = React.useState(false);
   const selected = options.find((option) => option.value === value) || null;
 
+  /**
+   * Um texto unico por item, para a lista e para o React.
+   *
+   * Duas opcoes iguais — dois clientes de mesmo nome, dois servicos com o
+   * mesmo rotulo — viravam a mesma entrada: chave repetida no React e, no
+   * cmdk, dois itens tratados como um so. Clicar num marcava o outro. O
+   * sufixo entra apenas onde ha repeticao, e como o texto da busca casa por
+   * pedaco, ele nao atrapalha quem digita nome ou telefone.
+   */
+  const textos = React.useMemo(() => {
+    const vistos = new Map<string, number>();
+    return options.map((option, index) => {
+      const base = `${option.label} ${option.value}`;
+      const repeticoes = vistos.get(base) || 0;
+      vistos.set(base, repeticoes + 1);
+      return repeticoes === 0 ? base : `${base} #${index}`;
+    });
+  }, [options]);
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -57,10 +76,10 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
           <CommandList>
             <CommandEmpty>{emptyMessage}</CommandEmpty>
             <CommandGroup>
-              {options.map((option) => (
+              {options.map((option, index) => (
                 <CommandItem
-                  key={option.value}
-                  value={`${option.label} ${option.value}`}
+                  key={textos[index]}
+                  value={textos[index]}
                   onSelect={() => {
                     onValueChange(option.value);
                     setOpen(false);

@@ -27,10 +27,18 @@ import {
   CustomerPlanCatalogItem,
   CustomerSubscription,
 } from '@/types/customer-portal';
+import { formatarDataHora, hojeNaBarbearia } from '@/lib/horario';
 
+/**
+ * Hora da barbearia, sempre.
+ *
+ * O cliente pode abrir o portal de qualquer lugar; o corte e no horario da
+ * loja. Formatando pelo fuso do aparelho, o mesmo agendamento aparecia com
+ * uma hora para o cliente e outra para o barbeiro.
+ */
 const formatDateTime = (value?: string | null) => {
   if (!value) return '-';
-  return new Date(value).toLocaleString('pt-BR');
+  return formatarDataHora(value) || '-';
 };
 
 const formatCurrency = (value?: number | null) =>
@@ -343,6 +351,7 @@ const CustomerDashboard: React.FC = () => {
                   <input
                     className="h-10 rounded border border-input bg-background px-2 text-sm text-foreground"
                     type="date"
+                    min={hojeNaBarbearia()}
                     value={appointmentForm.date}
                     onChange={(event) =>
                       setAppointmentForm((old) => ({

@@ -15,6 +15,13 @@ import {
 import { companyService } from '@/services/company';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { iniciais, corDoProfissional } from '@/lib/profissional';
+// A agenda inteira fala a hora da barbearia: o dono no computador da loja,
+// o barbeiro no celular e o cliente no portal precisam ler o mesmo numero.
+import {
+  hojeNaBarbearia,
+  instanteDoSlot,
+  minutosDoDiaNaBarbearia,
+} from '@/lib/horario';
 import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight, Ban, CalendarDays, Plus, Clock } from 'lucide-react';
 
@@ -22,6 +29,8 @@ interface BoardAppointment {
   id: string;
   customer_id: string | null;
   customer_name: string | null;
+  /** Do cadastro do cliente. E o que separa dois clientes de mesmo nome. */
+  customer_phone?: string | null;
   service_id?: string | null;
   service_name: string | null;
   status: string;
@@ -82,11 +91,13 @@ const minutesToLabel = (value: number) => {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 };
 
-const todayISO = () => {
-  const now = new Date();
-  const offset = now.getTimezoneOffset();
-  return new Date(now.getTime() - offset * 60000).toISOString().slice(0, 10);
-};
+/**
+ * Hoje na barbearia, nao no aparelho.
+ *
+ * Um celular com o fuso trocado abria a agenda no dia errado — e o barbeiro
+ * via a agenda vazia achando que nao tinha ninguem marcado.
+ */
+const todayISO = () => hojeNaBarbearia();
 
 const shiftDate = (iso: string, days: number) => {
   const date = new Date(`${iso}T12:00:00`);
@@ -234,8 +245,35 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
   );
   const colunaAtiva = columns[indiceAtivo] || null;
 
-  const dayStart = board?.day_start_minutes ?? 8 * 60;
-  const dayEnd = board?.day_end_minutes ?? 18 * 60;
+  /**
+   * A faixa desenhada na tela.
+   *
+   * Comeca no horario da casa, mas se estica para caber agendamento ou
+   * bloqueio que caiu fora dele — encaixe combinado antes de abrir, cliente
+   * atendido depois de fechar. Fixa na janela, esses sumiam da agenda sem
+   * aviso: o horario continuava ocupado e ninguem via.
+   */
+  const { dayStart, dayEnd } = useMemo(() => {
+    let inicio = board?.day_start_minutes ?? 8 * 60;
+    let fim = board?.day_end_minutes ?? 18 * 60;
+
+    for (const column of board?.columns || []) {
+      for (const item of column.appointments) {
+        inicio = Math.min(inicio, item.start_minutes);
+        fim = Math.max(fim, item.end_minutes);
+      }
+      for (const item of column.blocks) {
+        inicio = Math.min(inicio, item.start_minutes);
+        fim = Math.max(fim, item.end_minutes);
+      }
+    }
+
+    return {
+      dayStart: Math.max(0, Math.floor(inicio)),
+      dayEnd: Math.min(24 * 60, Math.ceil(fim)),
+    };
+  }, [board]);
+
   /**
    * Transforma janelas, bloqueios e agendamentos numa lista de fatias.
    *
@@ -319,8 +357,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
     if (!colunaAtiva) return dayStart;
 
     if (date === todayISO()) {
-      const agora = new Date();
-      const minutos = agora.getHours() * 60 + agora.getMinutes();
+      const minutos = minutosDoDiaNaBarbearia(new Date());
       if (minutos > dayStart && minutos < dayEnd) return minutos;
     }
 
@@ -364,12 +401,16 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
 
     setBlockSaving(true);
     try {
-      const startAt = new Date(`${date}T${startTime}:00`);
-      const endAt = new Date(`${date}T${endTime}:00`);
+      // Horario de parede da barbearia -> instante. Sem isso o bloqueio de
+      // almoco entrava no banco com o fuso do aparelho de quem bloqueou.
+      const [horaInicio, minutoInicio] = startTime.split(':').map(Number);
+      const [horaFim, minutoFim] = endTime.split(':').map(Number);
+      const startAt = instanteDoSlot(date, horaInicio * 60 + minutoInicio);
+      const endAt = instanteDoSlot(date, horaFim * 60 + minutoFim);
 
       if (blockForm.is_recurring) {
         // Recorrente: vale para esse dia da semana pelos proximos 12 meses.
-        const vigenciaFim = new Date(`${date}T${endTime}:00`);
+        const vigenciaFim = new Date(endAt);
         vigenciaFim.setFullYear(vigenciaFim.getFullYear() + 1);
         await companyService.createAppointmentBlock({
           professional_id: blockForm.professional_id || undefined,
@@ -400,12 +441,14 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
     }
   };
 
-  /** Data e hora ISO local de uma fatia, no formato que o formulario espera. */
-  const isoDoSlot = (minutos: number) => {
-    const hora = String(Math.floor(minutos / 60)).padStart(2, '0');
-    const minuto = String(Math.round(minutos % 60)).padStart(2, '0');
-    return `${date}T${hora}:${minuto}`;
-  };
+  /**
+   * O instante em que a barbearia marca essa fatia.
+   *
+   * Antes devolvia "2026-09-02T15:00", texto sem fuso: o formulario mandava
+   * essa string ao backend, que a lia como UTC, e o agendamento nascia tres
+   * horas fora do lugar. Agora sai com fuso, sem margem para interpretacao.
+   */
+  const isoDoSlot = (minutos: number) => instanteDoSlot(date, minutos).toISOString();
 
   const abrirAcao = (column: BoardColumn, inicio: number, fim: number) => {
     setAcaoSlot({
@@ -439,8 +482,8 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
     try {
       const criado: any = await companyService.createAppointmentBlock({
         professional_id: acaoSlot.professionalId,
-        start_at: new Date(`${isoDoSlot(acaoSlot.inicio)}:00`).toISOString(),
-        end_at: new Date(`${isoDoSlot(acaoSlot.fim)}:00`).toISOString(),
+        start_at: isoDoSlot(acaoSlot.inicio),
+        end_at: isoDoSlot(acaoSlot.fim),
       });
 
       const inicioLabel = minutesToLabel(acaoSlot.inicio);
@@ -670,6 +713,11 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                                   )}
                                 </span>
                                 <span className="block truncate text-xs opacity-80">
+                                  {/* O telefone vem antes do servico: com dois clientes
+                                      de mesmo nome, e ele que diz qual dos dois e. */}
+                                  {fatia.agendamento.customer_phone
+                                    ? `${fatia.agendamento.customer_phone} - `
+                                    : ''}
                                   {fatia.agendamento.service_name || 'Servico'} -{' '}
                                   {fatia.agendamento.duration_minutes} min
                                   {typeof fatia.agendamento.price === 'number'

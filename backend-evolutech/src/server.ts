@@ -1,6 +1,12 @@
 ﻿import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
+import { aplicarFusoDaCasa, FUSO_BARBEARIA } from './config/fuso';
+
+// Antes de qualquer conta com data: o processo passa a viver no fuso da
+// barbearia. Rodando em UTC (o padrao do Render), a mesma linha do banco
+// aparecia como 15:00 para o dono e 12:00 para o cliente.
+aplicarFusoDaCasa();
 
 // Importa as rotas modulares
 import authRoutes from './routes/auth.routes';
@@ -127,6 +133,7 @@ const startServer = async () => {
 
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    console.log(`Fuso da agenda: ${FUSO_BARBEARIA} (agora ${new Date().toLocaleString('pt-BR')})`);
   });
 
   if (DB_KEEPALIVE_ENABLED) {

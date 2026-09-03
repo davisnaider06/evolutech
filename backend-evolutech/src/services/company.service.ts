@@ -23,6 +23,8 @@ import {
   SUPPORTED_PAYMENT_GATEWAYS,
 } from '../config/paymentGatewayCatalog';
 import { getBlockedIntervals, isIntervalBlocked } from '../utils/appointment-blocks.util';
+import { interpretarDataHora, limitesDoDia, dataISODaCasa } from '../config/fuso';
+import { chaveTelefone, finalDoTelefone } from '../utils/telefone.util';
 import { invalidateRoleCache } from '../middlewares/auth.middleware';
 import { pushService } from './push.service';
 import { notificationService } from './notification.service';
@@ -677,6 +679,11 @@ export class CompanyService {
         ...(table === 'customers'
           ? { include: { preferredProfessional: { select: { id: true, fullName: true } } } }
           : {}),
+        // O agendamento vem com o cadastro do cliente para a tela mostrar o
+        // telefone: e o que distingue dois clientes de mesmo nome.
+        ...(table === 'appointments'
+          ? { include: { customer: { select: { id: true, name: true, phone: true } } } }
+          : {}),
       }),
       model.count({ where }),
     ]);
@@ -737,11 +744,27 @@ export class CompanyService {
     if (table === 'appointments') {
       payload.status = this.normalizeAppointmentStatus(payload.status, 'pendente');
       this.normalizeAppointmentCustomerAndPrice(payload);
+      // Cliente e servico por id, horario como data de verdade: e o que
+      // impede homonimo trocado, duracao errada e hora deslocada.
+      await this.resolveAppointmentCustomer(payload, companyId);
+      const servico = await this.resolveAppointmentService(payload, companyId);
+      const quando = this.normalizeAppointmentSchedule(payload);
+      if (!quando) {
+        throw new CompanyServiceError('scheduled_at obrigatorio', 400);
+      }
       if (user.role === 'FUNCIONARIO_EMPRESA') {
         payload.professionalId = user.id;
         payload.professionalName = user.fullName;
       } else {
         await this.resolveAppointmentProfessional(payload, companyId);
+      }
+      if (!['cancelado', 'no_show'].includes(String(payload.status))) {
+        await this.garantirHorarioLivre({
+          companyId,
+          professionalId: payload.professionalId,
+          inicio: quando,
+          duracaoMinutos: Number(servico?.durationMinutes || 30),
+        });
       }
     }
     if (table === 'cash_transactions') {
@@ -789,7 +812,17 @@ export class CompanyService {
       where: { id },
       select: {
         companyId: true,
-        ...(table === 'appointments' ? { professionalId: true } : {}),
+        // Na edicao o payload costuma ser parcial (so o status, so a hora).
+        // O que nao vier nele vale como esta gravado, e e com esses valores
+        // que a checagem de horario ocupado tem de contar.
+        ...(table === 'appointments'
+          ? {
+              professionalId: true,
+              scheduledAt: true,
+              serviceId: true,
+              status: true,
+            }
+          : {}),
       },
     });
     if (!existing) throw new CompanyServiceError('Registro não encontrado', 404);
@@ -827,6 +860,39 @@ export class CompanyService {
     }
     if (table === 'appointments') {
       this.normalizeAppointmentCustomerAndPrice(payload);
+      await this.resolveAppointmentCustomer(payload, existing.companyId);
+      const servico = await this.resolveAppointmentService(payload, existing.companyId);
+      const quando = this.normalizeAppointmentSchedule(payload);
+
+      const inicio = quando || ((existing as any).scheduledAt as Date | null);
+      const statusFinal = String(payload.status ?? (existing as any).status ?? '');
+      const professionalIdFinal =
+        payload.professionalId !== undefined && payload.professionalId !== ''
+          ? payload.professionalId
+          : (existing as any).professionalId;
+
+      if (inicio && !['cancelado', 'no_show'].includes(statusFinal)) {
+        // Duracao: a do servico que veio no payload; sem ele, a do servico
+        // ja gravado. Cancelado e no-show liberam o horario, entao passam.
+        let duracao = Number(servico?.durationMinutes || 0);
+        if (!duracao) {
+          const servicoAtual = (existing as any).serviceId
+            ? await (prisma as any).appointmentService.findUnique({
+                where: { id: (existing as any).serviceId },
+                select: { durationMinutes: true },
+              })
+            : null;
+          duracao = Number(servicoAtual?.durationMinutes || 30);
+        }
+
+        await this.garantirHorarioLivre({
+          companyId: existing.companyId,
+          professionalId: user.role === 'FUNCIONARIO_EMPRESA' ? user.id : professionalIdFinal,
+          inicio,
+          duracaoMinutos: duracao,
+          ignorarId: id,
+        });
+      }
     }
     if (table === 'cash_transactions') {
       if (payload.transaction_date !== undefined || payload.transactionDate !== undefined) {
@@ -1000,6 +1066,207 @@ export class CompanyService {
     // texto livre: agenda antiga tem registro assim e nao vale recusar agora.
     payload.professionalId = porNome?.userId || null;
     payload.professionalName = porNome?.user.fullName || nomeInformado;
+  }
+
+  /**
+   * Acha o cliente pelo telefone, escrito como estiver.
+   *
+   * O balcao grava "(31) 99876-5432" e o link publico grava "5531998765432".
+   * Comparando texto puro, como era feito, o mesmo cliente virava dois
+   * cadastros e o historico se partia ao meio. A busca aqui filtra pelos 8
+   * ultimos digitos no banco (barato, usa indice de empresa) e confirma a
+   * chave completa em memoria.
+   */
+  private async encontrarClientePorTelefone(companyId: string, telefone: unknown) {
+    const chave = chaveTelefone(telefone);
+    if (!chave) return null;
+
+    const candidatos = await prisma.customer.findMany({
+      where: {
+        companyId,
+        phone: { contains: finalDoTelefone(telefone) },
+      },
+      select: { id: true, phone: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+      take: 20,
+    });
+
+    return candidatos.find((item) => chaveTelefone(item.phone) === chave) || null;
+  }
+
+  /**
+   * Cliente do agendamento resolvido por ID, nunca por nome.
+   *
+   * Dois "Joao Silva" sao duas pessoas: telefone, historico e mensalidade
+   * diferentes. Enquanto o agendamento guardava so o nome, a agenda tratava os
+   * dois como um: o segundo herdava o cadastro do primeiro, o historico
+   * misturava e bastava um estar devendo a mensalidade para travar o
+   * agendamento do outro. O que separa duas pessoas de mesmo nome e o id do
+   * cadastro — e o telefone e o que deixa a equipe distinguir na tela.
+   *
+   * Tres situacoes, de proposito:
+   *  - veio customer_id: e ele, e o nome gravado passa a ser o do cadastro;
+   *  - veio customer_id vazio: atendimento avulso, fica so o nome digitado;
+   *  - o campo nao veio: e edicao parcial (mudar status, por exemplo) e o
+   *    vinculo atual nao se mexe.
+   */
+  private async resolveAppointmentCustomer(payload: any, companyId: string) {
+    const informouId = payload.customerId !== undefined || payload.customer_id !== undefined;
+    const idInformado = String(payload.customerId ?? payload.customer_id ?? '').trim();
+    delete payload.customer_id;
+
+    if (!informouId) {
+      delete payload.customerId;
+      return;
+    }
+
+    if (!idInformado) {
+      payload.customerId = null;
+      return;
+    }
+
+    const cliente = await prisma.customer.findFirst({
+      where: { id: idInformado, companyId },
+      select: { id: true, name: true },
+    });
+    if (!cliente) {
+      throw new CompanyServiceError('Cliente nao encontrado nesta empresa', 404);
+    }
+
+    payload.customerId = cliente.id;
+    payload.customerName = cliente.name;
+  }
+
+  /**
+   * Servico do agendamento resolvido por ID, com a duracao junto.
+   *
+   * A duracao mora no servico e e ela que diz quanto da agenda o atendimento
+   * ocupa. O formulario mandava so o nome: o agendamento nascia sem
+   * service_id, a grade assumia 30 minutos para tudo e um corte com barba de
+   * uma hora deixava a meia hora seguinte "livre" para outra pessoa marcar por
+   * cima. Dois servicos de mesmo nome tambem eram indistinguiveis.
+   */
+  private async resolveAppointmentService(payload: any, companyId: string) {
+    const informouId = payload.serviceId !== undefined || payload.service_id !== undefined;
+    const idInformado = String(payload.serviceId ?? payload.service_id ?? '').trim();
+    const nomeInformado = String(payload.serviceName ?? payload.service_name ?? '').trim();
+    delete payload.service_id;
+    delete payload.service_name;
+
+    if (idInformado) {
+      const servico = await (prisma as any).appointmentService.findFirst({
+        where: { id: idInformado, companyId },
+        select: { id: true, name: true, durationMinutes: true },
+      });
+      if (!servico) {
+        throw new CompanyServiceError('Servico nao encontrado nesta empresa', 404);
+      }
+      payload.serviceId = servico.id;
+      payload.serviceName = servico.name;
+      return servico;
+    }
+
+    if (nomeInformado) {
+      // Caminho antigo (so o nome): ainda aceito para nao recusar agenda
+      // antiga nem integracao, mas o id passa a ser preenchido quando da.
+      const porNome = await (prisma as any).appointmentService.findFirst({
+        where: { companyId, name: { equals: nomeInformado, mode: 'insensitive' } },
+        select: { id: true, name: true, durationMinutes: true },
+      });
+      payload.serviceId = porNome?.id || null;
+      payload.serviceName = porNome?.name || nomeInformado;
+      return porNome || null;
+    }
+
+    if (informouId) payload.serviceId = null;
+    return null;
+  }
+
+  /**
+   * Horario do agendamento vira uma data de verdade antes de chegar no banco.
+   *
+   * O formulario manda "2026-09-02T15:00", sem fuso nenhum. Essa string ia
+   * crua para o Prisma, que a lia como UTC: o agendamento nascia tres horas
+   * fora do lugar. Aqui ela e lida como 15:00 na barbearia, que e o que quem
+   * digitou quis dizer.
+   */
+  private normalizeAppointmentSchedule(payload: any): Date | null {
+    const informou = payload.scheduledAt !== undefined || payload.scheduled_at !== undefined;
+    const bruto = payload.scheduledAt ?? payload.scheduled_at;
+    delete payload.scheduled_at;
+    if (!informou) return null;
+
+    const data = interpretarDataHora(bruto);
+    if (!data) {
+      throw new CompanyServiceError('Data/hora de agendamento invalida', 400);
+    }
+    payload.scheduledAt = data;
+    return data;
+  }
+
+  /**
+   * Recusa dois atendimentos em cima do mesmo barbeiro na mesma hora.
+   *
+   * O link publico e o portal do cliente ja checavam isso; a agenda da equipe
+   * nao checava nada. O horario que o cliente nao conseguia marcar era
+   * exatamente o que o painel deixava marcar duas vezes.
+   */
+  private async garantirHorarioLivre(params: {
+    companyId: string;
+    professionalId?: string | null;
+    inicio: Date;
+    duracaoMinutos: number;
+    ignorarId?: string;
+  }) {
+    const { companyId, professionalId, inicio, duracaoMinutos, ignorarId } = params;
+    if (!professionalId) return;
+
+    const dia = limitesDoDia(inicio);
+    const novoInicio = inicio.getTime();
+    const novoFim = novoInicio + Math.max(1, duracaoMinutos) * 60 * 1000;
+
+    const doDia = await (prisma as any).appointment.findMany({
+      where: {
+        companyId,
+        professionalId,
+        scheduledAt: { gte: dia.inicio, lte: dia.fim },
+        status: { notIn: ['cancelado', 'cancelled', 'no_show', 'no-show'] },
+        ...(ignorarId ? { id: { not: ignorarId } } : {}),
+      },
+      select: { id: true, scheduledAt: true, serviceId: true, customerName: true },
+    });
+    if (doDia.length === 0) return;
+
+    const idsDeServico = Array.from(
+      new Set(doDia.map((item: any) => item.serviceId).filter((id: any) => typeof id === 'string'))
+    );
+    const servicos = idsDeServico.length
+      ? await (prisma as any).appointmentService.findMany({
+          where: { id: { in: idsDeServico } },
+          select: { id: true, durationMinutes: true },
+        })
+      : [];
+    const duracaoPorServico = new Map<string, number>(
+      servicos.map((item: any) => [item.id, Number(item.durationMinutes || 30)])
+    );
+
+    const conflito = doDia.find((item: any) => {
+      const inicioExistente = new Date(item.scheduledAt).getTime();
+      const fimExistente =
+        inicioExistente + Number(duracaoPorServico.get(item.serviceId || '') || 30) * 60 * 1000;
+      return novoInicio < fimExistente && inicioExistente < novoFim;
+    });
+
+    if (conflito) {
+      const hora = new Date(conflito.scheduledAt).toLocaleTimeString('pt-BR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      throw new CompanyServiceError(
+        `Horario ocupado: este barbeiro ja atende ${conflito.customerName || 'outro cliente'} as ${hora}.`,
+        409
+      );
+    }
   }
 
   private async applyCustomerProfessionalPayload(payload: any, companyId: string) {
@@ -1254,7 +1521,7 @@ export class CompanyService {
     const professionalIds = professionals.map((item) => item.userId);
     if (professionalIds.length === 0) {
       return {
-        date: dayStart.toISOString().slice(0, 10),
+        date: dataISODaCasa(dayStart),
         weekday,
         day_start_minutes: AGENDA_INICIO_MINUTOS,
         day_end_minutes: AGENDA_FIM_MINUTOS,
@@ -1269,6 +1536,9 @@ export class CompanyService {
           professionalId: { in: professionalIds },
           scheduledAt: { gte: dayStart, lte: dayEnd },
         },
+        // O telefone vem junto porque e ele que diferencia dois clientes
+        // de mesmo nome na hora que o barbeiro olha a agenda.
+        include: { customer: { select: { id: true, name: true, phone: true } } },
         orderBy: { scheduledAt: 'asc' },
       }),
       (prisma as any).appointmentService.findMany({
@@ -1325,6 +1595,8 @@ export class CompanyService {
             customer_id: item.customerId || null,
             // Sem cadastro: a agenda mostra o rotulo, o banco guarda NULL.
             customer_name: item.customerName || null,
+            // Do cadastro, nao do agendamento: e o que distingue homonimos.
+            customer_phone: item.customer?.phone || null,
             service_id: item.serviceId || null,
             service_name: item.serviceName || service?.name || null,
             status: item.status,
@@ -1367,7 +1639,9 @@ export class CompanyService {
     }
 
     return {
-      date: dayStart.toISOString().slice(0, 10),
+      // Sempre a data da barbearia. toISOString() e UTC: perto da
+      // meia-noite ele devolvia o dia seguinte.
+      date: dataISODaCasa(dayStart),
       weekday,
       day_start_minutes: casa.inicioMinutos,
       day_end_minutes: casa.fimMinutos,
@@ -6486,12 +6760,12 @@ export class CompanyService {
 
     const [appointments, orders, manualEntries] = await Promise.all([
       (prisma as any).appointment.findMany({
+        // So o que esta vinculado a este cadastro. Casar por nome juntava o
+        // historico de dois clientes homonimos numa ficha so — o segundo
+        // "Joao Silva" aparecia com os cortes do primeiro.
         where: {
           companyId,
-          OR: [
-            { customerId: customer.id },
-            { customerName: { equals: customer.name, mode: 'insensitive' } },
-          ],
+          customerId: customer.id,
         },
         select: {
           id: true,
@@ -9292,12 +9566,13 @@ export class CompanyService {
     endDate.setDate(endDate.getDate() + 30);
 
     if (dateISO) {
-      const parsed = new Date(dateISO);
-      if (!Number.isNaN(parsed.getTime())) {
-        startDate = new Date(parsed);
-        startDate.setHours(0, 0, 0, 0);
-        endDate = new Date(parsed);
-        endDate.setHours(23, 59, 59, 999);
+      // "2026-09-02" com new Date() e meia-noite em UTC, que no Brasil ainda
+      // e o dia 1o as 21h: a lista do link publico mostrava o dia errado.
+      const parsed = interpretarDataHora(dateISO);
+      if (parsed) {
+        const dia = limitesDoDia(parsed);
+        startDate = dia.inicio;
+        endDate = dia.fim;
       }
     }
 
@@ -9365,19 +9640,25 @@ export class CompanyService {
       );
     }
 
+    // Telefone deixou de ser opcional aqui. O formulario ja o exigia; o
+    // servidor nao, e um POST na mao criava agendamento sem nenhuma forma
+    // de saber de quem era — o nome nao serve, dois clientes homonimos sao
+    // duas pessoas. E sem telefone a barbearia nao tem como confirmar.
+    if (!chaveTelefone(customerPhone)) {
+      throw new CompanyServiceError(
+        'Telefone obrigatorio: e ele que identifica voce no atendimento',
+        400
+      );
+    }
+
     // Mensalidade em aberto trava o agendamento novo tambem por aqui — senao
     // o cliente bloqueado no portal contornaria a trava pelo link publico.
     // O cliente e reconhecido pelo telefone, que e como esta tela identifica
     // quem ja e cadastrado.
-    if (customerPhone) {
-      const conhecido = await prisma.customer.findFirst({
-        where: { companyId: company.id, phone: customerPhone },
-        select: { id: true },
-      });
-      const bloqueioMensalidade = await this.getSubscriptionBlock(company.id, conhecido?.id);
-      if (bloqueioMensalidade) {
-        throw new CompanyServiceError(bloqueioMensalidade.message, 402);
-      }
+    const conhecido = await this.encontrarClientePorTelefone(company.id, customerPhone);
+    const bloqueioMensalidade = await this.getSubscriptionBlock(company.id, conhecido?.id);
+    if (bloqueioMensalidade) {
+      throw new CompanyServiceError(bloqueioMensalidade.message, 402);
     }
 
     const [service, professional] = await Promise.all([
@@ -9411,8 +9692,10 @@ export class CompanyService {
       throw new CompanyServiceError('Profissional invalido para esta empresa', 400);
     }
 
-    const scheduledAt = new Date(scheduledAtRaw);
-    if (Number.isNaN(scheduledAt.getTime())) {
+    // O front manda o horario que veio de /slots, ja com fuso. Se vier sem
+    // (integracao, teste manual), vale como hora da barbearia — nunca UTC.
+    const scheduledAt = interpretarDataHora(scheduledAtRaw);
+    if (!scheduledAt) {
       throw new CompanyServiceError('Data/hora de agendamento invalida', 400);
     }
 
@@ -9486,21 +9769,17 @@ export class CompanyService {
     }
 
     const created = await prisma.$transaction(async (tx) => {
-      let customerRecord: { id: string } | null = null;
-      if (customerPhone) {
-        const existingCustomer = await tx.customer.findFirst({
-          where: { companyId: company.id, phone: customerPhone },
-          select: { id: true, email: true, document: true },
-        });
-
-        if (existingCustomer) {
-          customerRecord = await tx.customer.update({
-            where: { id: existingCustomer.id },
+      // Quem e o cliente se decide pelo telefone, sempre. Antes, quando o
+      // telefone faltava, o codigo procurava alguem de mesmo nome e usava o
+      // cadastro dele: o segundo "Joao Silva" da barbearia entrava no
+      // historico do primeiro e herdava ate a mensalidade atrasada dele.
+      const customerRecord: { id: string } | null = conhecido
+        ? await tx.customer.update({
+            where: { id: conhecido.id },
             data: { name: customerName, isActive: true },
             select: { id: true },
-          });
-        } else {
-          customerRecord = await tx.customer.create({
+          })
+        : await tx.customer.create({
             data: {
               companyId: company.id,
               name: customerName,
@@ -9509,17 +9788,6 @@ export class CompanyService {
             },
             select: { id: true },
           });
-        }
-      } else {
-        const existingByName = await tx.customer.findFirst({
-          where: {
-            companyId: company.id,
-            name: { equals: customerName, mode: 'insensitive' },
-          },
-          select: { id: true },
-        });
-        customerRecord = existingByName;
-      }
 
       const appointment = await (tx as any).appointment.create({
         data: {
@@ -9562,7 +9830,12 @@ export class CompanyService {
     // e-mail ou push fora do ar nao pode transformar uma marcacao boa em erro
     // para o cliente. Antes disto ninguem era avisado — o dono so descobria
     // abrindo a agenda.
-    this.avisarNovoAgendamento(company.id, company.name, created).catch((error) => {
+    this.avisarNovoAgendamento(company.id, company.name, {
+      ...created,
+      // O aviso leva o telefone: e por ele que a equipe confirma, e e o que
+      // separa dois clientes de mesmo nome na bandeja de notificacao.
+      customerPhone,
+    }).catch((error) => {
       console.warn('[agendamento] falha ao avisar a equipe:', error?.message);
     });
 

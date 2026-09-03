@@ -16,6 +16,11 @@ const parseInternalAppointment = (raw: any) => ({
   company_id: raw.companyId,
   service_id: raw.serviceId,
   professional_id: raw.professionalId,
+  // O id e quem o cliente e; o nome e so como ele se chama. Dois clientes
+  // podem ter o mesmo nome, e o telefone e o que a tela mostra para o
+  // atendente saber qual dos dois esta na cadeira.
+  customer_id: raw.customerId || null,
+  customer_phone: raw.customer?.phone || null,
   customer_name: raw.customerName || null,
   service_name: raw.serviceName,
   price: raw.price === null || raw.price === undefined ? null : Number(raw.price),
@@ -51,6 +56,7 @@ export const appointmentsService = {
   },
 
   createInternal: async (data: {
+    customer_id?: string | null;
     customer_name?: string | null;
     price?: number | null;
     service_name: string;
@@ -66,9 +72,13 @@ export const appointmentsService = {
       body: JSON.stringify({
         serviceId: data.service_id || undefined,
         professionalId: data.professional_id || undefined,
+        // Sempre presente, mesmo vazio: vazio quer dizer "sem cadastro",
+        // e o backend precisa saber a diferenca entre isso e "nao mexi".
+        customerId: data.customer_id || '',
         customerName: data.customer_name || '',
         serviceName: data.service_name,
         professionalName: data.professional_name || '',
+        price: data.price ?? null,
         scheduledAt: data.scheduled_at,
         status: data.status || 'pendente',
       }),
@@ -85,6 +95,7 @@ export const appointmentsService = {
   updateInternal: async (
     id: string,
     data: {
+      customer_id?: string | null;
       customer_name?: string | null;
       price?: number | null;
       service_name?: string;
@@ -101,9 +112,11 @@ export const appointmentsService = {
       body: JSON.stringify({
         serviceId: data.service_id,
         professionalId: data.professional_id,
+        customerId: data.customer_id ?? '',
         customerName: data.customer_name,
         serviceName: data.service_name,
         professionalName: data.professional_name,
+        price: data.price ?? null,
         scheduledAt: data.scheduled_at,
         status: data.status,
       }),
