@@ -64,7 +64,11 @@ export function resolveCorsOrigins(): string[] {
   const raw = String(process.env.CORS_ORIGIN || (isProduction ? '' : '*'));
   const origins = raw
     .split(',')
-    .map((origin) => origin.trim())
+    // A barra final e o erro mais facil de cometer aqui e o mais dificil de
+    // diagnosticar: o navegador manda `https://app.com`, sem barra, e a
+    // comparacao e literal. Com `https://app.com/` no ambiente, todas as
+    // chamadas falhariam com um erro de CORS que nao explica o motivo.
+    .map((origin) => origin.trim().replace(/\/+$/, ''))
     .filter(Boolean);
 
   if (isProduction && (origins.length === 0 || origins.includes('*'))) {
