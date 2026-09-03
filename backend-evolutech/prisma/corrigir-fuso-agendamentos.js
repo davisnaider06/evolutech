@@ -25,9 +25,37 @@
  * atrapalha quem for conferir o faturamento depois.
  *
  * RODE UMA VEZ SO. Rodar duas vezes empurra os horarios seis horas.
+ *
+ * Precisa de DATABASE_URL. Vem do .env do backend; se a maquina nao tiver
+ * .env, da para passar na hora:
+ *   PowerShell: $env:DATABASE_URL="postgres://..."; node prisma/corrigir-fuso-agendamentos.js
+ *   bash:       DATABASE_URL="postgres://..." node prisma/corrigir-fuso-agendamentos.js
  */
 
+require('dotenv/config');
 const { PrismaClient } = require('@prisma/client');
+
+// Erro de conexao aqui vira uma parede de stack do Prisma que nao diz o
+// que fazer. Checa antes e explica.
+if (!process.env.DATABASE_URL) {
+  console.error(
+    [
+      'DATABASE_URL nao encontrada.',
+      '',
+      'Esta maquina nao tem backend-evolutech/.env (so o .env.example).',
+      'Escolha um caminho:',
+      '',
+      '  1) criar o .env a partir do .env.example, com a URL do banco; ou',
+      '  2) passar a URL so para esta execucao:',
+      '',
+      '     PowerShell: $env:DATABASE_URL="postgres://..."; node prisma/corrigir-fuso-agendamentos.js',
+      '     bash:       DATABASE_URL="postgres://..." node prisma/corrigir-fuso-agendamentos.js',
+      '',
+      'A URL e a mesma que o backend usa em producao (Neon).',
+    ].join('\n')
+  );
+  process.exit(1);
+}
 
 const prisma = new PrismaClient();
 
