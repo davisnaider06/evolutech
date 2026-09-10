@@ -1,9 +1,11 @@
 export interface CustomerAuthUser {
   id: string;
   name: string;
-  email: string;
-  role: 'CLIENTE';
+  // Email ou telefone: o cadastro exige um dos dois, entao qualquer um pode
+  // vir vazio — nunca os dois.
+  email?: string | null;
   phone?: string | null;
+  role: 'CLIENTE';
   document?: string | null;
 }
 

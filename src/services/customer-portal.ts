@@ -48,7 +48,8 @@ export const customerAuthService = {
   register: (payload: {
     company_slug: string;
     full_name: string;
-    email: string;
+    // Um dos dois basta, os dois juntos tambem valem; nenhum, o backend recusa.
+    email?: string;
     phone?: string;
     password: string;
   }) =>
@@ -57,7 +58,8 @@ export const customerAuthService = {
       body: JSON.stringify(payload),
     }),
 
-  login: (payload: { company_slug: string; email: string; password: string }) =>
+  /** `identifier` e o email ou o telefone — o backend descobre qual e. */
+  login: (payload: { company_slug: string; identifier: string; password: string }) =>
     customerRequest<CustomerAuthResponse>('/customer-auth/login', {
       method: 'POST',
       body: JSON.stringify(payload),

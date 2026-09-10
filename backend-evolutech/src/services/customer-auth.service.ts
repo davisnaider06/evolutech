@@ -10,10 +10,34 @@ type CustomerJwtPayload = {
   accountId: string;
   customerId: string;
   companyId: string;
-  email: string;
+  email: string | null;
   fullName: string;
   role: 'CLIENTE';
 };
+
+/**
+ * Telefone sempre vira o mesmo texto — so digitos, com o 55 na frente — para
+ * que "(11) 91234-5678" e "11912345678" caiam na mesma conta na hora de
+ * entrar. Mesma regra do WhatsApp: numero que funciona la funciona aqui.
+ *
+ * Devolve null quando o numero nao serve como identificador. Quem chama decide
+ * o que isso significa: erro de digitacao no cadastro, credencial recusada no
+ * login.
+ */
+const normalizarTelefone = (valor: unknown): string | null => {
+  const digitos = String(valor ?? '').replace(/\D/g, '');
+  if (!digitos) return null;
+  if (digitos.length === 10 || digitos.length === 11) return `55${digitos}`;
+  if (digitos.length === 12 || digitos.length === 13) return digitos;
+  return null;
+};
+
+/**
+ * Basta parecer email para tratarmos como email. Quem valida de verdade e o
+ * dono da caixa de entrada; aqui a pergunta e so uma: o cliente digitou email
+ * ou telefone?
+ */
+const pareceEmail = (valor: string) => valor.includes('@');
 
 class CustomerAuthError extends Error {
   statusCode: number;
@@ -115,13 +139,33 @@ export class CustomerAuthService {
   }) {
     const slug = String(data.company_slug || '').trim().toLowerCase();
     const fullName = String(data.full_name || '').trim();
-    const email = String(data.email || '').trim().toLowerCase();
-    const phone = String(data.phone || '').trim();
+    const emailDigitado = String(data.email || '').trim().toLowerCase();
+    const telefoneDigitado = String(data.phone || '').trim();
     const password = String(data.password || '');
 
-    if (!slug || !fullName || !email || !password) {
+    if (!slug || !fullName || !password) {
       throw new CustomerAuthError(
-        'Campos obrigatorios: company_slug, full_name, email, password',
+        'Campos obrigatorios: company_slug, full_name, password',
+        400
+      );
+    }
+
+    // O identificador e o que amarra assinatura, agendamento e fidelidade ao
+    // cliente certo. Sem email nem telefone nao ha por onde reencontrar essa
+    // conta depois — por isso e aqui que o cadastro para.
+    if (!emailDigitado && !telefoneDigitado) {
+      throw new CustomerAuthError('Informe email ou telefone para identificar sua conta', 400);
+    }
+
+    if (emailDigitado && !pareceEmail(emailDigitado)) {
+      throw new CustomerAuthError('Email invalido', 400);
+    }
+
+    const email = emailDigitado || null;
+    const phone = telefoneDigitado ? normalizarTelefone(telefoneDigitado) : null;
+    if (telefoneDigitado && !phone) {
+      throw new CustomerAuthError(
+        'Telefone invalido. Use DDD + numero com ou sem codigo do pais',
         400
       );
     }
@@ -138,35 +182,53 @@ export class CustomerAuthService {
 
     await this.ensureCustomerPortalEnabled(company.id);
 
-    const existingByEmail = await (prisma as any).customerAccount.findFirst({
-      where: { companyId: company.id, email },
-      select: { id: true },
+    // Identificador repetido dentro da empresa e conta duplicada: o cliente ja
+    // tem acesso, so precisa entrar. A mensagem diz qual dos dois bateu para
+    // ele saber por onde entrar.
+    const contaExistente = await (prisma as any).customerAccount.findFirst({
+      where: {
+        companyId: company.id,
+        OR: [...(email ? [{ email }] : []), ...(phone ? [{ phone }] : [])],
+      },
+      select: { id: true, email: true, phone: true },
     });
-    if (existingByEmail) {
-      throw new CustomerAuthError('Ja existe conta de cliente com este e-mail', 409);
+    if (contaExistente) {
+      throw new CustomerAuthError(
+        email && contaExistente.email === email
+          ? 'Ja existe conta de cliente com este e-mail'
+          : 'Ja existe conta de cliente com este telefone',
+        409
+      );
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
 
     const created = await prisma.$transaction(async (tx) => {
-      const existingCustomer = await tx.customer.findFirst({
-        where: {
-          companyId: company.id,
-          OR: [
-            { email: { equals: email, mode: 'insensitive' } },
-            ...(phone ? [{ phone }] : []),
-          ],
-        },
-        select: { id: true, name: true },
-      });
+      // Cliente que a empresa ja cadastrou no balcao vira dono desta conta em
+      // vez de virar um segundo cadastro — e o historico dele (assinatura,
+      // pontos, agendamentos) continua sendo o mesmo.
+      const existingCustomer = await this.encontrarClienteExistente(tx, company.id, email, phone);
+
+      // Cliente do balcao que ja abriu conta antes, agora chegando por outro
+      // identificador (cadastrou-se pelo telefone, volta digitando o email).
+      // Cada cliente tem uma conta so, entao isto e "entre em vez de cadastrar"
+      // — e nao o erro de chave duplicada que o banco daria.
+      if (existingCustomer?.account) {
+        throw new CustomerAuthError(
+          'Este cliente ja possui conta no portal. Entre com o email ou telefone ja cadastrado',
+          409
+        );
+      }
 
       const customer = existingCustomer
         ? await tx.customer.update({
             where: { id: existingCustomer.id },
             data: {
               name: fullName,
-              email,
-              phone: phone || null,
+              // Sem sobrescrever com null: quem se cadastrou pelo telefone nao
+              // apaga o email que a empresa ja tinha do cliente, e vice-versa.
+              ...(email ? { email } : {}),
+              ...(phone ? { phone } : {}),
               isActive: true,
             },
           })
@@ -175,7 +237,7 @@ export class CustomerAuthService {
               companyId: company.id,
               name: fullName,
               email,
-              phone: phone || null,
+              phone,
               isActive: true,
             },
           });
@@ -185,6 +247,7 @@ export class CustomerAuthService {
           companyId: company.id,
           customerId: customer.id,
           email,
+          phone,
           passwordHash,
           isActive: true,
         },
@@ -208,6 +271,7 @@ export class CustomerAuthService {
         id: created.customer.id,
         name: created.customer.name,
         email: created.account.email,
+        phone: created.account.phone,
         role: 'CLIENTE',
       },
       company: {
@@ -219,13 +283,65 @@ export class CustomerAuthService {
     };
   }
 
-  async login(data: { company_slug?: string; email?: string; password?: string }) {
+  /**
+   * Procura, entre os clientes da empresa, aquele que ja e a pessoa que esta se
+   * cadastrando. Email casa direto no banco; telefone e comparado normalizado
+   * em memoria porque o cadastro do balcao guarda o numero como o atendente
+   * digitou — "(11) 91234-5678" e "11912345678" sao a mesma pessoa e o banco
+   * sozinho nao sabe disso.
+   *
+   * A varredura pesa o tamanho da carteira de uma empresa e acontece uma vez
+   * por cliente, no cadastro. Depois disso quem identifica e o telefone
+   * normalizado da propria conta, que tem indice.
+   */
+  private async encontrarClienteExistente(
+    tx: any,
+    companyId: string,
+    email: string | null,
+    phone: string | null
+  ) {
+    if (email) {
+      const porEmail = await tx.customer.findFirst({
+        where: { companyId, email: { equals: email, mode: 'insensitive' } },
+        select: { id: true, name: true, account: { select: { id: true } } },
+      });
+      if (porEmail) return porEmail;
+    }
+
+    if (!phone) return null;
+
+    const comTelefone = await tx.customer.findMany({
+      where: { companyId, phone: { not: null } },
+      select: { id: true, name: true, phone: true, account: { select: { id: true } } },
+    });
+
+    return comTelefone.find((cliente: { phone: string | null }) => normalizarTelefone(cliente.phone) === phone) || null;
+  }
+
+  async login(data: {
+    company_slug?: string;
+    identifier?: string;
+    email?: string;
+    phone?: string;
+    password?: string;
+  }) {
     const slug = String(data.company_slug || '').trim().toLowerCase();
-    const email = String(data.email || '').trim().toLowerCase();
+    // `email` e `phone` continuam aceitos para nao quebrar quem ja chama a API
+    // com o campo antigo; `identifier` e o campo unico do formulario novo.
+    const identificador = String(data.identifier || data.email || data.phone || '').trim();
     const password = String(data.password || '');
 
-    if (!slug || !email || !password) {
-      throw new CustomerAuthError('Campos obrigatorios: company_slug, email, password', 400);
+    if (!slug || !identificador || !password) {
+      throw new CustomerAuthError('Campos obrigatorios: company_slug, identifier, password', 400);
+    }
+
+    const email = pareceEmail(identificador) ? identificador.toLowerCase() : null;
+    const phone = email ? null : normalizarTelefone(identificador);
+
+    // Numero que nao da para normalizar e erro de digitacao, nao credencial
+    // errada — dizer isso poupa o cliente de ficar tentando a senha.
+    if (!email && !phone) {
+      throw new CustomerAuthError('Informe um email ou telefone valido', 400);
     }
 
     const company = await prisma.company.findFirst({
@@ -239,7 +355,7 @@ export class CustomerAuthService {
     const account = await (prisma as any).customerAccount.findFirst({
       where: {
         companyId: company.id,
-        email,
+        ...(email ? { email } : { phone }),
       },
       include: {
         customer: {
@@ -276,6 +392,7 @@ export class CustomerAuthService {
         id: account.customer?.id,
         name: account.customer?.name,
         email: account.email,
+        phone: account.phone,
         role: 'CLIENTE',
       },
       company: {
@@ -316,8 +433,8 @@ export class CustomerAuthService {
       customer: {
         id: account.customer?.id,
         name: account.customer?.name,
-        email: account.email,
-        phone: account.customer?.phone || null,
+        email: account.email || account.customer?.email || null,
+        phone: account.phone || account.customer?.phone || null,
         document: account.customer?.document || null,
         role: 'CLIENTE',
       },

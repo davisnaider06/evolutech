@@ -13,7 +13,10 @@ const CustomerLogin: React.FC = () => {
   const { slug } = useParams<{ slug?: string }>();
   const [form, setForm] = useState({
     company_slug: '',
-    email: '',
+    // Um campo so para os dois identificadores: quem se cadastrou com email
+    // digita o email, quem se cadastrou com telefone digita o telefone. Quem
+    // decide qual e o backend, que ja normaliza o numero antes de procurar.
+    identifier: '',
     password: '',
   });
   const [companies, setCompanies] = useState<CustomerPortalCompanyOption[]>([]);
@@ -105,15 +108,18 @@ const CustomerLogin: React.FC = () => {
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="identifier">Email ou telefone</Label>
               <Input
-                id="email"
-                type="email"
-                placeholder="cliente@email.com"
-                value={form.email}
-                onChange={(event) => setForm((old) => ({ ...old, email: event.target.value }))}
+                id="identifier"
+                type="text"
+                placeholder="cliente@email.com ou (11) 91234-5678"
+                value={form.identifier}
+                onChange={(event) => setForm((old) => ({ ...old, identifier: event.target.value }))}
                 required
               />
+              <p className="text-xs text-muted-foreground">
+                Use o mesmo email ou telefone que voce informou no cadastro.
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Senha</Label>

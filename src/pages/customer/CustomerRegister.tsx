@@ -53,6 +53,16 @@ const CustomerRegister: React.FC = () => {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+
+    // Email ou telefone: e o identificador que vai amarrar assinatura,
+    // agendamento e fidelidade a esta pessoa, e sem ele nao ha como o cliente
+    // reencontrar a propria conta depois. O backend recusa do mesmo jeito;
+    // conferir aqui so evita a viagem.
+    if (!form.email.trim() && !form.phone.trim()) {
+      toast.error('Informe email ou telefone para identificar sua conta');
+      return;
+    }
+
     if (form.password !== form.confirmPassword) {
       toast.error('As senhas nao conferem');
       return;
@@ -63,8 +73,8 @@ const CustomerRegister: React.FC = () => {
       const result = await customerAuthService.register({
         company_slug: form.company_slug,
         full_name: form.full_name,
-        email: form.email,
-        phone: form.phone || undefined,
+        email: form.email.trim() || undefined,
+        phone: form.phone.trim() || undefined,
         password: form.password,
       });
       login(result.token, result.customer, result.company);
@@ -127,20 +137,29 @@ const CustomerRegister: React.FC = () => {
                 required
               />
             </div>
+            <div className="space-y-2 md:col-span-2">
+              <p className="text-xs text-muted-foreground">
+                Informe email ou telefone (pelo menos um). E por ele que voce entra no portal e
+                que seus agendamentos e assinaturas ficam no seu nome.
+              </p>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
                 type="email"
+                placeholder="cliente@email.com"
                 value={form.email}
                 onChange={(event) => setForm((old) => ({ ...old, email: event.target.value }))}
-                required
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="phone">Telefone</Label>
               <Input
                 id="phone"
+                type="tel"
+                inputMode="tel"
+                placeholder="(11) 91234-5678"
                 value={form.phone}
                 onChange={(event) => setForm((old) => ({ ...old, phone: event.target.value }))}
               />
