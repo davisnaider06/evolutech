@@ -509,8 +509,10 @@ model CustomerAccount {
   // Email e telefone sao os dois identificadores possiveis: o cadastro exige
   // pelo menos um, e o login aceita qualquer um dos dois. Por isso os dois sao
   // opcionais aqui e a regra de "pelo menos um" fica no service, que sabe
-  // devolver erro legivel. Telefone guardado normalizado (so digitos, com 55),
-  // para "(11) 91234-5678" e "11912345678" caírem na mesma conta.
+  // devolver erro legivel. Telefone guardado como chave (DDD + 8 digitos, sem
+  // 55 e sem o nono digito, ver utils/telefone.util), a mesma que o balcao e o
+  // link publico usam, para "(11) 91234-5678" e "5511912345678" caírem na
+  // mesma conta.
   email        String?
   phone        String?
   passwordHash String    @map("password_hash")

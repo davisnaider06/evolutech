@@ -24,7 +24,7 @@ import {
 } from '../config/paymentGatewayCatalog';
 import { getBlockedIntervals, isIntervalBlocked } from '../utils/appointment-blocks.util';
 import { interpretarDataHora, limitesDoDia, dataISODaCasa } from '../config/fuso';
-import { chaveTelefone, finalDoTelefone } from '../utils/telefone.util';
+import { chaveTelefone, clientesComTelefone } from '../utils/telefone.util';
 import { invalidateRoleCache } from '../middlewares/auth.middleware';
 import { pushService } from './push.service';
 import { notificationService } from './notification.service';
@@ -1073,25 +1073,12 @@ export class CompanyService {
    *
    * O balcao grava "(31) 99876-5432" e o link publico grava "5531998765432".
    * Comparando texto puro, como era feito, o mesmo cliente virava dois
-   * cadastros e o historico se partia ao meio. A busca aqui filtra pelos 8
-   * ultimos digitos no banco (barato, usa indice de empresa) e confirma a
-   * chave completa em memoria.
+   * cadastros e o historico se partia ao meio. Quem compara pelos digitos e
+   * utils/telefone.util.
    */
   private async encontrarClientePorTelefone(companyId: string, telefone: unknown) {
-    const chave = chaveTelefone(telefone);
-    if (!chave) return null;
-
-    const candidatos = await prisma.customer.findMany({
-      where: {
-        companyId,
-        phone: { contains: finalDoTelefone(telefone) },
-      },
-      select: { id: true, phone: true, createdAt: true },
-      orderBy: { createdAt: 'asc' },
-      take: 20,
-    });
-
-    return candidatos.find((item) => chaveTelefone(item.phone) === chave) || null;
+    const [maisAntigo] = await clientesComTelefone(prisma, companyId, telefone);
+    return maisAntigo || null;
   }
 
   /**

@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { customerAuthService } from '@/services/customer-portal';
+import { customerAuthService, empresaDoCliente } from '@/services/customer-portal';
 import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
 import { CustomerPortalCompanyOption } from '@/types/customer-portal';
 
@@ -23,7 +23,8 @@ const CustomerLogin: React.FC = () => {
   const [loadingCompanies, setLoadingCompanies] = useState(true);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { login } = useCustomerAuth();
+  const sessao = useCustomerAuth();
+  const { login } = sessao;
   const hasSlugFromRoute = useMemo(() => Boolean((slug || '').trim()), [slug]);
   const selectedCompany = useMemo(
     () => companies.find((item) => item.slug === form.company_slug) || null,
@@ -48,7 +49,12 @@ const CustomerLogin: React.FC = () => {
   useEffect(() => {
     if (hasSlugFromRoute) {
       setForm((old) => ({ ...old, company_slug: String(slug).trim().toLowerCase() }));
+      return;
     }
+    // Sem empresa no link, sugere a do ultimo cliente deste aparelho — ainda
+    // da para trocar no seletor.
+    const lembrada = empresaDoCliente();
+    if (lembrada) setForm((old) => (old.company_slug ? old : { ...old, company_slug: lembrada }));
   }, [hasSlugFromRoute, slug]);
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -65,6 +71,18 @@ const CustomerLogin: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // Quem ja esta logado nao ve o formulario: o link que a barbearia mandou e
+  // o atalho salvo apontam para esta tela, e cair nela a cada abertura era a
+  // queixa de "pede login toda hora". Link de outra barbearia continua
+  // mostrando o login dela.
+  if (sessao.isLoading) return null;
+  if (
+    sessao.isAuthenticated &&
+    (!hasSlugFromRoute || sessao.company?.slug === String(slug).trim().toLowerCase())
+  ) {
+    return <Navigate to="/cliente/dashboard" replace />;
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">

@@ -17,6 +17,36 @@ import {
 
 export const CUSTOMER_TOKEN_KEY = 'evolutech_customer_token';
 
+/**
+ * Empresa do ultimo cliente que entrou neste aparelho. Fica mesmo depois do
+ * "sair", de proposito: e o que leva de volta ao login da barbearia certa, com
+ * ela ja escolhida, em vez da lista de todas as empresas.
+ */
+const CUSTOMER_COMPANY_KEY = 'evolutech_cliente_empresa';
+
+export const lembrarEmpresaDoCliente = (slug: string | null | undefined) => {
+  if (!slug) return;
+  try {
+    localStorage.setItem(CUSTOMER_COMPANY_KEY, slug);
+  } catch (_error) {
+    // Modo privado: o cliente escolhe a empresa de novo, nada alem disso.
+  }
+};
+
+export const empresaDoCliente = (): string | null => {
+  try {
+    return localStorage.getItem(CUSTOMER_COMPANY_KEY);
+  } catch (_error) {
+    return null;
+  }
+};
+
+/** Login do portal ja apontado para a empresa deste aparelho, quando houver. */
+export const rotaLoginCliente = () => {
+  const slug = empresaDoCliente();
+  return slug ? `/cliente/${slug}/login` : '/cliente/login';
+};
+
 const customerRequest = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const token = localStorage.getItem(CUSTOMER_TOKEN_KEY);
   const response = await fetch(`${API_URL}${path}`, {
@@ -65,10 +95,13 @@ export const customerAuthService = {
       body: JSON.stringify(payload),
     }),
 
+  /** Devolve tambem um token com o prazo renovado, que substitui o salvo. */
   me: () =>
-    customerRequest<{ customer: CustomerAuthResponse['customer']; company: CustomerAuthResponse['company'] }>(
-      '/customer-auth/me'
-    ),
+    customerRequest<{
+      token?: string;
+      customer: CustomerAuthResponse['customer'];
+      company: CustomerAuthResponse['company'];
+    }>('/customer-auth/me'),
 };
 
 export const customerPortalService = {

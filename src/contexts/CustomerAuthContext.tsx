@@ -1,5 +1,9 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { CUSTOMER_TOKEN_KEY, customerAuthService } from '@/services/customer-portal';
+import {
+  CUSTOMER_TOKEN_KEY,
+  customerAuthService,
+  lembrarEmpresaDoCliente,
+} from '@/services/customer-portal';
 import { CustomerAuthCompany, CustomerAuthUser } from '@/types/customer-portal';
 import {
   tokenExpirado,
@@ -63,7 +67,13 @@ export const CustomerAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
 
     try {
-      const data = await customerAuthService.me();
+      const { token: renovado, ...data } = await customerAuthService.me();
+      // Prazo zerado a cada abertura: e o que mantem o cliente logado enquanto
+      // usar o app. Se ele saiu enquanto a resposta vinha, nao volta a entrar.
+      if (renovado && localStorage.getItem(CUSTOMER_TOKEN_KEY)) {
+        localStorage.setItem(CUSTOMER_TOKEN_KEY, renovado);
+      }
+      lembrarEmpresaDoCliente(data.company?.slug);
       salvarSessao(SESSAO_CLIENTE_KEY, data);
       setState({
         customer: data.customer,
@@ -91,6 +101,7 @@ export const CustomerAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const login = useCallback((token: string, customer: CustomerAuthUser, company: CustomerAuthCompany) => {
     localStorage.setItem(CUSTOMER_TOKEN_KEY, token);
+    lembrarEmpresaDoCliente(company?.slug);
     salvarSessao(SESSAO_CLIENTE_KEY, { customer, company });
     setState({
       customer,

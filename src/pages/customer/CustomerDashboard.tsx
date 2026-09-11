@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
-import { customerPortalService } from '@/services/customer-portal';
+import { customerPortalService, rotaLoginCliente } from '@/services/customer-portal';
 import {
   CustomerAppointment,
   CustomerBookingOptionsResponse,
@@ -215,7 +215,7 @@ const CustomerDashboard: React.FC = () => {
 
   const handleLogout = () => {
     logout();
-    navigate('/cliente/login', { replace: true });
+    navigate(rotaLoginCliente(), { replace: true });
   };
 
   const handleSubscribePlan = async () => {

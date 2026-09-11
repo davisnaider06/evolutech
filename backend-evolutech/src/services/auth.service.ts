@@ -2,12 +2,17 @@ import { prisma } from '../db';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Prisma } from '@prisma/client';
-import { AppRole } from '../types';
+import { AppRole, AuthenticatedUser } from '../types';
 import { JWT_SECRET } from '../config/secrets';
 
-// 7 dias, alinhado ao que o .env.example ja documentava. Com 24h o dono
-// precisava logar de novo todo dia no app da tela de inicio.
-const JWT_EXPIRES_IN = (process.env.JWT_EXPIRES_IN || '7d') as jwt.SignOptions['expiresIn'];
+// Validade de cada token, nao da sessao: toda abertura do app chama /auth/me,
+// que devolve um token novo com o prazo zerado. So precisa logar de novo quem
+// ficar esse tempo todo sem abrir. Com prazo fixo de 7 dias o dono era jogado
+// para o login toda semana, mesmo usando o app todo dia.
+//
+// Token longo nao prolonga acesso de quem saiu: o middleware reconfere papel e
+// status no banco a cada AUTH_REVALIDATE_MS.
+const JWT_EXPIRES_IN = (process.env.JWT_EXPIRES_IN || '30d') as jwt.SignOptions['expiresIn'];
 const OWNER_DEFAULT_MODULES = [
   { codigo: 'dashboard', nome: 'Dashboard' },
   { codigo: 'reports', nome: 'Relatorios' },
@@ -258,6 +263,22 @@ export class AuthService {
           }
         : null,
     };
+  }
+
+  /**
+   * Token novo para quem ja esta autenticado, com papel e empresa que o
+   * middleware acabou de conferir no banco — nao os do token antigo.
+   */
+  renovarToken(user: AuthenticatedUser) {
+    const tokenPayload: JwtAuthPayload = {
+      userId: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      role: user.role,
+      companyId: user.companyId || null,
+      companyName: user.companyName || null,
+    };
+    return jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
   }
 
   async getMe(userId: string) {

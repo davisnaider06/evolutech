@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+
 /**
  * Telefone como identidade do cliente.
  *
@@ -37,6 +39,40 @@ export function chaveTelefone(bruto: unknown): string {
 export function finalDoTelefone(bruto: unknown): string {
   const digitos = String(bruto ?? '').replace(/\D/g, '');
   return digitos.slice(-8);
+}
+
+/**
+ * Clientes da empresa que sao a mesma linha que `telefone`, do mais antigo
+ * para o mais novo.
+ *
+ * O filtro no banco compara os digitos, nao o texto gravado. Com `contains`
+ * sobre o texto, "(31) 99876-5432" nunca casava com "98765432" por causa do
+ * hifen — e o cliente que o atendente cadastrou com mascara era justamente o
+ * que o link publico e o portal nao achavam, virando um segundo cadastro.
+ *
+ * O banco filtra pelos 8 ultimos digitos (barato, dentro da empresa) e a chave
+ * completa e confirmada aqui, porque o nono digito e o codigo do pais nao
+ * cabem num LIKE.
+ */
+export async function clientesComTelefone(
+  db: Pick<Prisma.TransactionClient, '$queryRaw'>,
+  companyId: string,
+  telefone: unknown
+): Promise<Array<{ id: string; phone: string | null }>> {
+  const chave = chaveTelefone(telefone);
+  const final = finalDoTelefone(telefone);
+  if (!chave || !final) return [];
+
+  const candidatos = await db.$queryRaw<Array<{ id: string; phone: string | null }>>(Prisma.sql`
+    SELECT "id", "phone"
+    FROM "customers"
+    WHERE "empresa_id" = ${companyId}
+      AND regexp_replace(COALESCE("phone", ''), '[^0-9]', '', 'g') LIKE ${`%${final}`}
+    ORDER BY "created_at" ASC
+    LIMIT 20
+  `);
+
+  return candidatos.filter((cliente) => chaveTelefone(cliente.phone) === chave);
 }
 
 /** true quando os dois numeros sao a mesma linha, escritos como estiverem. */

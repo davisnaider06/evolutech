@@ -2,6 +2,7 @@ import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
+import { rotaLoginCliente } from '@/services/customer-portal';
 
 interface CustomerAuthGuardProps {
   children: React.ReactNode;
@@ -20,7 +21,7 @@ export const CustomerAuthGuard: React.FC<CustomerAuthGuardProps> = ({ children }
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/cliente/login" state={{ from: location }} replace />;
+    return <Navigate to={rotaLoginCliente()} state={{ from: location }} replace />;
   }
 
   return <>{children}</>;

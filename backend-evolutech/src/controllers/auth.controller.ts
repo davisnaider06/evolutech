@@ -48,6 +48,8 @@ export class AuthController {
       }
 
       res.json({
+        // Prazo renovado a cada abertura do app: quem usa nao e deslogado.
+        token: service.renovarToken(req.user!),
         user: {
           id: user.id,
           name: user.full_name,

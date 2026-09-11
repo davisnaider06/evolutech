@@ -3,8 +3,17 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '../db';
 import { AuthenticatedCustomer } from '../types';
 import { JWT_SECRET } from '../config/secrets';
+import { chaveTelefone, clientesComTelefone } from '../utils/telefone.util';
 
-const CUSTOMER_JWT_EXPIRES_IN = (process.env.CUSTOMER_JWT_EXPIRES_IN || '7d') as jwt.SignOptions['expiresIn'];
+/**
+ * Validade de cada token. A sessao em si nao vence enquanto o cliente usar o
+ * app: toda abertura chama /customer-auth/me, que devolve um token novo com o
+ * prazo zerado. So cai quem ficar esse tempo todo sem abrir.
+ *
+ * 90 dias porque o cliente de barbearia volta de mes em mes, as vezes de dois
+ * em dois; com 7 dias ele achava a tela de login quase toda vez que abria.
+ */
+const CUSTOMER_JWT_EXPIRES_IN = (process.env.CUSTOMER_JWT_EXPIRES_IN || '90d') as jwt.SignOptions['expiresIn'];
 
 type CustomerJwtPayload = {
   accountId: string;
@@ -16,20 +25,22 @@ type CustomerJwtPayload = {
 };
 
 /**
- * Telefone sempre vira o mesmo texto — so digitos, com o 55 na frente — para
- * que "(11) 91234-5678" e "11912345678" caiam na mesma conta na hora de
- * entrar. Mesma regra do WhatsApp: numero que funciona la funciona aqui.
+ * A conta guarda a chave do telefone, nao o numero como foi digitado — mesma
+ * chave que o balcao e o link publico usam para saber quem e o cliente
+ * (utils/telefone.util). Se o portal identificasse por uma regra propria, a
+ * mesma pessoa seria uma no agendamento e outra na assinatura.
  *
- * Devolve null quando o numero nao serve como identificador. Quem chama decide
- * o que isso significa: erro de digitacao no cadastro, credencial recusada no
- * login.
+ * O numero legivel continua no cadastro do cliente, que e de onde sai o
+ * WhatsApp; aqui fica so o que serve para reencontrar a conta.
+ *
+ * So vale chave com DDD + 8 digitos. A chave sozinha aceita qualquer coisa
+ * que tenha digito — "123" viraria login —, e sem DDD o mesmo numero de
+ * cidades diferentes cairia na mesma conta. Devolve null quando o numero nao
+ * serve para identificar ninguem.
  */
-const normalizarTelefone = (valor: unknown): string | null => {
-  const digitos = String(valor ?? '').replace(/\D/g, '');
-  if (!digitos) return null;
-  if (digitos.length === 10 || digitos.length === 11) return `55${digitos}`;
-  if (digitos.length === 12 || digitos.length === 13) return digitos;
-  return null;
+const chaveDaConta = (valor: unknown): string | null => {
+  const chave = chaveTelefone(valor);
+  return chave.length === 10 ? chave : null;
 };
 
 /**
@@ -162,7 +173,7 @@ export class CustomerAuthService {
     }
 
     const email = emailDigitado || null;
-    const phone = telefoneDigitado ? normalizarTelefone(telefoneDigitado) : null;
+    const phone = telefoneDigitado ? chaveDaConta(telefoneDigitado) : null;
     if (telefoneDigitado && !phone) {
       throw new CustomerAuthError(
         'Telefone invalido. Use DDD + numero com ou sem codigo do pais',
@@ -207,7 +218,12 @@ export class CustomerAuthService {
       // Cliente que a empresa ja cadastrou no balcao vira dono desta conta em
       // vez de virar um segundo cadastro — e o historico dele (assinatura,
       // pontos, agendamentos) continua sendo o mesmo.
-      const existingCustomer = await this.encontrarClienteExistente(tx, company.id, email, phone);
+      const existingCustomer = await this.encontrarClienteExistente(
+        tx,
+        company.id,
+        email,
+        telefoneDigitado
+      );
 
       // Cliente do balcao que ja abriu conta antes, agora chegando por outro
       // identificador (cadastrou-se pelo telefone, volta digitando o email).
@@ -228,7 +244,9 @@ export class CustomerAuthService {
               // Sem sobrescrever com null: quem se cadastrou pelo telefone nao
               // apaga o email que a empresa ja tinha do cliente, e vice-versa.
               ...(email ? { email } : {}),
-              ...(phone ? { phone } : {}),
+              // O numero como o cliente digitou — e daqui que sai o WhatsApp.
+              // A chave, que so serve para reencontrar a conta, fica na conta.
+              ...(telefoneDigitado ? { phone: telefoneDigitado } : {}),
               isActive: true,
             },
           })
@@ -237,7 +255,7 @@ export class CustomerAuthService {
               companyId: company.id,
               name: fullName,
               email,
-              phone,
+              phone: telefoneDigitado || null,
               isActive: true,
             },
           });
@@ -271,7 +289,7 @@ export class CustomerAuthService {
         id: created.customer.id,
         name: created.customer.name,
         email: created.account.email,
-        phone: created.account.phone,
+        phone: created.customer.phone,
         role: 'CLIENTE',
       },
       company: {
@@ -285,37 +303,30 @@ export class CustomerAuthService {
 
   /**
    * Procura, entre os clientes da empresa, aquele que ja e a pessoa que esta se
-   * cadastrando. Email casa direto no banco; telefone e comparado normalizado
-   * em memoria porque o cadastro do balcao guarda o numero como o atendente
-   * digitou — "(11) 91234-5678" e "11912345678" sao a mesma pessoa e o banco
-   * sozinho nao sabe disso.
-   *
-   * A varredura pesa o tamanho da carteira de uma empresa e acontece uma vez
-   * por cliente, no cadastro. Depois disso quem identifica e o telefone
-   * normalizado da propria conta, que tem indice.
+   * cadastrando. Email casa direto no banco; telefone nao, porque o cadastro do
+   * balcao guarda o numero como o atendente digitou — mesma busca do
+   * agendamento pelo link publico (utils/telefone.util).
    */
   private async encontrarClienteExistente(
     tx: any,
     companyId: string,
     email: string | null,
-    phone: string | null
+    telefoneDigitado: string
   ) {
+    const selecao = { id: true, name: true, account: { select: { id: true } } };
+
     if (email) {
       const porEmail = await tx.customer.findFirst({
         where: { companyId, email: { equals: email, mode: 'insensitive' } },
-        select: { id: true, name: true, account: { select: { id: true } } },
+        select: selecao,
       });
       if (porEmail) return porEmail;
     }
 
-    if (!phone) return null;
+    const [maisAntigo] = await clientesComTelefone(tx, companyId, telefoneDigitado);
+    if (!maisAntigo) return null;
 
-    const comTelefone = await tx.customer.findMany({
-      where: { companyId, phone: { not: null } },
-      select: { id: true, name: true, phone: true, account: { select: { id: true } } },
-    });
-
-    return comTelefone.find((cliente: { phone: string | null }) => normalizarTelefone(cliente.phone) === phone) || null;
+    return tx.customer.findUnique({ where: { id: maisAntigo.id }, select: selecao });
   }
 
   async login(data: {
@@ -336,7 +347,7 @@ export class CustomerAuthService {
     }
 
     const email = pareceEmail(identificador) ? identificador.toLowerCase() : null;
-    const phone = email ? null : normalizarTelefone(identificador);
+    const phone = email ? null : chaveDaConta(identificador);
 
     // Numero que nao da para normalizar e erro de digitacao, nao credencial
     // errada — dizer isso poupa o cliente de ficar tentando a senha.
@@ -359,7 +370,7 @@ export class CustomerAuthService {
       },
       include: {
         customer: {
-          select: { id: true, name: true, isActive: true },
+          select: { id: true, name: true, phone: true, isActive: true },
         },
       },
     });
@@ -392,7 +403,7 @@ export class CustomerAuthService {
         id: account.customer?.id,
         name: account.customer?.name,
         email: account.email,
-        phone: account.phone,
+        phone: account.customer?.phone || null,
         role: 'CLIENTE',
       },
       company: {
@@ -419,6 +430,7 @@ export class CustomerAuthService {
             email: true,
             phone: true,
             document: true,
+            isActive: true,
           },
         },
         company: {
@@ -427,14 +439,32 @@ export class CustomerAuthService {
       },
     });
 
-    if (!account) throw new CustomerAuthError('Conta de cliente nao encontrada', 404);
+    // 401, e nao 404: conta que sumiu e credencial que nao vale mais, e e isso
+    // que faz o app encerrar a sessao em vez de tentar de novo.
+    if (!account) throw new CustomerAuthError('Conta de cliente nao encontrada', 401);
+
+    // O token nao sabe que a conta foi desativada. Como e aqui que ele se
+    // renova, conta inativa para de renovar e a sessao cai na abertura.
+    if (!account.isActive || !account.customer?.isActive) {
+      throw new CustomerAuthError('Conta de cliente inativa', 403);
+    }
 
     return {
+      // Token novo a cada abertura do app: e isso que mantem o cliente logado
+      // enquanto ele continuar usando, como num app de celular.
+      token: this.signCustomerToken({
+        accountId: account.id,
+        customerId: account.customerId,
+        companyId: account.companyId,
+        email: account.email,
+        fullName: account.customer?.name || '',
+        role: 'CLIENTE',
+      }),
       customer: {
         id: account.customer?.id,
         name: account.customer?.name,
         email: account.email || account.customer?.email || null,
-        phone: account.phone || account.customer?.phone || null,
+        phone: account.customer?.phone || null,
         document: account.customer?.document || null,
         role: 'CLIENTE',
       },

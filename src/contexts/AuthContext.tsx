@@ -13,6 +13,23 @@ import {
 /** Ultima resposta boa de /auth/me, para reabrir o app sem esperar a rede. */
 const SESSAO_CACHE_KEY = 'evolutech_sessao';
 
+/**
+ * Guarda o que veio de /auth/me e devolve o payload para aplicar.
+ *
+ * O /auth/me devolve um token com o prazo zerado; trocar o salvo por ele e o
+ * que mantem o dono logado enquanto usar o app. O token fica so na chave dele,
+ * fora do cache da sessao. Se o usuario saiu enquanto a resposta vinha, o
+ * token novo nao ressuscita a sessao.
+ */
+function guardarRespostaMe(data: any) {
+  const { token, ...payload } = data || {};
+  if (token && localStorage.getItem('evolutech_token')) {
+    localStorage.setItem('evolutech_token', token);
+  }
+  salvarSessao(SESSAO_CACHE_KEY, payload);
+  return payload;
+}
+
 interface AuthContextType extends AuthState {
   login: (token: string, userData: any, companyData?: any) => void;
   logout: () => void;
@@ -135,9 +152,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (response.ok) {
-        const data = await response.json();
-        salvarSessao(SESSAO_CACHE_KEY, data);
-        aplicarPayload(data);
+        aplicarPayload(guardarRespostaMe(await response.json()));
         return;
       }
 
@@ -178,9 +193,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
     if (!response.ok) return;
 
-    const data = await response.json();
-    salvarSessao(SESSAO_CACHE_KEY, data);
-    aplicarPayload(data);
+    aplicarPayload(guardarRespostaMe(await response.json()));
   }, [aplicarPayload]);
 
   const login = (token: string, userData: any, companyData?: any) => {
