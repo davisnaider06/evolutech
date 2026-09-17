@@ -6,8 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Lock, Mail, ArrowRight, Loader2 } from 'lucide-react';
+import { Lock, Mail, ArrowRight, Loader2, User } from 'lucide-react';
 import { API_URL } from '@/config/api';
+import { rotaLoginCliente } from '@/services/customer-portal';
+import { esquecerTipoAcesso, lembrarTipoAcesso } from '@/lib/tipo-acesso';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -111,9 +113,13 @@ const Login: React.FC = () => {
             <Logo size="lg" />
           </div>
 
+          {/* O titulo diz de quem e esta tela: o cliente que cair aqui por
+              engano percebe pelo cabecalho, nao so pelo link do rodape. */}
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-foreground">Acesso ao Sistema</h1>
-            <p className="text-sm text-muted-foreground mt-2">Entre com suas credenciais corporativas</p>
+            <h1 className="text-2xl font-bold text-foreground">Acesso da Equipe</h1>
+            <p className="text-sm text-muted-foreground mt-2">
+              Dono e funcionarios — painel da empresa
+            </p>
           </div>
 
           {/* Formulário Próprio (Substituindo o Clerk) */}
@@ -159,14 +165,42 @@ const Login: React.FC = () => {
             </Button>
 
           </form>
-            <div className="mt-6 space-y-3 w-full">
-            
-            <p className="text-center text-sm text-muted-foreground">
-              <Link className="text-primary hover:underline" to="/cliente/login">
-              Acessar portal do Cliente
+
+          {/* Saida para o cliente que errou a porta. Era um link de texto solto
+              e passava batido; agora e um bloco separado do formulario, e o
+              clique ja grava a escolha para nao repetir o erro amanha. */}
+          <div className="mt-8 w-full">
+            <div className="flex items-center gap-3">
+              <span className="h-px flex-1 bg-border" />
+              <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                Nao e da equipe?
+              </span>
+              <span className="h-px flex-1 bg-border" />
+            </div>
+
+            <Link
+              to={rotaLoginCliente()}
+              onClick={() => lembrarTipoAcesso('cliente')}
+              className="group mt-4 flex w-full items-center gap-4 rounded-xl border border-input bg-background/50 p-4 text-left transition-colors hover:border-primary hover:bg-primary/5"
+            >
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <User className="h-5 w-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold text-foreground">Sou cliente da empresa</span>
+                <span className="block text-xs text-muted-foreground">
+                  Entrar ou criar conta no Portal do Cliente
+                </span>
+              </span>
+              <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" />
+            </Link>
+
+            <p className="mt-4 text-center text-xs text-muted-foreground">
+              <Link className="hover:underline" to="/entrar" onClick={esquecerTipoAcesso}>
+                Ver as opcoes de acesso novamente
               </Link>
             </p>
-            </div>
+          </div>
 
 
         </div>

@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { customerAuthService, empresaDoCliente } from '@/services/customer-portal';
 import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
 import { CustomerPortalCompanyOption } from '@/types/customer-portal';
+import { esquecerTipoAcesso, lembrarTipoAcesso } from '@/lib/tipo-acesso';
 
 const CustomerLogin: React.FC = () => {
   const { slug } = useParams<{ slug?: string }>();
@@ -161,6 +162,26 @@ const CustomerLogin: React.FC = () => {
               Cliente novo? Cadastre-se aqui!
             </Link>
           </p>
+
+          {/* Caminho de volta, espelhando o da tela da equipe: quem caiu aqui
+              sendo dono ou funcionario sai por este link, e o clique grava a
+              escolha para nao errar de novo. */}
+          <div className="mt-6 border-t pt-4 text-xs text-muted-foreground">
+            <p>
+              <Link
+                className="hover:underline"
+                to="/login"
+                onClick={() => lembrarTipoAcesso('equipe')}
+              >
+                Sou da equipe (dono ou funcionario)
+              </Link>
+            </p>
+            <p className="mt-2">
+              <Link className="hover:underline" to="/entrar" onClick={esquecerTipoAcesso}>
+                Ver as opcoes de acesso novamente
+              </Link>
+            </p>
+          </div>
         </CardContent>
       </Card>
     </div>

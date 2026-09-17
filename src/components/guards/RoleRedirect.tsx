@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
 import { Loader2 } from 'lucide-react';
+import { rotaLoginCliente } from '@/services/customer-portal';
+import { tipoAcessoLembrado } from '@/lib/tipo-acesso';
 
 export const RoleRedirect: React.FC = () => {
   const { isAuthenticated, isLoading, user, getRedirectPath } = useAuth();
@@ -28,8 +30,21 @@ export const RoleRedirect: React.FC = () => {
       return;
     }
 
-    console.log('RoleRedirect: Não autenticado. Redirecionando para Login.');
-    navigate('/login', { replace: true });
+    // Sem sessao de nenhum dos dois lados: quem ja disse de que lado entra vai
+    // direto para o login dele; quem nunca disse passa pela tela de escolha.
+    // Mandar todo mundo para /login era o que fazia o cliente da barbearia
+    // tentar a senha dele no formulario do dono.
+    const tipo = tipoAcessoLembrado();
+    if (tipo === 'cliente') {
+      navigate(rotaLoginCliente(), { replace: true });
+      return;
+    }
+    if (tipo === 'equipe') {
+      navigate('/login', { replace: true });
+      return;
+    }
+
+    navigate('/entrar', { replace: true });
   }, [
     isLoading,
     isAuthenticated,
