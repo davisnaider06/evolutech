@@ -18,11 +18,7 @@ import { customerPortalService, rotaLoginCliente } from '@/services/customer-por
 import {
   CustomerAppointment,
   CustomerBookingOptionsResponse,
-  CustomerCourseCatalogItem,
-  CustomerCourseAccess,
-  CustomerCoursePurchaseResult,
   CustomerDashboardResponse,
-  CustomerLoyaltyResponse,
   CustomerPaymentGatewayResult,
   CustomerPlanCatalogItem,
   CustomerSubscription,
@@ -49,9 +45,6 @@ const CustomerDashboard: React.FC = () => {
   const [appointments, setAppointments] = useState<CustomerAppointment[]>([]);
   const [subscriptions, setSubscriptions] = useState<CustomerSubscription[]>([]);
   const [plansCatalog, setPlansCatalog] = useState<CustomerPlanCatalogItem[]>([]);
-  const [loyalty, setLoyalty] = useState<CustomerLoyaltyResponse | null>(null);
-  const [courses, setCourses] = useState<CustomerCourseAccess[]>([]);
-  const [coursesCatalog, setCoursesCatalog] = useState<CustomerCourseCatalogItem[]>([]);
   const [bookingOptions, setBookingOptions] = useState<CustomerBookingOptionsResponse | null>(null);
   const [appointmentForm, setAppointmentForm] = useState({
     service_id: '',
@@ -69,9 +62,6 @@ const CustomerDashboard: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'credito' | 'debito'>('pix');
   const [subscriptionPaymentResult, setSubscriptionPaymentResult] =
     useState<CustomerPaymentGatewayResult | null>(null);
-  const [purchasingCourseId, setPurchasingCourseId] = useState<string | null>(null);
-  const [purchaseCourseId, setPurchaseCourseId] = useState<string | null>(null);
-  const [coursePaymentResult, setCoursePaymentResult] = useState<CustomerCoursePurchaseResult | null>(null);
   const { customer, company, logout } = useCustomerAuth();
   const navigate = useNavigate();
 
@@ -81,21 +71,15 @@ const CustomerDashboard: React.FC = () => {
       customerPortalService.dashboard(),
       customerPortalService.appointments(),
       customerPortalService.subscriptions(),
-      customerPortalService.loyalty(),
-      customerPortalService.courses(),
       customerPortalService.bookingOptions(),
       customerPortalService.plans(),
-      customerPortalService.availableCourses(),
     ]);
-    const [dashboardData, appointmentsData, subscriptionsData, loyaltyData, coursesData, bookingData, plansData, availableCoursesData] = results;
+    const [dashboardData, appointmentsData, subscriptionsData, bookingData, plansData] = results;
     if (dashboardData.status === 'fulfilled') setDashboard(dashboardData.value);
     if (appointmentsData.status === 'fulfilled') setAppointments(appointmentsData.value);
     if (subscriptionsData.status === 'fulfilled') setSubscriptions(subscriptionsData.value);
-    if (loyaltyData.status === 'fulfilled') setLoyalty(loyaltyData.value);
-    if (coursesData.status === 'fulfilled') setCourses(coursesData.value);
     if (bookingData.status === 'fulfilled') setBookingOptions(bookingData.value);
     if (plansData.status === 'fulfilled') setPlansCatalog(plansData.value);
-    if (availableCoursesData.status === 'fulfilled') setCoursesCatalog(availableCoursesData.value);
 
     const firstError = results.find((result) => result.status === 'rejected');
     if (firstError?.status === 'rejected') {
@@ -137,43 +121,6 @@ const CustomerDashboard: React.FC = () => {
   }, [appointmentForm.service_id, appointmentForm.professional_id, appointmentForm.date]);
 
   const canCancelStatus = useMemo(() => new Set(['pendente', 'confirmado']), []);
-  const purchasedCourseIds = useMemo(() => {
-    const result = new Set<string>();
-    for (const item of courses) {
-      const status = String(item.status || '').toLowerCase();
-      if ((status === 'active' || status === 'pending') && item.course?.id) {
-        result.add(item.course.id);
-      }
-    }
-    return result;
-  }, [courses]);
-
-  const renderCoursePreview = (course: CustomerCourseCatalogItem) => {
-    if (course.cover_image_url) {
-      return <img src={course.cover_image_url} alt={course.title} className="h-40 w-full rounded border object-cover" />;
-    }
-    if (!course.content_url) {
-      return <div className="h-40 w-full rounded border bg-muted/30" />;
-    }
-    if (course.content_type === 'video') {
-      return <video src={course.content_url} controls className="h-40 w-full rounded border object-cover" />;
-    }
-    if (course.content_type === 'image') {
-      return <img src={course.content_url} alt={course.title} className="h-40 w-full rounded border object-cover" />;
-    }
-    if (course.content_type === 'audio') {
-      return (
-        <div className="rounded border p-3">
-          <audio src={course.content_url} controls className="w-full" />
-        </div>
-      );
-    }
-    return (
-      <div className="flex h-40 w-full items-center justify-center rounded border bg-muted/30 text-sm text-muted-foreground">
-        Conteudo disponivel apos abertura do link
-      </div>
-    );
-  };
 
   const handleCreateAppointment = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -236,29 +183,6 @@ const CustomerDashboard: React.FC = () => {
     }
   };
 
-  const handlePurchaseCourse = async (courseId: string) => {
-    setCoursePaymentResult(null);
-    setPurchaseCourseId(courseId);
-    setPaymentMethod('pix');
-  };
-
-  const handleConfirmCoursePurchase = async () => {
-    if (!purchaseCourseId) return;
-    setPurchasingCourseId(purchaseCourseId);
-    try {
-      const result = await customerPortalService.purchaseCourse(purchaseCourseId, {
-        payment_method: paymentMethod,
-      });
-      setCoursePaymentResult(result);
-      toast.success('Compra iniciada. Finalize o pagamento para liberar o curso.');
-      await loadData();
-    } catch (error: any) {
-      toast.error(error.message || 'Falha ao adquirir curso');
-    } finally {
-      setPurchasingCourseId(null);
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -291,21 +215,15 @@ const CustomerDashboard: React.FC = () => {
           </Button>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
+        <div className="grid gap-3 md:grid-cols-2">
           <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Agendamentos</p><p className="text-xl font-bold">{dashboard?.summary.appointments_total || 0}</p></CardContent></Card>
           <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Proximos</p><p className="text-xl font-bold">{dashboard?.summary.upcoming_appointments || 0}</p></CardContent></Card>
-          <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Assinaturas</p><p className="text-xl font-bold">{dashboard?.summary.active_subscriptions || 0}</p></CardContent></Card>
-          <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Cursos</p><p className="text-xl font-bold">{dashboard?.summary.active_courses || 0}</p></CardContent></Card>
-          <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Pontos</p><p className="text-xl font-bold">{dashboard?.summary.loyalty_points || 0}</p></CardContent></Card>
-          <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Cashback</p><p className="text-xl font-bold">{formatCurrency(dashboard?.summary.loyalty_cashback)}</p></CardContent></Card>
         </div>
 
         <Tabs defaultValue="appointments" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="appointments">Agendamentos</TabsTrigger>
             <TabsTrigger value="subscriptions">Assinaturas</TabsTrigger>
-            <TabsTrigger value="loyalty">Fidelidade</TabsTrigger>
-            <TabsTrigger value="courses">Cursos</TabsTrigger>
           </TabsList>
 
           <TabsContent value="appointments">
@@ -475,95 +393,6 @@ const CustomerDashboard: React.FC = () => {
               </CardContent>
             </Card>
           </TabsContent>
-
-          <TabsContent value="loyalty">
-            <Card>
-              <CardHeader>
-                <CardTitle>Fidelidade</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-3 md:grid-cols-3">
-                  <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Saldo de pontos</p><p className="text-xl font-bold">{loyalty?.profile?.points_balance || 0}</p></CardContent></Card>
-                  <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Saldo cashback</p><p className="text-xl font-bold">{formatCurrency(loyalty?.profile?.cashback_balance || 0)}</p></CardContent></Card>
-                  <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Servicos realizados</p><p className="text-xl font-bold">{loyalty?.profile?.total_services_count || 0}</p></CardContent></Card>
-                </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Ultimas movimentacoes</p>
-                  {loyalty?.transactions?.length ? (
-                    loyalty.transactions.map((item) => (
-                      <div key={item.id} className="flex items-center justify-between rounded border p-2 text-sm">
-                        <span>{item.type}</span>
-                        <span className="text-muted-foreground">{formatDateTime(item.created_at)}</span>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">Sem movimentacoes recentes.</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="courses">
-            <Card>
-              <CardHeader>
-                <CardTitle>Meus Cursos</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid gap-3 md:grid-cols-2">
-                  {coursesCatalog.map((course) => (
-                    <div key={course.id} className="rounded border p-3">
-                      {renderCoursePreview(course)}
-                      <p className="font-medium">{course.title}</p>
-                      <p className="text-sm text-muted-foreground">{course.description || '-'}</p>
-                      <p className="text-sm">Valor: {formatCurrency(course.price)}</p>
-                      {course.content_url ? (
-                        <a
-                          href={course.content_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-2 inline-flex text-sm font-medium text-primary underline"
-                        >
-                          Ver conteudo
-                        </a>
-                      ) : null}
-                      <div>
-                        <Button
-                          size="sm"
-                          className="mt-2"
-                          disabled={purchasedCourseIds.has(course.id)}
-                          onClick={() => handlePurchaseCourse(course.id)}
-                        >
-                          {purchasedCourseIds.has(course.id) ? 'Ja adquirido/em pagamento' : 'Comprar curso'}
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {coursesCatalog.length === 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    Nenhum curso ativo foi publicado pela empresa para compra online.
-                  </p>
-                )}
-                {courses.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Nenhum curso encontrado.</p>
-                ) : (
-                  courses.map((item) => (
-                    <div key={item.access_id} className="rounded border p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="font-medium">{item.course?.title || 'Curso removido'}</p>
-                        <Badge variant="outline">{item.status}</Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        Inicio: {formatDateTime(item.start_at)} • Fim: {formatDateTime(item.end_at || undefined)}
-                      </p>
-                      <p className="text-sm">Valor pago: {formatCurrency(item.amount_paid)}</p>
-                    </div>
-                  ))
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
         </Tabs>
       </div>
 
@@ -641,85 +470,6 @@ const CustomerDashboard: React.FC = () => {
             </Button>
             <Button onClick={handleSubscribePlan} disabled={!!subscribingPlanId || !subscribePlanId}>
               {subscribingPlanId ? 'Processando...' : 'Gerar pagamento'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={!!purchaseCourseId}
-        onOpenChange={(open) => {
-          if (!open && !purchasingCourseId) {
-            setPurchaseCourseId(null);
-            setCoursePaymentResult(null);
-          }
-        }}
-      >
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Comprar curso</DialogTitle>
-            <DialogDescription>Selecione a forma de pagamento para continuar.</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-3">
-            <select
-              className="h-10 w-full rounded border border-input bg-background px-2 text-sm text-foreground"
-              value={paymentMethod}
-              onChange={(event) => setPaymentMethod(event.target.value as 'pix' | 'credito' | 'debito')}
-              disabled={!!purchasingCourseId}
-            >
-              <option value="pix">PIX</option>
-              <option value="credito">Credito</option>
-              <option value="debito">Debito</option>
-            </select>
-
-            {coursePaymentResult?.payment_gateway?.qrCodeImageUrl ? (
-              <div className="rounded border p-3">
-                <p className="text-sm font-medium">Pagamento PIX gerado</p>
-                <img
-                  src={coursePaymentResult.payment_gateway.qrCodeImageUrl}
-                  alt="QR Code PIX"
-                  className="mt-2 h-48 w-48 rounded border object-contain"
-                />
-                {coursePaymentResult.payment_gateway.qrCodeText ? (
-                  <textarea
-                    readOnly
-                    value={coursePaymentResult.payment_gateway.qrCodeText}
-                    className="mt-2 h-24 w-full rounded border border-input bg-background p-2 text-xs text-foreground"
-                  />
-                ) : null}
-              </div>
-            ) : null}
-
-            {coursePaymentResult?.payment_gateway?.paymentUrl ? (
-              <div className="rounded border p-3">
-                <p className="text-sm font-medium">Link de pagamento gerado</p>
-                <a
-                  href={coursePaymentResult.payment_gateway.paymentUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-2 inline-flex text-sm font-medium text-primary underline"
-                >
-                  Abrir link de pagamento
-                </a>
-              </div>
-            ) : null}
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                if (purchasingCourseId) return;
-                setPurchaseCourseId(null);
-                setCoursePaymentResult(null);
-              }}
-              disabled={!!purchasingCourseId}
-            >
-              Fechar
-            </Button>
-            <Button onClick={handleConfirmCoursePurchase} disabled={!!purchasingCourseId || !purchaseCourseId}>
-              {purchasingCourseId ? 'Processando...' : 'Gerar pagamento'}
             </Button>
           </DialogFooter>
         </DialogContent>
