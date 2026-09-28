@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import { CustomerPortalController } from '../controllers/customer-portal.controller';
 import { authenticateCustomerToken } from '../middlewares/auth.middleware';
+import { CustomerPushController } from '../controllers/push.controller';
 
 const router = Router();
 const controller = new CustomerPortalController();
+const pushController = new CustomerPushController();
 
 router.use(authenticateCustomerToken);
 
@@ -20,5 +22,9 @@ router.get('/loyalty', controller.getMyLoyalty.bind(controller));
 router.get('/courses/available', controller.listAvailableCourses.bind(controller));
 router.get('/courses', controller.listMyCourses.bind(controller));
 router.post('/courses/:courseId/purchase', controller.purchaseCourse.bind(controller));
+router.get('/push/public-key', pushController.getPublicKey.bind(pushController));
+router.post('/push/subscribe', pushController.subscribe.bind(pushController));
+router.post('/push/unsubscribe', pushController.unsubscribe.bind(pushController));
+router.post('/push/test', pushController.sendTest.bind(pushController));
 
 export default router;

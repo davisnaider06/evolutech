@@ -15,12 +15,22 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Bell, BellOff, Share, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
-import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { PushApi, usePushNotifications } from '@/hooks/usePushNotifications';
 
-export const AtivarNotificacoes: React.FC<{ mostrarQuandoAtivo?: boolean }> = ({
+export const AtivarNotificacoes: React.FC<{
+  mostrarQuandoAtivo?: boolean;
+  /** Portal do cliente passa as proprias rotas; sem isso, rotas da equipe. */
+  api?: PushApi;
+  textos?: { ativo: string; convite: string };
+}> = ({
   mostrarQuandoAtivo = false,
+  api,
+  textos = {
+    ativo: 'Este aparelho recebe aviso de agendamento novo.',
+    convite: 'Agendamento novo chega na hora, sem precisar abrir o app.',
+  },
 }) => {
-  const { estado, ocupado, ativar, desativar, testar, ehIOS } = usePushNotifications();
+  const { estado, ocupado, ativar, desativar, testar, ehIOS } = usePushNotifications(api);
 
   if (estado === 'carregando') return null;
   if (estado === 'ativo' && !mostrarQuandoAtivo) return null;
@@ -108,9 +118,7 @@ export const AtivarNotificacoes: React.FC<{ mostrarQuandoAtivo?: boolean }> = ({
           {estado === 'ativo' ? 'Notificações ligadas' : 'Receba avisos no celular'}
         </CardTitle>
         <CardDescription>
-          {estado === 'ativo'
-            ? 'Este aparelho recebe aviso de agendamento novo.'
-            : 'Agendamento novo chega na hora, sem precisar abrir o app.'}
+          {estado === 'ativo' ? textos.ativo : textos.convite}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-wrap gap-2">

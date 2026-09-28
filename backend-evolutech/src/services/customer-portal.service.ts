@@ -5,6 +5,7 @@ import { CLIENTE_INICIO_MINUTOS, CLIENTE_FIM_MINUTOS } from '../config/agenda';
 import { resolverHorarioDaCasa } from '../utils/business-hours.util';
 import { getBlockedIntervals, isIntervalBlocked } from '../utils/appointment-blocks.util';
 import { interpretarDataHora, limitesDoDia } from '../config/fuso';
+import { appointmentNotificationService } from './appointment-notification.service';
 
 class CustomerPortalError extends Error {
   statusCode: number;
@@ -685,6 +686,9 @@ export class CustomerPortalService {
         professionalName: true,
       },
     });
+
+    // Depois de gravar e sem await: aviso fora do ar nao desfaz a marcacao.
+    void appointmentNotificationService.avisarCriacao(created.id, 'portal do cliente');
 
     return {
       id: created.id,

@@ -58,7 +58,15 @@ function base64ParaUint8Array(base64: string) {
   return saida;
 }
 
-export const usePushNotifications = () => {
+/** Onde o aparelho se inscreve: rotas da equipe ou do portal do cliente. */
+export type PushApi = {
+  getPushPublicKey: () => Promise<{ public_key: string }>;
+  subscribePush: (subscription: unknown) => Promise<unknown>;
+  unsubscribePush: (endpoint: string) => Promise<unknown>;
+  sendPushTest: () => Promise<unknown>;
+};
+
+export const usePushNotifications = (api: PushApi = companyService) => {
   const [estado, setEstado] = useState<EstadoPush>('carregando');
   const [ocupado, setOcupado] = useState(false);
 
@@ -96,7 +104,7 @@ export const usePushNotifications = () => {
         return { ok: false, motivo: 'permissao-negada' as const };
       }
 
-      const { public_key: chave } = await companyService.getPushPublicKey();
+      const { public_key: chave } = await api.getPushPublicKey();
       const registro = await navigator.serviceWorker.ready;
 
       // Uma inscricao por aparelho: se ja existir, reaproveita em vez de
@@ -109,7 +117,7 @@ export const usePushNotifications = () => {
           applicationServerKey: base64ParaUint8Array(chave),
         }));
 
-      await companyService.subscribePush(inscricao.toJSON());
+      await api.subscribePush(inscricao.toJSON());
       setEstado('ativo');
       return { ok: true as const };
     } catch (erro: any) {
@@ -117,7 +125,7 @@ export const usePushNotifications = () => {
     } finally {
       setOcupado(false);
     }
-  }, []);
+  }, [api]);
 
   const desativar = useCallback(async () => {
     setOcupado(true);
@@ -127,7 +135,7 @@ export const usePushNotifications = () => {
       if (inscricao) {
         // Servidor primeiro: se cair a rede depois do unsubscribe local, o
         // backend ficaria mandando push para um endpoint que nao existe mais.
-        await companyService.unsubscribePush(inscricao.endpoint).catch(() => undefined);
+        await api.unsubscribePush(inscricao.endpoint).catch(() => undefined);
         await inscricao.unsubscribe();
       }
       setEstado('disponivel');
@@ -137,9 +145,9 @@ export const usePushNotifications = () => {
     } finally {
       setOcupado(false);
     }
-  }, []);
+  }, [api]);
 
-  const testar = useCallback(() => companyService.sendPushTest(), []);
+  const testar = useCallback(() => api.sendPushTest(), [api]);
 
   return { estado, ocupado, ativar, desativar, testar, reavaliar: avaliar, ehIOS: ehIOS() };
 };

@@ -67,7 +67,9 @@ class PushService {
    * chaves e o `last_seen_at`, sem duplicar.
    */
   async salvarInscricao(params: {
-    userId: string;
+    /** Equipe (profiles) ou cliente do portal (customer_accounts): um dos dois. */
+    userId?: string | null;
+    customerAccountId?: string | null;
     companyId?: string | null;
     subscription: PushSubscriptionInput;
     userAgent?: string | null;
@@ -75,15 +77,21 @@ class PushService {
     const endpoint = String(params.subscription?.endpoint || '').trim();
     const p256dh = String(params.subscription?.keys?.p256dh || '').trim();
     const auth = String(params.subscription?.keys?.auth || '').trim();
+    const userId = params.userId || null;
+    const customerAccountId = userId ? null : params.customerAccountId || null;
 
     if (!endpoint || !p256dh || !auth) {
       throw new Error('Inscricao invalida: endpoint, p256dh e auth sao obrigatorios');
+    }
+    if (!userId && !customerAccountId) {
+      throw new Error('Inscricao sem dono');
     }
 
     return (prisma as any).pushSubscription.upsert({
       where: { endpoint },
       create: {
-        userId: params.userId,
+        userId,
+        customerAccountId,
         companyId: params.companyId || null,
         endpoint,
         p256dh,
@@ -91,7 +99,10 @@ class PushService {
         userAgent: params.userAgent ? String(params.userAgent).slice(0, 400) : null,
       },
       update: {
-        userId: params.userId,
+        // O mesmo aparelho pode trocar de dono (barbeiro que tambem e cliente
+        // em outra aba); o ultimo a se inscrever leva, e o outro lado zera.
+        userId,
+        customerAccountId,
         companyId: params.companyId || null,
         p256dh,
         auth,
@@ -101,10 +112,13 @@ class PushService {
     });
   }
 
-  async removerInscricao(endpoint: string) {
+  /** `dono` restringe a remocao aos aparelhos de quem pediu. */
+  async removerInscricao(endpoint: string, dono: { customerAccountId?: string } = {}) {
     const limpo = String(endpoint || '').trim();
     if (!limpo) return { removidas: 0 };
-    const r = await (prisma as any).pushSubscription.deleteMany({ where: { endpoint: limpo } });
+    const r = await (prisma as any).pushSubscription.deleteMany({
+      where: { endpoint: limpo, ...(dono.customerAccountId ? { customerAccountId: dono.customerAccountId } : {}) },
+    });
     return { removidas: r.count };
   }
 
@@ -117,14 +131,24 @@ class PushService {
   async enviarParaUsuarios(userIds: string[], payload: PushPayload) {
     const alvos = Array.from(new Set(userIds.filter(Boolean)));
     if (alvos.length === 0) return { enviados: 0, falhas: 0, removidas: 0 };
+    return this.enviar({ userId: { in: alvos } }, payload);
+  }
 
+  /** Mesma coisa, para aparelhos de clientes do portal. */
+  async enviarParaClientes(customerAccountIds: string[], payload: PushPayload) {
+    const alvos = Array.from(new Set(customerAccountIds.filter(Boolean)));
+    if (alvos.length === 0) return { enviados: 0, falhas: 0, removidas: 0 };
+    return this.enviar({ customerAccountId: { in: alvos } }, payload);
+  }
+
+  private async enviar(where: Record<string, unknown>, payload: PushPayload) {
     if (!this.garantirVapid()) {
       console.info('[push] ignorado: VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY nao configuradas');
       return { enviados: 0, falhas: 0, removidas: 0, skipped: 'sem VAPID' };
     }
 
     const inscricoes = await (prisma as any).pushSubscription.findMany({
-      where: { userId: { in: alvos } },
+      where,
       select: { id: true, endpoint: true, p256dh: true, auth: true },
     });
 

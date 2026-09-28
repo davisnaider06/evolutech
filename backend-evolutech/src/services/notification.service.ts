@@ -450,7 +450,7 @@ export class NotificationService {
    * Entrou agendamento pelo link publico.
    *
    * Ate aqui ninguem era avisado: o cliente marcava e o dono so descobria
-   * abrindo a agenda. Vale para o barbeiro escolhido e para o dono.
+   * abrindo a agenda. Vai so para o dono; barbeiro e cliente recebem push.
    */
   async novoAgendamento(params: {
     to: string;

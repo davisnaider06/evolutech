@@ -24,6 +24,7 @@ import {
   CustomerSubscription,
 } from '@/types/customer-portal';
 import { formatarDataHora, hojeNaBarbearia } from '@/lib/horario';
+import { AtivarNotificacoes } from '@/components/notificacoes/AtivarNotificacoes';
 
 /**
  * Hora da barbearia, sempre.
@@ -214,6 +215,14 @@ const CustomerDashboard: React.FC = () => {
             Sair
           </Button>
         </div>
+
+        <AtivarNotificacoes
+          api={customerPortalService}
+          textos={{
+            ativo: 'Este aparelho recebe a confirmação e os lembretes dos seus horários.',
+            convite: 'Receba a confirmação do agendamento e lembretes um dia, uma hora e 15 minutos antes.',
+          }}
+        />
 
         <div className="grid gap-3 md:grid-cols-2">
           <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Agendamentos</p><p className="text-xl font-bold">{dashboard?.summary.appointments_total || 0}</p></CardContent></Card>

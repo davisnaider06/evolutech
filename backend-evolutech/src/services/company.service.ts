@@ -26,8 +26,7 @@ import { getBlockedIntervals, isIntervalBlocked } from '../utils/appointment-blo
 import { interpretarDataHora, limitesDoDia, dataISODaCasa } from '../config/fuso';
 import { chaveTelefone, clientesComTelefone } from '../utils/telefone.util';
 import { invalidateRoleCache } from '../middlewares/auth.middleware';
-import { pushService } from './push.service';
-import { notificationService } from './notification.service';
+import { appointmentNotificationService } from './appointment-notification.service';
 
 class CompanyServiceError extends Error {
   statusCode: number;
@@ -9817,14 +9816,7 @@ export class CompanyService {
     // e-mail ou push fora do ar nao pode transformar uma marcacao boa em erro
     // para o cliente. Antes disto ninguem era avisado — o dono so descobria
     // abrindo a agenda.
-    this.avisarNovoAgendamento(company.id, company.name, {
-      ...created,
-      // O aviso leva o telefone: e por ele que a equipe confirma, e e o que
-      // separa dois clientes de mesmo nome na bandeja de notificacao.
-      customerPhone,
-    }).catch((error) => {
-      console.warn('[agendamento] falha ao avisar a equipe:', error?.message);
-    });
+    void appointmentNotificationService.avisarCriacao(created.id, 'link publico');
 
     return {
       id: created.id,
@@ -9837,67 +9829,6 @@ export class CompanyService {
       scheduled_at: created.scheduledAt,
       status: created.status,
     };
-  }
-
-  /**
-   * Avisa dono e barbeiro que entrou agendamento novo.
-   *
-   * Dois canais com alcances diferentes: push chega na hora mas so em quem
-   * ligou as notificacoes (e, no iPhone, so em quem instalou na tela de
-   * inicio); e-mail chega sempre. Por isso os dois, e nao um ou outro.
-   */
-  private async avisarNovoAgendamento(companyId: string, companyName: string, appointment: any) {
-    const professionalId = appointment.professionalId || null;
-    const quando = new Date(appointment.scheduledAt).toLocaleString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
-    await pushService.enviarParaEquipe(
-      companyId,
-      {
-        title: 'Novo agendamento',
-        body: `${appointment.customerName} - ${appointment.serviceName} - ${quando}`,
-        url: '/empresa/agendamentos',
-        // Sem tag fixa: dois agendamentos diferentes sao dois avisos, e um
-        // nao pode substituir o outro na bandeja.
-        tag: `agendamento-${appointment.id}`,
-      },
-      professionalId ? [professionalId] : []
-    );
-
-    const destinatarios = await prisma.userRole.findMany({
-      where: {
-        companyId,
-        OR: [{ role: 'DONO_EMPRESA' }, ...(professionalId ? [{ userId: professionalId }] : [])],
-      },
-      select: { user: { select: { email: true } } },
-    });
-
-    const emails = Array.from(
-      new Set(
-        destinatarios
-          .map((item) => String(item.user?.email || '').trim())
-          .filter((email) => email.includes('@'))
-      )
-    );
-
-    await Promise.all(
-      emails.map((email) =>
-        notificationService.novoAgendamento({
-          to: email,
-          companyName,
-          customerName: appointment.customerName,
-          customerPhone: appointment.customerPhone || null,
-          serviceName: appointment.serviceName || 'Servico',
-          professionalName: appointment.professionalName || 'A definir',
-          scheduledAt: new Date(appointment.scheduledAt),
-          origem: 'link publico',
-        })
-      )
-    );
   }
 
   /**
