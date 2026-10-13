@@ -4,6 +4,14 @@ import { prisma } from '../db';
 import { AuthenticatedCustomer } from '../types';
 import { JWT_SECRET } from '../config/secrets';
 import { chaveTelefone, clientesComTelefone } from '../utils/telefone.util';
+import { notificationService } from './notification.service';
+import {
+  SENHA_MINIMA,
+  enderecoDoApp,
+  gerarTokenDeRedefinicao,
+  lerTokenDeRedefinicao,
+  tokenValeParaSenha,
+} from '../utils/redefinicao-senha.util';
 
 /**
  * Validade de cada token. A sessao em si nao vence enquanto o cliente usar o
@@ -475,6 +483,107 @@ export class CustomerAuthService {
         logo_url: account.company.logoUrl || null,
       },
     };
+  }
+
+  /**
+   * "Esqueci a senha" do cliente. So da para mandar por e-mail, e o e-mail e
+   * opcional no cadastro: quem so tem WhatsApp recebe o link da barbearia
+   * (gerarLinkDeSenhaParaCliente). A resposta e a mesma exista ou nao a
+   * conta, para a tela nao virar um jeito de descobrir quem e cliente.
+   */
+  async solicitarRedefinicaoDeSenha(data: { company_slug?: string; identifier?: string }) {
+    const slug = String(data.company_slug || '').trim().toLowerCase();
+    const identificador = String(data.identifier || '').trim();
+    if (!slug || !identificador) {
+      throw new CustomerAuthError('Informe seu WhatsApp ou e-mail', 400);
+    }
+
+    const email = pareceEmail(identificador) ? identificador.toLowerCase() : null;
+    const phone = email ? null : chaveDaConta(identificador);
+    if (!email && !phone) {
+      throw new CustomerAuthError('Informe um e-mail ou telefone valido', 400);
+    }
+
+    const company = await prisma.company.findFirst({
+      where: { slug, status: 'active' },
+      select: { id: true, name: true, slug: true },
+    });
+    if (!company) throw new CustomerAuthError('Empresa nao encontrada', 404);
+
+    const account = await (prisma as any).customerAccount.findFirst({
+      where: { companyId: company.id, ...(email ? { email } : { phone }) },
+      include: { customer: { select: { name: true, email: true, isActive: true } } },
+    });
+
+    const destino = String(account?.email || account?.customer?.email || '').trim();
+    if (account?.isActive && account.customer?.isActive && destino.includes('@')) {
+      const token = gerarTokenDeRedefinicao('cliente', account.id, account.passwordHash, '1h');
+      await notificationService.redefinicaoDeSenha({
+        to: destino,
+        companyName: company.name,
+        nome: String(account.customer?.name || '').split(' ')[0] || 'tudo bem',
+        link: `${enderecoDoApp()}/cliente/${company.slug}/redefinir-senha?token=${encodeURIComponent(token)}`,
+        validade: '1 hora',
+      });
+    }
+
+    return { ok: true };
+  }
+
+  /**
+   * Link gerado pela barbearia para o cliente que so tem WhatsApp. Vale 24h
+   * (o cliente pode demorar a abrir a mensagem) e, como o do e-mail, morre
+   * quando a senha muda.
+   */
+  async gerarLinkDeSenhaParaCliente(companyId: string, customerId: string) {
+    const account = await (prisma as any).customerAccount.findFirst({
+      where: { companyId, customerId },
+      include: {
+        customer: { select: { name: true, phone: true } },
+        company: { select: { slug: true, name: true } },
+      },
+    });
+    if (!account) {
+      throw new CustomerAuthError(
+        'Este cliente ainda nao tem conta no portal. Mande o link de cadastro para ele.',
+        404
+      );
+    }
+
+    const token = gerarTokenDeRedefinicao('cliente', account.id, account.passwordHash, '24h');
+    return {
+      url: `${enderecoDoApp()}/cliente/${account.company.slug}/redefinir-senha?token=${encodeURIComponent(token)}`,
+      customer_name: account.customer?.name || '',
+      phone: account.customer?.phone || account.phone || null,
+      company_name: account.company.name,
+      expires_in_hours: 24,
+    };
+  }
+
+  async redefinirSenha(data: { token?: string; password?: string }) {
+    const senha = String(data.password || '');
+    if (senha.length < SENHA_MINIMA) {
+      throw new CustomerAuthError(`A senha deve ter pelo menos ${SENHA_MINIMA} caracteres`, 400);
+    }
+
+    const token = String(data.token || '');
+    const accountId = lerTokenDeRedefinicao(token, 'cliente');
+    const account = accountId
+      ? await (prisma as any).customerAccount.findUnique({
+          where: { id: accountId },
+          select: { id: true, isActive: true, passwordHash: true },
+        })
+      : null;
+
+    if (!account || !account.isActive || !tokenValeParaSenha(token, account.passwordHash)) {
+      throw new CustomerAuthError('Link invalido ou vencido. Peca um novo a barbearia.', 400);
+    }
+
+    await (prisma as any).customerAccount.update({
+      where: { id: account.id },
+      data: { passwordHash: await bcrypt.hash(senha, 10) },
+    });
+    return { ok: true };
   }
 }
 

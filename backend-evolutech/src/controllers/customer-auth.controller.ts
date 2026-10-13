@@ -50,4 +50,20 @@ export class CustomerAuthController {
       return this.handleError(error, res);
     }
   }
+
+  async forgotPassword(req: Request, res: Response) {
+    try {
+      return res.json(await service.solicitarRedefinicaoDeSenha(req.body || {}));
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async resetPassword(req: Request, res: Response) {
+    try {
+      return res.json(await service.redefinirSenha(req.body || {}));
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
 }

@@ -74,6 +74,7 @@ router.delete('/team/members/:memberId', companyController.deleteTeamMember.bind
 router.get('/team/permissions', companyController.listTeamMemberPermissions.bind(companyController));
 router.put('/team/permissions/:memberId', companyController.updateTeamMemberPermissions.bind(companyController));
 router.get('/team/modules-diagnostic/:memberId', companyController.diagnoseTeamMemberModules.bind(companyController));
+router.post('/customers/:customerId/password-link', companyController.createCustomerPasswordLink.bind(companyController));
 router.get('/customers/:customerId/history', companyController.getCustomerHistory.bind(companyController));
 router.get('/customers/:customerId/history-entries', companyController.listCustomerServiceHistoryEntries.bind(companyController));
 router.post('/customers/:customerId/history-entries', companyController.createCustomerServiceHistoryEntry.bind(companyController));

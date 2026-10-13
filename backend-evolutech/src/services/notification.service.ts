@@ -494,6 +494,37 @@ export class NotificationService {
       }),
     });
   }
+
+  async redefinicaoDeSenha(params: {
+    to: string;
+    companyName: string;
+    nome: string;
+    link: string;
+    validade: string;
+  }) {
+    const link = escapeHtml(params.link);
+    return this.enviar({
+      to: params.to,
+      contexto: 'redefinicao de senha',
+      subject: `Crie sua nova senha - ${params.companyName}`,
+      html: montarLayout({
+        companyName: params.companyName,
+        title: 'Crie sua nova senha',
+        body: `
+          <p>Olá, ${escapeHtml(params.nome)}. Recebemos um pedido para criar uma nova senha.</p>
+          <p style="margin:22px 0;">
+            <a href="${link}" style="background:#0F172A;color:#FFFFFF;padding:12px 20px;border-radius:6px;text-decoration:none;font-weight:600;">
+              Criar nova senha
+            </a>
+          </p>
+          <p style="font-size:13px;color:#71717A;">Se o botão não abrir, copie este endereço no navegador:<br>${link}</p>`,
+        callout: {
+          tone: 'info',
+          text: `O link vale por ${escapeHtml(params.validade)} e funciona uma vez só. Se não foi você que pediu, ignore este e-mail: sua senha continua a mesma.`,
+        },
+      }),
+    });
+  }
 }
 
 export const notificationService = new NotificationService();

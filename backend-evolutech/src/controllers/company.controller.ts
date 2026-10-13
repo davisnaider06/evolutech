@@ -21,11 +21,10 @@ export class CompanyController {
       return res.status(statusCode).json({ error: message });
     }
 
-    if (error instanceof Error) {
-      return res.status(500).json({ error: error.message });
-    }
-
-    return res.status(500).json({ error: 'Erro interno' });
+    // Erro inesperado (Prisma, rede, bug) fica no log do servidor. A mensagem
+    // crua ia para o navegador e expunha nome de tabela, coluna e consulta.
+    console.error('[company.controller] erro interno', error);
+    return res.status(500).json({ error: 'Erro interno. Tente novamente em instantes.' });
   }
 
   async list(req: AuthedRequest, res: Response) {
@@ -228,6 +227,15 @@ export class CompanyController {
   async listPdvOrders(req: AuthedRequest, res: Response) {
     try {
       const result = await service.listPdvOrders(req.user!, req.query as any);
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async createCustomerPasswordLink(req: AuthedRequest, res: Response) {
+    try {
+      const result = await service.gerarLinkDeSenhaDoCliente(req.user!, req.params.customerId, req.query as any);
       return res.json(result);
     } catch (error: unknown) {
       return this.handleError(error, res);

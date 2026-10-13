@@ -4,6 +4,14 @@ import jwt from 'jsonwebtoken';
 import { Prisma } from '@prisma/client';
 import { AppRole, AuthenticatedUser } from '../types';
 import { JWT_SECRET } from '../config/secrets';
+import { notificationService } from './notification.service';
+import {
+  SENHA_MINIMA,
+  enderecoDoApp,
+  gerarTokenDeRedefinicao,
+  lerTokenDeRedefinicao,
+  tokenValeParaSenha,
+} from '../utils/redefinicao-senha.util';
 
 // Validade de cada token, nao da sessao: toda abertura do app chama /auth/me,
 // que devolve um token novo com o prazo zerado. So precisa logar de novo quem
@@ -458,6 +466,64 @@ export class AuthService {
       data: { passwordHash: nextHash },
     });
 
+    return { ok: true };
+  }
+
+  /**
+   * "Esqueci minha senha" da equipe. Responde igual exista ou nao a conta:
+   * dizer "e-mail nao cadastrado" ensinaria quem tenta adivinhar quais
+   * e-mails tem acesso ao sistema.
+   */
+  async solicitarRedefinicaoDeSenha(emailDigitado: string) {
+    const email = String(emailDigitado || '').trim().toLowerCase();
+    if (!email.includes('@')) {
+      throw new Error('Informe um e-mail valido');
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        fullName: true,
+        isActive: true,
+        passwordHash: true,
+        roles: { select: { company: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 1 },
+      },
+    });
+
+    if (user?.isActive) {
+      const token = gerarTokenDeRedefinicao('equipe', user.id, user.passwordHash, '1h');
+      await notificationService.redefinicaoDeSenha({
+        to: email,
+        companyName: user.roles[0]?.company?.name || 'Evolutech',
+        nome: String(user.fullName || '').split(' ')[0] || 'tudo bem',
+        link: `${enderecoDoApp()}/redefinir-senha?token=${encodeURIComponent(token)}`,
+        validade: '1 hora',
+      });
+    }
+
+    return { ok: true };
+  }
+
+  async redefinirSenhaComToken(token: string, novaSenha: string) {
+    const senha = String(novaSenha || '');
+    if (senha.length < SENHA_MINIMA) {
+      throw new Error(`A nova senha deve ter pelo menos ${SENHA_MINIMA} caracteres`);
+    }
+
+    const userId = lerTokenDeRedefinicao(token, 'equipe');
+    const user = userId
+      ? await prisma.user.findUnique({ where: { id: userId }, select: { id: true, isActive: true, passwordHash: true } })
+      : null;
+
+    if (!user || !user.isActive || !tokenValeParaSenha(token, user.passwordHash)) {
+      throw new Error('Link invalido ou vencido. Peca um novo.');
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash: await bcrypt.hash(senha, 10) },
+    });
     return { ok: true };
   }
 }
