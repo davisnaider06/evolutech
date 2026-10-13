@@ -17,6 +17,7 @@ import {
   Link2,
 } from 'lucide-react';
 import { PainelPendencias } from '@/components/notificacoes/PainelPendencias';
+import { useCompanyModules } from '@/hooks/useCompanyModules';
 import { toast } from 'sonner';
 import { formatarDataHora } from '@/lib/horario';
 import { API_URL } from '@/config/api';
@@ -67,6 +68,7 @@ const statusPt = (status?: string) => STATUS_PT[String(status || '')] || status 
 
 const EmpresaDashboard: React.FC = () => {
   const { user, company } = useAuth();
+  const { hasModuleForCurrentRole } = useCompanyModules();
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState<DashboardMetricsResponse['summary']>({
     employeesTotal: 0,
@@ -206,12 +208,15 @@ const EmpresaDashboard: React.FC = () => {
             <CardDescription>O que você mais usa na barbearia</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
+            {/* So o que a empresa tem ligado: com o perfil Essencial, atalho
+                para Mensalidades levava a "modulo nao contratado". */}
             {[
-              { to: '/empresa/agendamentos', icon: Calendar, label: 'Agenda de hoje' },
-              { to: '/empresa/pdv', icon: Store, label: 'Abrir PDV (vender)' },
-              { to: '/empresa/assinaturas', icon: Repeat, label: 'Mensalidades' },
-              { to: '/empresa/agendamentos', icon: Link2, label: 'Link de agendamento para clientes' },
-            ].map((atalho) => (
+              { to: '/empresa/agendamentos', icon: Calendar, label: 'Agenda de hoje', modulo: 'appointments' },
+              { to: '/empresa/caixa', icon: Wallet, label: 'Caixa de hoje', modulo: 'cash' },
+              { to: '/empresa/pdv', icon: Store, label: 'Vender produto', modulo: 'pdv' },
+              { to: '/empresa/assinaturas', icon: Repeat, label: 'Mensalidades', modulo: 'subscriptions' },
+              { to: '/empresa/agendamentos', icon: Link2, label: 'Link de agendamento para clientes', modulo: 'appointments' },
+            ].filter((atalho) => hasModuleForCurrentRole(atalho.modulo)).map((atalho) => (
               <Link key={atalho.label} to={atalho.to} className="block">
                 <Button variant="outline" className="w-full justify-between">
                   <span className="flex items-center gap-2">

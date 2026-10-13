@@ -5090,14 +5090,13 @@ export class CompanyService {
         throw new CompanyServiceError('Forma de pagamento invalida', 400);
       }
 
-      const isPix = paymentMethod === 'pix';
-      const activeGateway = isPix
+      const activeGateway = paymentMethod === 'pix'
         ? await this.paymentService.getCompanyActiveGateway(companyId)
         : null;
-
-      if (isPix && !activeGateway) {
-        throw new CompanyServiceError('Configure um gateway ativo para processar PIX', 400);
-      }
+      // Sem gateway, PIX e o que a barbearia ja faz hoje: o cliente paga na
+      // chave dela e quem atende confere no celular. A venda entra como paga.
+      // Com gateway ativo, segue o fluxo de QR Code e confirmacao automatica.
+      const isPix = paymentMethod === 'pix' && Boolean(activeGateway);
 
       if (total <= 0) {
         throw new CompanyServiceError('Total invalido para checkout', 400);

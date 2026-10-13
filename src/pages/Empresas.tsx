@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { adminService } from '@/services/admin';
+import { ModulosDaEmpresaDialog } from '@/components/admin/ModulosDaEmpresaDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,7 +20,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Plus, Building2, MoreVertical, Trash2, Power, PowerOff, Pencil, Upload } from 'lucide-react';
+import { Plus, Building2, MoreVertical, Trash2, Power, PowerOff, Pencil, Upload, LayoutGrid } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,6 +59,7 @@ const Empresas: React.FC = () => {
   const [creating, setCreating] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [selectedEmpresa, setSelectedEmpresa] = useState<Tenant | null>(null);
+  const [empresaModulos, setEmpresaModulos] = useState<Tenant | null>(null);
   const createLogoInputRef = useRef<HTMLInputElement>(null);
   const [createLogoPreview, setCreateLogoPreview] = useState<string | null>(null);
   const [createLogoDataUrl, setCreateLogoDataUrl] = useState<string | null>(null);
@@ -322,6 +324,9 @@ const Empresas: React.FC = () => {
                           <DropdownMenuItem onClick={() => openEdit(empresa)}>
                             <Pencil className="h-4 w-4 mr-2" />Editar
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setEmpresaModulos(empresa)}>
+                            <LayoutGrid className="h-4 w-4 mr-2" />Módulos
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => toggleStatus(empresa)}>
                             {empresa.status === 'active' ? (
                               <><PowerOff className="h-4 w-4 mr-2" />Desativar</>
@@ -495,6 +500,7 @@ const Empresas: React.FC = () => {
         </DialogContent>
       </Dialog>
 
+      <ModulosDaEmpresaDialog empresa={empresaModulos} onOpenChange={(open) => !open && setEmpresaModulos(null)} />
     </div>
   );
 };

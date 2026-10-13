@@ -45,6 +45,7 @@ interface NavItem {
   moduleCode?: string; // If tied to a module
   ownerOnly?: boolean; // Only for DONO_EMPRESA
   alwaysShow?: boolean; // Always show regardless of modules
+  staffOnly?: boolean;
   group: NavGroup;
 }
 
@@ -79,9 +80,12 @@ const navItems: NavItem[] = [
   { icon: Scissors, label: 'Serviços', path: '/empresa/servicos', moduleCode: 'appointments', group: 'atendimento' },
   { icon: Gift, label: 'Fidelidade', path: '/empresa/fidelidade', moduleCode: 'loyalty', ownerOnly: true, group: 'atendimento' },
   { icon: Repeat, label: 'Assinaturas', path: '/empresa/assinaturas', moduleCode: 'subscriptions', group: 'atendimento' },
-  { icon: ListTodo, label: 'Minhas tarefas', path: '/empresa/app', moduleCode: 'app', alwaysShow: true, group: 'atendimento' },
+  // So para o funcionario: o dono ja ve as pendencias no topo do Painel, e
+  // menu curto e o que pede o dono que se perde com muita opcao.
+  { icon: ListTodo, label: 'Minhas tarefas', path: '/empresa/app', moduleCode: 'app', alwaysShow: true, staffOnly: true, group: 'atendimento' },
 
-  { icon: Store, label: 'PDV', path: '/empresa/pdv', moduleCode: 'pdv', group: 'vendas' },
+  // "Vender" em vez de "PDV": sigla que o dono de barbearia nem sempre conhece.
+  { icon: Store, label: 'Vender', path: '/empresa/pdv', moduleCode: 'pdv', group: 'vendas' },
   { icon: Package, label: 'Produtos', path: '/empresa/produtos', moduleCode: 'products', group: 'vendas' },
   { icon: ShoppingCart, label: 'Pedidos', path: '/empresa/pedidos', moduleCode: 'orders', group: 'vendas' },
   { icon: BookOpen, label: 'Cursos', path: '/empresa/cursos', moduleCode: 'courses', group: 'vendas' },
@@ -120,6 +124,7 @@ export const EmpresaLayout: React.FC = () => {
   const filteredNavItems = navItems.filter(item => {
     // Check owner-only restriction
     if (item.ownerOnly && !isOwner) return false;
+    if (item.staffOnly && isOwner) return false;
     
     // App is always available for owner and funcionario
     if (item.path === '/empresa/app' && item.alwaysShow) return true;

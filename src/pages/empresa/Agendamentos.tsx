@@ -23,6 +23,8 @@ import { appointmentsService } from '@/services/appointments';
 import { useAuth } from '@/contexts/AuthContext';
 import { companyService } from '@/services/company';
 import { AgendaBoard } from '@/components/agenda/AgendaBoard';
+import { ReceberAtendimentoDialog, AtendimentoParaReceber } from '@/components/agenda/ReceberAtendimentoDialog';
+import { useCompanyModules } from '@/hooks/useCompanyModules';
 
 interface Appointment {
   id: string;
@@ -70,6 +72,10 @@ const statusOptions = [
 
 const Agendamentos: React.FC = () => {
   const { user, company } = useAuth();
+  const { hasModuleForCurrentRole } = useCompanyModules();
+  // Receber pela agenda usa o checkout do PDV: so aparece para quem pode vender.
+  const podeReceber = hasModuleForCurrentRole('pdv');
+  const [receber, setReceber] = useState<AtendimentoParaReceber | null>(null);
   const navigate = useNavigate();
   const bookingSlug = user?.tenantSlug || company?.slug;
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -543,6 +549,15 @@ const Agendamentos: React.FC = () => {
       </>
       )}
 
+      <ReceberAtendimentoDialog
+        atendimento={receber}
+        onClose={() => setReceber(null)}
+        onRecebido={() => {
+          fetchAppointments();
+          setBoardRefresh((prev) => prev + 1);
+        }}
+      />
+
       <FormDialog
         open={isFormOpen}
         onOpenChange={setIsFormOpen}
@@ -554,14 +569,37 @@ const Agendamentos: React.FC = () => {
       >
         {editingAppointment && !['concluido', 'cancelado', 'no_show'].includes(formData.status) && (
           <div className="mb-4 flex flex-wrap gap-2 rounded-lg border border-border bg-secondary/40 p-3">
-            <Button
-              type="button"
-              onClick={() => mudarStatusRapido('concluido')}
-              disabled={isSubmitting}
-              className="flex-1"
-            >
-              Concluir atendimento
-            </Button>
+            {podeReceber ? (
+              <Button
+                type="button"
+                onClick={() => {
+                  if (!editingAppointment) return;
+                  const servico = services.find((item) => item.id === formData.service_id);
+                  setReceber({
+                    id: editingAppointment.id,
+                    customer_name: formData.customer_name || null,
+                    service_id: formData.service_id || null,
+                    service_name: servico?.name || formData.service_name || null,
+                    price: formData.price === '' ? null : Number(formData.price),
+                    service_price: Number(servico?.price || 0),
+                  });
+                  setIsFormOpen(false);
+                }}
+                disabled={isSubmitting}
+                className="flex-1"
+              >
+                Concluir e receber
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                onClick={() => mudarStatusRapido('concluido')}
+                disabled={isSubmitting}
+                className="flex-1"
+              >
+                Concluir atendimento
+              </Button>
+            )}
             {formData.status === 'pendente' && (
               <Button
                 type="button"

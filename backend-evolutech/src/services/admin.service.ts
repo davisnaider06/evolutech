@@ -148,8 +148,9 @@ export class AdminService {
                 moduloId,
               },
             },
+            // Sem isActive: nao religa modulo que o super admin desligou so
+            // para uma empresa.
             update: {
-              isActive: true,
               allowedRoles,
             },
             create: {
@@ -200,8 +201,10 @@ export class AdminService {
               moduloId,
             },
           },
+          // Sem isActive: o super admin pode ter desligado o modulo so para
+          // esta empresa (tela Empresas > Modulos). Editar o sistema base
+          // religava tudo e desfazia a escolha.
           update: {
-            isActive: true,
             allowedRoles,
           },
           create: {
@@ -845,6 +848,113 @@ export class AdminService {
     });
 
     return this.listSistemaBaseModulos(sistemaId);
+  }
+
+  /**
+   * Modulos de uma empresa para o super admin ligar e desligar. A lista sai
+   * do sistema base da empresa (o que ela pode ter) somado ao que ja esta
+   * gravado para ela; "obrigatorio" vem do sistema base e nao desliga.
+   */
+  async listTenantModulos(companyId: string) {
+    const company = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: { id: true, sistemaBaseId: true },
+    });
+    if (!company) throw new Error('Empresa nao encontrada');
+
+    const [doModelo, daEmpresa] = await Promise.all([
+      company.sistemaBaseId
+        ? prisma.sistemaBaseModulo.findMany({
+            where: { sistemaBaseId: company.sistemaBaseId },
+            include: { modulo: true },
+          })
+        : Promise.resolve([]),
+      prisma.companyModule.findMany({ where: { companyId }, include: { modulo: true } }),
+    ]);
+
+    const porId = new Map<string, any>();
+    for (const item of doModelo) {
+      porId.set(item.moduloId, {
+        modulo_id: item.moduloId,
+        codigo: item.modulo.codigo,
+        nome: item.modulo.nome,
+        descricao: item.modulo.descricao,
+        obrigatorio: item.isMandatory,
+        ativo: false,
+      });
+    }
+    for (const item of daEmpresa) {
+      const atual = porId.get(item.moduloId) || {
+        modulo_id: item.moduloId,
+        codigo: item.modulo.codigo,
+        nome: item.modulo.nome,
+        descricao: item.modulo.descricao,
+        obrigatorio: false,
+      };
+      porId.set(item.moduloId, { ...atual, ativo: item.isActive && item.modulo.status === 'active' });
+    }
+
+    return Array.from(porId.values()).sort((a, b) => String(a.nome).localeCompare(String(b.nome)));
+  }
+
+  async updateTenantModulos(
+    companyId: string,
+    modulos: Array<{ modulo_id?: string; ativo?: boolean }>,
+    actorUserId?: string | null
+  ) {
+    const atuais = await this.listTenantModulos(companyId);
+    const porId = new Map(atuais.map((item) => [item.modulo_id, item]));
+
+    const pedidos = (Array.isArray(modulos) ? modulos : [])
+      .map((item) => ({ moduloId: String(item?.modulo_id || '').trim(), ativo: item?.ativo !== false }))
+      .filter((item) => item.moduloId);
+    if (pedidos.length === 0) throw new Error('Envie ao menos um modulo');
+
+    for (const pedido of pedidos) {
+      const atual = porId.get(pedido.moduloId);
+      if (!atual) throw new Error('Modulo fora do sistema base desta empresa');
+      if (atual.obrigatorio && !pedido.ativo) {
+        throw new Error(`${atual.nome} e obrigatorio e nao pode ser desligado`);
+      }
+    }
+
+    const company = await prisma.company.findUnique({ where: { id: companyId }, select: { sistemaBaseId: true } });
+    const papeisDoModelo = new Map(
+      company?.sistemaBaseId
+        ? (
+            await prisma.sistemaBaseModulo.findMany({
+              where: { sistemaBaseId: company.sistemaBaseId },
+              select: { moduloId: true, allowedRoles: true },
+            })
+          ).map((item) => [item.moduloId, item.allowedRoles])
+        : []
+    );
+
+    await prisma.$transaction([
+      ...pedidos.map((pedido) =>
+        prisma.companyModule.upsert({
+          where: { companyId_moduloId: { companyId, moduloId: pedido.moduloId } },
+          update: { isActive: pedido.ativo },
+          create: {
+            companyId,
+            moduloId: pedido.moduloId,
+            isActive: pedido.ativo,
+            ...(papeisDoModelo.get(pedido.moduloId) ? { allowedRoles: papeisDoModelo.get(pedido.moduloId) } : {}),
+          },
+        })
+      ),
+      prisma.auditLog.create({
+        data: {
+          userId: actorUserId || null,
+          companyId,
+          action: 'TENANT_MODULES_UPDATED',
+          resource: 'empresa_modulos',
+          details: { modulos: pedidos },
+        },
+      }),
+    ]);
+
+    return this.listTenantModulos(companyId);
   }
 
   async listTenants() {

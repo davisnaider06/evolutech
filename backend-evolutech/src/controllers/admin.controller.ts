@@ -325,6 +325,27 @@ export class AdminController {
     }
   }
 
+  async listTenantModulos(req: Request, res: Response) {
+    try {
+      return res.json(await adminService.listTenantModulos(req.params.tenantId));
+    } catch (error: any) {
+      return res.status(400).json({ error: error.message || 'Erro ao listar modulos da empresa' });
+    }
+  }
+
+  async updateTenantModulos(req: AuthedRequest, res: Response) {
+    try {
+      const result = await adminService.updateTenantModulos(
+        req.params.tenantId,
+        req.body?.modulos || [],
+        req.user?.id || null
+      );
+      return res.json(result);
+    } catch (error: any) {
+      return res.status(400).json({ error: error.message || 'Erro ao salvar modulos da empresa' });
+    }
+  }
+
   async updateTenant(req: Request, res: Response) {
     try {
       const { tenantId } = req.params;

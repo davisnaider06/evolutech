@@ -23,14 +23,16 @@ import {
 const JWT_EXPIRES_IN = (process.env.JWT_EXPIRES_IN || '30d') as jwt.SignOptions['expiresIn'];
 const OWNER_DEFAULT_MODULES = [
   { codigo: 'dashboard', nome: 'Dashboard' },
-  { codigo: 'reports', nome: 'Relatorios' },
-  { codigo: 'finance', nome: 'Financeiro' },
   { codigo: 'users', nome: 'Equipe' },
   { codigo: 'permissions', nome: 'Permissoes' },
   // 'gateways' saiu daqui: virou modulo concedido por empresa, via
   // empresa_modulos. O espelho desta lista vive em src/hooks/useCompanyModules.ts
   // (OWNER_DEFAULT_CODES) e as duas precisam andar juntas.
-  { codigo: 'commissions_owner', nome: 'Comissoes' },
+  //
+  // Relatorios, Financeiro e Comissoes tambem sairam: aparecendo sempre, o
+  // super admin nao conseguia deixar o menu curto (perfil Essencial) para o
+  // dono que se perde com muita coisa. O sistema base da barbearia ja traz os
+  // tres como modulo.
 ];
 const COMPANY_DEFAULT_MODULES = [
   { codigo: 'support', nome: 'Suporte', allowed_roles: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] as string[] },

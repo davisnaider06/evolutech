@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '@/components/crud/PageHeader';
+import { CaixaDoDia } from '@/components/caixa/CaixaDoDia';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -216,6 +217,9 @@ const Caixa: React.FC = () => {
   const [manualSaving, setManualSaving] = useState(false);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [manualForm, setManualForm] = useState(emptyManualForm);
+  const [verDetalhes, setVerDetalhes] = useState(false);
+  // Muda quando um lancamento manual e salvo, para o "Caixa de hoje" recarregar.
+  const [atualizarHoje, setAtualizarHoje] = useState(0);
   const [filters, setFilters] = useState({
     search: '',
     payment_method: 'all',
@@ -525,6 +529,7 @@ const Caixa: React.FC = () => {
         await companyService.create('cash_transactions', payload);
         toast.success('Movimentação manual registrada');
       }
+      setAtualizarHoje((valor) => valor + 1);
 
       setManualDialogOpen(false);
       setManualForm(emptyManualForm);
@@ -537,10 +542,11 @@ const Caixa: React.FC = () => {
   };
 
   const removeManualTransaction = async (id: string) => {
-    if (!window.confirm('Deseja excluir esta movimentacao manual?')) return;
+    if (!window.confirm('Excluir este lançamento?')) return;
     try {
       await companyService.remove('cash_transactions', id);
       toast.success('Movimentação manual excluída');
+      setAtualizarHoje((valor) => valor + 1);
       await loadManualTransactions();
     } catch (error: any) {
       toast.error(error.message || 'Erro ao excluir movimentação');
@@ -552,17 +558,35 @@ const Caixa: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Caixa" description="Recebimentos de vendas separados das movimentações manuais.">
-        <Button variant="outline" onClick={exportExcel}>
-          Exportar
-        </Button>
-        <Button variant="outline" onClick={exportDailyReport}>
-          Exportar diário
-        </Button>
-        <Button onClick={openCreateManualDialog}>
-          Nova movimentação manual
+      <PageHeader title="Caixa" description="O que entrou hoje e o fechamento do dia.">
+        <Button variant="outline" onClick={openCreateManualDialog}>
+          Lançar entrada ou saída
         </Button>
       </PageHeader>
+
+      <CaixaDoDia atualizar={atualizarHoje} />
+
+      {/* Relatorios por periodo, filtros, graficos e lancamentos ficam atras
+          de um botao: abrir o Caixa e dar de cara com doze cartoes e quatro
+          graficos afastava o dono que so queria saber quanto entrou hoje. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="ghost" onClick={() => setVerDetalhes((atual) => !atual)}>
+          {verDetalhes ? 'Esconder relatórios e lançamentos' : 'Ver relatórios, filtros e lançamentos'}
+        </Button>
+        {verDetalhes && (
+          <>
+            <Button variant="outline" size="sm" onClick={exportExcel}>
+              Exportar
+            </Button>
+            <Button variant="outline" size="sm" onClick={exportDailyReport}>
+              Exportar diário
+            </Button>
+          </>
+        )}
+      </div>
+
+      {verDetalhes && (
+      <>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {overview
@@ -1034,6 +1058,9 @@ const Caixa: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+
+      </>
+      )}
 
       <Dialog open={manualDialogOpen} onOpenChange={setManualDialogOpen}>
         <DialogContent className="sm:max-w-xl">
