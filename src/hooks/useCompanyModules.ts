@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { API_URL } from '@/config/api';
 
@@ -56,46 +56,81 @@ const codeMatchesAlias = (rawCode: string, alias: string) => {
   );
 };
 
+/**
+ * Lista de modulos guardada entre telas. Cada pagina monta um ModuleGuard
+ * novo, e cada um buscava /auth/me de novo: era o "Verificando permissoes..."
+ * de alguns segundos a cada clique no menu. Agora a primeira tela busca, as
+ * outras abrem na hora, e depois de um minuto a lista e conferida de novo em
+ * segundo plano — para a permissao que o dono mudou chegar ao funcionario.
+ */
+const MODULOS_VALIDOS_POR_MS = 60_000;
+let modulosEmCache: { token: string; lista: CompanyModule[]; em: number } | null = null;
+let buscaEmAndamento: { token: string; promessa: Promise<CompanyModule[] | null> } | null = null;
+
+const buscarModulosDoBackend = (token: string): Promise<CompanyModule[] | null> => {
+  if (buscaEmAndamento?.token === token) return buscaEmAndamento.promessa;
+  const promessa = fetch(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+    .then(async (response) => {
+      if (!response.ok) return null;
+      const data = await response.json();
+      const lista = (data?.user?.modules || data?.company?.modules || []) as CompanyModule[];
+      modulosEmCache = { token, lista, em: Date.now() };
+      return lista;
+    })
+    .catch((error) => {
+      console.error('Error fetching company modules:', error);
+      return null;
+    })
+    .finally(() => {
+      if (buscaEmAndamento?.promessa === promessa) buscaEmAndamento = null;
+    });
+  buscaEmAndamento = { token, promessa };
+  return promessa;
+};
+
+const modulosGuardados = () => {
+  const token = localStorage.getItem('evolutech_token');
+  return token && modulosEmCache?.token === token ? modulosEmCache : null;
+};
+
+const mapearModulos = (lista: CompanyModule[], role?: string): CompanyModule[] => {
+  const mapped = lista.map((item) => ({
+    id: item.id,
+    codigo: (item.codigo || '').toLowerCase(),
+    nome: item.nome,
+    icone: item.icone || null,
+    allowed_roles: item.allowed_roles || ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
+    is_pro: Boolean(item.is_pro),
+  }));
+  if (role !== 'DONO_EMPRESA') return mapped;
+
+  const defaultOwnerModules = OWNER_DEFAULT_CODES
+    .filter((code) => !mapped.some((module) => module.codigo === code))
+    .map((code) => ({
+      id: `owner-default-${code}`,
+      codigo: code,
+      nome: code,
+      icone: null,
+      allowed_roles: ['DONO_EMPRESA'],
+      is_pro: false,
+    }));
+  return [...mapped, ...defaultOwnerModules];
+};
+
 export const useCompanyModules = () => {
   const { user, company, isLoading: isAuthLoading } = useAuth();
-  const [modules, setModules] = useState<CompanyModule[]>([]);
-  const [activeCodes, setActiveCodes] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const resolveOwnerDefaults = useCallback(
-    (input: CompanyModule[]) => {
-      if (user?.role !== 'DONO_EMPRESA') return input;
-
-      const defaultOwnerModules = OWNER_DEFAULT_CODES
-        .filter((code) => !input.some((module) => module.codigo === code))
-        .map((code) => ({
-          id: `owner-default-${code}`,
-          codigo: code,
-          nome: code,
-          icone: null,
-          allowed_roles: ['DONO_EMPRESA'],
-          is_pro: false,
-        }));
-
-      return [...input, ...defaultOwnerModules];
-    },
-    [user?.role]
-  );
+  // Comeca com o que ja esta guardado: a tela abre sem spinner.
+  const [modules, setModules] = useState<CompanyModule[]>(() => {
+    const guardados = modulosGuardados();
+    return guardados ? mapearModulos(guardados.lista, user?.role) : [];
+  });
+  const [isLoading, setIsLoading] = useState(() => !modulosGuardados());
+  const activeCodes = useMemo(() => modules.map((m) => m.codigo), [modules]);
 
   const fetchModules = useCallback(async () => {
     const contextModules = (((company as any)?.modules || (user as any)?.modules || []) as CompanyModule[]);
     if (contextModules.length > 0) {
-      const mapped = contextModules.map((item) => ({
-        id: item.id,
-        codigo: (item.codigo || '').toLowerCase(),
-          nome: item.nome,
-          icone: item.icone || null,
-          allowed_roles: item.allowed_roles || ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
-          is_pro: Boolean(item.is_pro),
-        }));
-      const finalModules = resolveOwnerDefaults(mapped);
-      setModules(finalModules);
-      setActiveCodes(finalModules.map((m) => m.codigo));
+      setModules(mapearModulos(contextModules, user?.role));
       setIsLoading(false);
       return;
     }
@@ -103,44 +138,24 @@ export const useCompanyModules = () => {
     const token = localStorage.getItem('evolutech_token');
     if (!token) {
       setModules([]);
-      setActiveCodes([]);
       setIsLoading(false);
       return;
     }
 
-    try {
-      const response = await fetch(`${API_URL}/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!response.ok) {
-        setModules([]);
-        setActiveCodes([]);
-        return;
-      }
-
-      const data = await response.json();
-      const backendModules = (data?.user?.modules || data?.company?.modules || []) as CompanyModule[];
-      const mapped = backendModules.map((item) => ({
-        id: item.id,
-        codigo: (item.codigo || '').toLowerCase(),
-          nome: item.nome,
-          icone: item.icone || null,
-          allowed_roles: item.allowed_roles || ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'],
-          is_pro: Boolean(item.is_pro),
-        }));
-      const finalModules = resolveOwnerDefaults(mapped);
-
-      setModules(finalModules);
-      setActiveCodes(finalModules.map((m) => m.codigo));
-    } catch (error) {
-      console.error('Error fetching company modules:', error);
-      setModules([]);
-      setActiveCodes([]);
-    } finally {
+    const guardados = modulosGuardados();
+    if (guardados) {
+      setModules(mapearModulos(guardados.lista, user?.role));
       setIsLoading(false);
+      if (Date.now() - guardados.em < MODULOS_VALIDOS_POR_MS) return;
     }
-  }, [company, user, resolveOwnerDefaults]);
+
+    const lista = await buscarModulosDoBackend(token);
+    // Falha de rede com lista guardada: fica a guardada, em vez de trancar
+    // o usuario fora de todas as telas.
+    if (lista) setModules(mapearModulos(lista, user?.role));
+    else if (!guardados) setModules([]);
+    setIsLoading(false);
+  }, [company, user]);
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -180,6 +195,7 @@ export const useCompanyModules = () => {
   );
 
   const refreshModules = useCallback(() => {
+    modulosEmCache = null;
     setIsLoading(true);
     fetchModules();
   }, [fetchModules]);

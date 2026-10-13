@@ -12,7 +12,6 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
-  Bell,
   HelpCircle,
   Menu,
   X,
@@ -27,13 +26,16 @@ import {
   BarChart3,
   ShoppingCart,
   ReceiptText,
-  Warehouse,
-  Smartphone,
   Palette,
   Gift,
   Repeat,
   BookOpen,
   Scissors,
+  ListTodo,
+  Store,
+  Percent,
+  TrendingUp,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface NavItem {
@@ -43,19 +45,30 @@ interface NavItem {
   moduleCode?: string; // If tied to a module
   ownerOnly?: boolean; // Only for DONO_EMPRESA
   alwaysShow?: boolean; // Always show regardless of modules
+  group: NavGroup;
 }
 
-// Navigation items - dynamically filtered based on company modules
+// Quatro grupos no lugar de uma lista corrida de ate 24 itens: o dono acha
+// o assunto pelo grupo, e no celular a gaveta fica legivel.
+type NavGroup = 'inicio' | 'atendimento' | 'vendas' | 'dinheiro' | 'gestao';
+
+const GROUP_LABELS: Record<NavGroup, string> = {
+  inicio: '',
+  atendimento: 'Atendimento',
+  vendas: 'Vendas',
+  dinheiro: 'Dinheiro',
+  gestao: 'Gestão',
+};
+
+const GROUP_ORDER: NavGroup[] = ['inicio', 'atendimento', 'vendas', 'dinheiro', 'gestao'];
+
+// 'Estoque' saiu: o item apontava para /empresa/estoque, rota que nunca
+// existiu — quem tinha o modulo inventory caia no 404.
 const navItems: NavItem[] = [
-  // Core items
-  { icon: LayoutDashboard, label: 'Dashboard', path: '/empresa/dashboard', moduleCode: 'dashboard', ownerOnly: true },
-  { icon: Smartphone, label: 'Aplicativo', path: '/empresa/app', moduleCode: 'app', alwaysShow: true },
-  
-  // Business modules
-  { icon: Users, label: 'Clientes', path: '/empresa/clientes', moduleCode: 'customers' },
-  { icon: Package, label: 'Produtos', path: '/empresa/produtos', moduleCode: 'products' },
-  { icon: Warehouse, label: 'Estoque', path: '/empresa/estoque', moduleCode: 'inventory' },
-  { icon: Calendar, label: 'Agendamentos', path: '/empresa/agendamentos', moduleCode: 'appointments' },
+  { icon: LayoutDashboard, label: 'Painel', path: '/empresa/dashboard', moduleCode: 'dashboard', ownerOnly: true, group: 'inicio' },
+
+  { icon: Calendar, label: 'Agenda', path: '/empresa/agendamentos', moduleCode: 'appointments', group: 'atendimento' },
+  { icon: Users, label: 'Clientes', path: '/empresa/clientes', moduleCode: 'customers', group: 'atendimento' },
   // Servicos era um card dentro de Agendamentos. Como item de menu proprio
   // abre direto no assunto, o que no celular faz diferenca.
   //
@@ -63,33 +76,32 @@ const navItems: NavItem[] = [
   // nao pode num horario usa Bloquear horario na propria agenda. Expediente
   // por barbeiro criava barbeiro sem agenda nenhuma. A tela existe no historico
   // (commit cb129f4) se outra barbearia precisar.
-  { icon: Scissors, label: 'Servicos', path: '/empresa/servicos', moduleCode: 'appointments' },
-  { icon: ReceiptText, label: 'PDV', path: '/empresa/pdv', moduleCode: 'pdv' },
-  { icon: ReceiptText, label: 'Cobranças', path: '/empresa/cobrancas', moduleCode: 'billing' },
-  { icon: ShoppingCart, label: 'Pedidos', path: '/empresa/pedidos', moduleCode: 'orders' },
-  { icon: Wallet, label: 'Caixa', path: '/empresa/caixa', moduleCode: 'cash' },
-  { icon: CreditCard, label: 'Financeiro', path: '/empresa/financeiro', moduleCode: 'finance' },
-  { icon: Wallet, label: 'Comissões', path: '/empresa/comissoes', moduleCode: 'commissions' },
-  { icon: Gift, label: 'Fidelidade', path: '/empresa/fidelidade', moduleCode: 'loyalty' },
-  { icon: Repeat, label: 'Assinaturas', path: '/empresa/assinaturas', moduleCode: 'subscriptions' },
-  { icon: BookOpen, label: 'Cursos', path: '/empresa/cursos', moduleCode: 'courses' },
+  { icon: Scissors, label: 'Serviços', path: '/empresa/servicos', moduleCode: 'appointments', group: 'atendimento' },
+  { icon: Gift, label: 'Fidelidade', path: '/empresa/fidelidade', moduleCode: 'loyalty', ownerOnly: true, group: 'atendimento' },
+  { icon: Repeat, label: 'Assinaturas', path: '/empresa/assinaturas', moduleCode: 'subscriptions', group: 'atendimento' },
+  { icon: ListTodo, label: 'Minhas tarefas', path: '/empresa/app', moduleCode: 'app', alwaysShow: true, group: 'atendimento' },
+
+  { icon: Store, label: 'PDV', path: '/empresa/pdv', moduleCode: 'pdv', group: 'vendas' },
+  { icon: Package, label: 'Produtos', path: '/empresa/produtos', moduleCode: 'products', group: 'vendas' },
+  { icon: ShoppingCart, label: 'Pedidos', path: '/empresa/pedidos', moduleCode: 'orders', group: 'vendas' },
+  { icon: BookOpen, label: 'Cursos', path: '/empresa/cursos', moduleCode: 'courses', group: 'vendas' },
+
+  { icon: Wallet, label: 'Caixa', path: '/empresa/caixa', moduleCode: 'cash', group: 'dinheiro' },
+  { icon: ReceiptText, label: 'Cobranças', path: '/empresa/cobrancas', moduleCode: 'billing', group: 'dinheiro' },
+  { icon: Percent, label: 'Comissões', path: '/empresa/comissoes', moduleCode: 'commissions', group: 'dinheiro' },
+  { icon: TrendingUp, label: 'Financeiro', path: '/empresa/financeiro', moduleCode: 'finance', group: 'dinheiro' },
+  { icon: BarChart3, label: 'Relatórios', path: '/empresa/relatorios', moduleCode: 'reports', group: 'dinheiro' },
   // Gateways e um modulo como outro qualquer: so aparece para quem recebeu.
   // Antes vinha com `alwaysShow` e o codigo 'finance', entao todo dono via a
   // tela de gateways mesmo sem nunca ter contratado meio de pagamento.
-  { icon: CreditCard, label: 'Gateways', path: '/empresa/gateways', moduleCode: 'gateways', ownerOnly: true },
-  { icon: BarChart3, label: 'Relatórios', path: '/empresa/relatorios', moduleCode: 'reports' },
-  
-  // Team management (core for owners)
-  { icon: UserPlus, label: 'Equipe', path: '/empresa/equipe', moduleCode: 'users', ownerOnly: true },
-  { icon: Settings, label: 'Permissões', path: '/empresa/permissoes', moduleCode: 'permissions', ownerOnly: true },
-  
-  // Support & Training
-  { icon: HeadphonesIcon, label: 'Suporte', path: '/empresa/suporte', moduleCode: 'support' },
-  { icon: GraduationCap, label: 'Treinamentos', path: '/empresa/treinamentos', moduleCode: 'training' },
-  
-  // Customization & Settings (always for owners)
-  { icon: Palette, label: 'Temas', path: '/empresa/temas', moduleCode: 'design', ownerOnly: true, alwaysShow: true },
-  { icon: Settings, label: 'Configurações', path: '/empresa/configuracoes', moduleCode: 'settings', alwaysShow: true },
+  { icon: CreditCard, label: 'Gateways', path: '/empresa/gateways', moduleCode: 'gateways', ownerOnly: true, group: 'dinheiro' },
+
+  { icon: UserPlus, label: 'Equipe', path: '/empresa/equipe', moduleCode: 'users', ownerOnly: true, group: 'gestao' },
+  { icon: ShieldCheck, label: 'Permissões', path: '/empresa/permissoes', moduleCode: 'permissions', ownerOnly: true, group: 'gestao' },
+  { icon: Palette, label: 'Aparência', path: '/empresa/temas', moduleCode: 'design', ownerOnly: true, alwaysShow: true, group: 'gestao' },
+  { icon: Settings, label: 'Configurações', path: '/empresa/configuracoes', moduleCode: 'settings', alwaysShow: true, group: 'gestao' },
+  { icon: HeadphonesIcon, label: 'Suporte', path: '/empresa/suporte', moduleCode: 'support', group: 'gestao' },
+  { icon: GraduationCap, label: 'Treinamentos', path: '/empresa/treinamentos', moduleCode: 'training', group: 'gestao' },
 ];
 
 export const EmpresaLayout: React.FC = () => {
@@ -192,33 +204,46 @@ export const EmpresaLayout: React.FC = () => {
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto p-4">
-          <ul className="space-y-2">
-            {filteredNavItems.map((item) => {
-              const isActive = location.pathname === item.path || 
-                              (item.path !== '/empresa/dashboard' && location.pathname.startsWith(item.path));
-              return (
-                <li key={item.path}>
-                  <button
-                    onClick={() => {
-                      navigate(item.path);
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className={cn(
-                      'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
-                      isActive
-                        ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25'
-                        : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
-                    )}
-                  >
-                    <item.icon className={cn('h-5 w-5 flex-shrink-0', isCollapsed && 'mx-auto')} />
-                    {!isCollapsed && (
-                      <span>{!isOwner && item.path === '/empresa/app' ? 'Dashboard' : item.label}</span>
-                    )}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          {GROUP_ORDER.map((group) => {
+            const items = filteredNavItems.filter((item) => item.group === group);
+            if (items.length === 0) return null;
+            return (
+              <div key={group} className="mb-4 last:mb-0">
+                {GROUP_LABELS[group] && !isCollapsed && (
+                  <p className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                    {GROUP_LABELS[group]}
+                  </p>
+                )}
+                <ul className="space-y-1">
+                  {items.map((item) => {
+                    const isActive = location.pathname === item.path ||
+                                    (item.path !== '/empresa/dashboard' && location.pathname.startsWith(item.path));
+                    return (
+                      <li key={item.path}>
+                        <button
+                          onClick={() => {
+                            navigate(item.path);
+                            setIsMobileMenuOpen(false);
+                          }}
+                          title={isCollapsed ? item.label : undefined}
+                          aria-current={isActive ? 'page' : undefined}
+                          className={cn(
+                            'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200',
+                            isActive
+                              ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25'
+                              : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                          )}
+                        >
+                          <item.icon className={cn('h-5 w-5 flex-shrink-0', isCollapsed && 'mx-auto')} />
+                          {!isCollapsed && <span>{item.label}</span>}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            );
+          })}
         </nav>
 
         {/* User section */}
@@ -286,12 +311,17 @@ export const EmpresaLayout: React.FC = () => {
             </div>
           </div>
 
+          {/* O sino com bolinha vermelha fixa saiu: nao estava ligado a nada e
+              dizia "voce tem aviso" o tempo todo. Os avisos reais ficam no
+              painel de pendencias. */}
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="h-5 w-5" />
-              <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-destructive" />
-            </Button>
-            <Button variant="ghost" size="icon">
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Ajuda e suporte"
+              aria-label="Ajuda e suporte"
+              onClick={() => navigate('/empresa/suporte')}
+            >
               <HelpCircle className="h-5 w-5" />
             </Button>
           </div>

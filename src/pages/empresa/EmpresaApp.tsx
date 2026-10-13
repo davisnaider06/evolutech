@@ -118,7 +118,7 @@ const EmpresaApp: React.FC = () => {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Olá, {user?.name?.split(' ')[0]}</h1>
-        <p className="text-muted-foreground">Dashboard pessoal de tarefas em formato Kanban</p>
+        <p className="text-muted-foreground">Seu dia e suas tarefas pessoais</p>
       </div>
 
       {/* Antes das tarefas: e a primeira coisa que a pessoa quer saber ao

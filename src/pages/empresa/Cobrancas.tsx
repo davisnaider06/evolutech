@@ -191,7 +191,7 @@ const Cobrancas: React.FC = () => {
       const payload = await companyService.listCollectionsReceivables({ page: 1, pageSize: 30 });
       setCharges(Array.isArray(payload?.data) ? payload.data : []);
     } catch (error: any) {
-      toast.error(error?.message || 'Erro ao carregar recebiveis');
+      toast.error(error?.message || 'Erro ao carregar recebíveis');
       setCharges([]);
     } finally {
       setLoadingCharges(false);
@@ -258,7 +258,7 @@ const Cobrancas: React.FC = () => {
       });
       setExecutionLogs(Array.isArray(payload?.data) ? payload.data : []);
     } catch (error: any) {
-      toast.error(error?.message || 'Erro ao carregar execucoes');
+      toast.error(error?.message || 'Erro ao carregar execuções');
       setExecutionLogs([]);
     } finally {
       setLoadingExecutions(false);
@@ -276,7 +276,7 @@ const Cobrancas: React.FC = () => {
   const submit = async () => {
     const amount = Number(form.amount);
     if (!form.title.trim() || !form.customer_name.trim() || amount <= 0) {
-      toast.error('Preencha titulo, cliente e valor');
+      toast.error('Preencha título, cliente e valor');
       return;
     }
 
@@ -293,7 +293,7 @@ const Cobrancas: React.FC = () => {
         payment_method: form.payment_method,
       });
 
-      toast.success('Cobranca criada com sucesso');
+      toast.success('Cobrança criada com sucesso');
       setForm({
         title: '',
         customer_name: '',
@@ -310,10 +310,10 @@ const Cobrancas: React.FC = () => {
       const qr = created?.payment_gateway?.qrCodeText;
       if (qr) {
         navigator.clipboard.writeText(qr).catch(() => null);
-        toast.info('PIX copia e cola copiado para area de transferencia');
+        toast.info('PIX copia e cola copiado para área de transferencia');
       }
     } catch (error: any) {
-      toast.error(error?.message || 'Erro ao criar cobranca');
+      toast.error(error?.message || 'Erro ao criar cobrança');
     } finally {
       setSavingCharge(false);
     }
@@ -323,19 +323,19 @@ const Cobrancas: React.FC = () => {
     if (!value) return;
     try {
       await navigator.clipboard.writeText(value);
-      toast.success('Codigo PIX copiado');
+      toast.success('Código PIX copiado');
     } catch {
-      toast.error('Nao foi possivel copiar');
+      toast.error('Não foi possível copiar');
     }
   };
 
   const markAsPaid = async (chargeId: string) => {
     try {
       await companyService.markCollectionsReceivablePaid(chargeId);
-      toast.success('Cobranca marcada como paga');
+      toast.success('Cobrança marcada como paga');
       await Promise.all([loadCharges(), loadMetrics(), loadReminders()]);
     } catch (error: any) {
-      toast.error(error?.message || 'Erro ao marcar cobranca como paga');
+      toast.error(error?.message || 'Erro ao marcar cobrança como paga');
     }
   };
 
@@ -348,13 +348,13 @@ const Cobrancas: React.FC = () => {
       });
       setLastAutomationResult(payload);
       if (dryRun) {
-        toast.success('Simulacao concluida');
+        toast.success('Simulação concluída');
       } else {
-        toast.success('Automacao executada com envio');
+        toast.success('Automação executada com envio');
       }
       await Promise.all([loadMetrics(), loadReminders(), loadCharges()]);
     } catch (error: any) {
-      toast.error(error?.message || 'Erro ao rodar automacao');
+      toast.error(error?.message || 'Erro ao rodar automação');
     } finally {
       setRunningAutomation(false);
     }
@@ -407,9 +407,9 @@ const Cobrancas: React.FC = () => {
       anchor.click();
       anchor.remove();
       window.URL.revokeObjectURL(url);
-      toast.success('Exportacao concluida');
+      toast.success('Exportação concluída');
     } catch (error: any) {
-      toast.error(error?.message || 'Erro ao exportar execucoes');
+      toast.error(error?.message || 'Erro ao exportar execuções');
     } finally {
       setExportingExecutions(false);
     }
@@ -420,18 +420,18 @@ const Cobrancas: React.FC = () => {
     setReminderFilters(nextFilters);
     try {
       await loadReminders(nextFilters, { silent: true });
-      toast.success('Historico filtrado pela cobranca selecionada');
+      toast.success('Histórico filtrado pela cobrança selecionada');
     } catch (error: any) {
-      toast.error(error?.message || 'Erro ao filtrar historico');
+      toast.error(error?.message || 'Erro ao filtrar histórico');
     }
   };
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold lg:text-3xl">Collections e Cobrancas</h1>
+        <h1 className="text-2xl font-bold lg:text-3xl">Collections e Cobranças</h1>
         <p className="text-muted-foreground">
-          Operacao de cobranca com recebiveis, automacao de lembretes e acompanhamento de inadimplencia.
+          Operação de cobrança com recebíveis, automação de lembretes e acompanhamento de inadimplencia.
         </p>
       </div>
 
@@ -446,7 +446,7 @@ const Cobrancas: React.FC = () => {
             ) : (
               <>
                 <p className="text-xl font-semibold">{currency(Number(metrics?.pending_amount || 0))}</p>
-                <p className="text-xs text-muted-foreground">{Number(metrics?.pending_count || 0)} cobrancas</p>
+                <p className="text-xs text-muted-foreground">{Number(metrics?.pending_count || 0)} cobranças</p>
               </>
             )}
           </CardContent>
@@ -461,7 +461,7 @@ const Cobrancas: React.FC = () => {
             ) : (
               <>
                 <p className="text-xl font-semibold">{currency(Number(metrics?.paid_amount || 0))}</p>
-                <p className="text-xs text-muted-foreground">{Number(metrics?.paid_count || 0)} cobrancas</p>
+                <p className="text-xs text-muted-foreground">{Number(metrics?.paid_count || 0)} cobranças</p>
               </>
             )}
           </CardContent>
@@ -476,7 +476,7 @@ const Cobrancas: React.FC = () => {
             ) : (
               <>
                 <p className="text-xl font-semibold">{currency(Number(metrics?.overdue_amount || 0))}</p>
-                <p className="text-xs text-muted-foreground">{Number(metrics?.overdue_total_count || 0)} cobrancas</p>
+                <p className="text-xs text-muted-foreground">{Number(metrics?.overdue_total_count || 0)} cobranças</p>
               </>
             )}
           </CardContent>
@@ -491,7 +491,7 @@ const Cobrancas: React.FC = () => {
             ) : (
               <>
                 <p className="text-xl font-semibold">{Number(metrics?.upcoming_count || 0)}</p>
-                <p className="text-xs text-muted-foreground">cobrancas pendentes futuras</p>
+                <p className="text-xs text-muted-foreground">cobranças pendentes futuras</p>
               </>
             )}
           </CardContent>
@@ -502,38 +502,38 @@ const Cobrancas: React.FC = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <RefreshCcw className="h-5 w-5" />
-            Automacao da regua
+            Automação da regua
           </CardTitle>
           <CardDescription>
-            Executa as etapas d0, d3, d7 e d15 nas cobrancas pendentes/overdue. Use simulacao antes do envio real.
+            Executa as etapas d0, d3, d7 e d15 nas cobranças pendentes/overdue. Use simulação antes do envio real.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" disabled={runningAutomation} onClick={() => runAutomation(true)}>
-              {runningAutomation ? 'Executando...' : 'Rodar simulacao (dry run)'}
+              {runningAutomation ? 'Executando...' : 'Rodar simulação (dry run)'}
             </Button>
             <Button disabled={runningAutomation} onClick={() => runAutomation(false)}>
-              {runningAutomation ? 'Executando...' : 'Rodar automacao com envio'}
+              {runningAutomation ? 'Executando...' : 'Rodar automação com envio'}
             </Button>
             <Button variant="secondary" disabled={processingDue} onClick={processDueReminders}>
               {processingDue ? 'Processando...' : 'Processar agendados e retries'}
             </Button>
-            <Button variant="ghost" disabled={runningAutomation} onClick={loadReminders}>
+            <Button variant="ghost" disabled={runningAutomation} onClick={() => loadReminders()}>
               Atualizar lembretes
             </Button>
-            <Button variant="ghost" disabled={loadingExecutions} onClick={loadExecutionLogs}>
-              Atualizar execucoes
+            <Button variant="ghost" disabled={loadingExecutions} onClick={() => loadExecutionLogs()}>
+              Atualizar execuções
             </Button>
           </div>
 
           {lastAutomationResult && (
             <div className="rounded-lg border border-border p-4 text-sm">
               <p className="font-medium mb-2">
-                Ultima execucao {lastAutomationResult.dry_run ? '(simulacao)' : '(real)'}
+                Última execução {lastAutomationResult.dry_run ? '(simulação)' : '(real)'}
               </p>
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                <span>Cobrancas analisadas: {lastAutomationResult.charges_analyzed}</span>
+                <span>Cobranças analisadas: {lastAutomationResult.charges_analyzed}</span>
                 <span>Lembretes gerados: {lastAutomationResult.reminders_created}</span>
                 <span>Lembretes enviados: {lastAutomationResult.reminders_sent}</span>
                 <span>Lembretes com falha: {lastAutomationResult.reminders_failed}</span>
@@ -543,7 +543,7 @@ const Cobrancas: React.FC = () => {
 
           {lastAutomationResult?.dry_run && previewToShow.length > 0 && (
             <div className="rounded-lg border border-border p-4 text-sm">
-              <p className="mb-3 font-medium">Preview da simulacao</p>
+              <p className="mb-3 font-medium">Preview da simulação</p>
               <div className="space-y-2">
                 {previewToShow.slice(0, 12).map((item) => (
                   <div key={`${item.billing_charge_id}-${item.step_code}`} className="rounded-md border border-border p-3">
@@ -556,7 +556,7 @@ const Cobrancas: React.FC = () => {
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge variant={item.action === 'schedule' ? 'default' : 'outline'}>
-                          {item.action === 'schedule' ? 'Vai gerar lembrete' : 'Ja existe'}
+                          {item.action === 'schedule' ? 'Vai gerar lembrete' : 'Já existe'}
                         </Badge>
                         <Badge variant={item.has_phone ? 'outline' : 'destructive'}>
                           {item.has_phone ? 'Com telefone' : 'Sem telefone'}
@@ -571,7 +571,7 @@ const Cobrancas: React.FC = () => {
               </div>
               {previewToShow.length > 12 && (
                 <p className="mt-3 text-xs text-muted-foreground">
-                  Mostrando 12 de {previewToShow.length} itens previstos na simulacao.
+                  Mostrando 12 de {previewToShow.length} itens previstos na simulação.
                 </p>
               )}
             </div>
@@ -583,19 +583,19 @@ const Cobrancas: React.FC = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <ReceiptText className="h-5 w-5" />
-            Nova cobranca
+            Nova cobrança
           </CardTitle>
           <CardDescription>
-            Cobranca integrada ao gateway para PIX ou link de pagamento.
+            Cobrança integrada ao gateway para PIX ou link de pagamento.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label>Titulo</Label>
+            <Label>Título</Label>
             <Input
               value={form.title}
               onChange={(e) => setForm((old) => ({ ...old, title: e.target.value }))}
-              placeholder="Ex: Mensalidade de servicos"
+              placeholder="Ex: Mensalidade de serviços"
             />
           </div>
           <div className="space-y-2">
@@ -654,22 +654,22 @@ const Cobrancas: React.FC = () => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="pix">PIX (QR Code)</SelectItem>
-                <SelectItem value="credito">Credito (link)</SelectItem>
-                <SelectItem value="debito">Debito (link)</SelectItem>
+                <SelectItem value="credito">Crédito (link)</SelectItem>
+                <SelectItem value="debito">Débito (link)</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Descricao (opcional)</Label>
+            <Label>Descrição (opcional)</Label>
             <Input
               value={form.description}
               onChange={(e) => setForm((old) => ({ ...old, description: e.target.value }))}
-              placeholder="Detalhes da cobranca"
+              placeholder="Detalhes da cobrança"
             />
           </div>
           <div className="md:col-span-2">
             <Button onClick={submit} disabled={savingCharge} className="w-full sm:w-auto">
-              {savingCharge ? 'Gerando cobranca...' : 'Gerar cobranca'}
+              {savingCharge ? 'Gerando cobrança...' : 'Gerar cobrança'}
             </Button>
           </div>
         </CardContent>
@@ -677,9 +677,9 @@ const Cobrancas: React.FC = () => {
 
       <Card className="glass">
         <CardHeader>
-          <CardTitle>Logs de execucao</CardTitle>
+          <CardTitle>Logs de execução</CardTitle>
           <CardDescription>
-            Historico das simulacoes, envios manuais, processamento de agendados e execucoes automaticas.
+            Histórico das simulações, envios manuais, processamento de agendados e execuções automaticas.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -767,9 +767,9 @@ const Cobrancas: React.FC = () => {
             </Button>
             <Badge variant="outline">{executionActiveFilterCount} filtros ativos</Badge>
           </div>
-          {loadingExecutions && <p className="text-muted-foreground">Carregando execucoes...</p>}
+          {loadingExecutions && <p className="text-muted-foreground">Carregando execuções...</p>}
           {!loadingExecutions && executionLogs.length === 0 && (
-            <p className="text-muted-foreground">Nenhuma execucao registrada ainda.</p>
+            <p className="text-muted-foreground">Nenhuma execução registrada ainda.</p>
           )}
           {!loadingExecutions &&
             executionLogs.map((item) => (
@@ -778,14 +778,14 @@ const Cobrancas: React.FC = () => {
                   <div>
                     <p className="font-medium">{executionLabel(item.trigger_source)}</p>
                     <p className="text-sm text-muted-foreground">
-                      {datetime(item.created_at)} - {item.dry_run ? 'simulacao' : item.send_now ? 'envio ativo' : 'agendamento'}
+                      {datetime(item.created_at)} - {item.dry_run ? 'simulação' : item.send_now ? 'envio ativo' : 'agendamento'}
                     </p>
                   </div>
                   <Badge variant={statusVariant(item.status)}>{item.status}</Badge>
                 </div>
 
                 <div className="grid gap-2 text-sm md:grid-cols-3 lg:grid-cols-6">
-                  <p><span className="text-muted-foreground">Cobrancas:</span> {item.charges_analyzed}</p>
+                  <p><span className="text-muted-foreground">Cobranças:</span> {item.charges_analyzed}</p>
                   <p><span className="text-muted-foreground">Criados:</span> {item.reminders_created}</p>
                   <p><span className="text-muted-foreground">Enviados:</span> {item.reminders_sent}</p>
                   <p><span className="text-muted-foreground">Falhos:</span> {item.reminders_failed}</p>
@@ -806,15 +806,15 @@ const Cobrancas: React.FC = () => {
 
       <Card className="glass">
         <CardHeader>
-          <CardTitle>Recebiveis</CardTitle>
+          <CardTitle>Recebíveis</CardTitle>
           <CardDescription>
-            Clique em "Historico" para ver lembretes daquela cobranca na lista abaixo.
+            Clique em "Histórico" para ver lembretes daquela cobrança na lista abaixo.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {loadingCharges && <p className="text-muted-foreground">Carregando...</p>}
           {!loadingCharges && charges.length === 0 && (
-            <p className="text-muted-foreground">Nenhuma cobranca criada.</p>
+            <p className="text-muted-foreground">Nenhuma cobrança criada.</p>
           )}
           {!loadingCharges &&
             charges.map((item) => (
@@ -853,7 +853,7 @@ const Cobrancas: React.FC = () => {
                     </Button>
                   )}
                   <Button size="sm" variant="outline" onClick={() => applyHistoryFilter(item.id)}>
-                    Historico
+                    Histórico
                   </Button>
                   {item.status !== 'paid' && (
                     <Button size="sm" onClick={() => markAsPaid(item.id)}>
@@ -866,9 +866,9 @@ const Cobrancas: React.FC = () => {
                   <div className="rounded-md border border-border p-3 inline-block">
                     <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
                       <QrCode className="h-3 w-3" />
-                      QR Code da cobranca
+                      QR Code da cobrança
                     </p>
-                    <img src={item.transaction.qrCodeImageUrl} alt="QR Code cobranca" className="h-44 w-44 object-contain" />
+                    <img src={item.transaction.qrCodeImageUrl} alt="QR Code cobrança" className="h-44 w-44 object-contain" />
                   </div>
                 )}
               </div>
@@ -878,9 +878,9 @@ const Cobrancas: React.FC = () => {
 
       <Card className="glass">
         <CardHeader>
-          <CardTitle>Lembretes de cobranca</CardTitle>
+          <CardTitle>Lembretes de cobrança</CardTitle>
           <CardDescription>
-            Filtros por status, etapa, periodo, cliente e cobranca. Falhas podem ser reprocessadas.
+            Filtros por status, etapa, período, cliente e cobrança. Falhas podem ser reprocessadas.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -931,7 +931,7 @@ const Cobrancas: React.FC = () => {
               <Input
                 value={reminderFilters.customer}
                 onChange={(e) => setReminderFilters((old) => ({ ...old, customer: e.target.value }))}
-                placeholder="Nome ou titulo"
+                placeholder="Nome ou título"
               />
             </div>
             <div className="space-y-2">
@@ -951,19 +951,21 @@ const Cobrancas: React.FC = () => {
               />
             </div>
             <div className="space-y-2">
-              <Label>Cobranca ID</Label>
+              <Label>Cobrança ID</Label>
               <Input
                 value={reminderFilters.billing_charge_id}
                 onChange={(e) =>
                   setReminderFilters((old) => ({ ...old, billing_charge_id: e.target.value }))
                 }
-                placeholder="UUID da cobranca"
+                placeholder="UUID da cobrança"
               />
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={loadReminders} disabled={loadingReminders}>
+            {/* Arrow function de proposito: passado direto, o evento de clique
+                entrava como `nextFilters` e era espalhado nos filtros. */}
+            <Button variant="outline" onClick={() => loadReminders()} disabled={loadingReminders}>
               Aplicar filtros
             </Button>
             <Button
@@ -996,7 +998,7 @@ const Cobrancas: React.FC = () => {
               <div key={item.id} className="rounded-lg border border-border p-4 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <p className="font-medium">{item.billing_charge?.title || 'Cobranca sem titulo'}</p>
+                    <p className="font-medium">{item.billing_charge?.title || 'Cobrança sem título'}</p>
                     <p className="text-sm text-muted-foreground">
                       {item.billing_charge?.customer_name || '-'} - Etapa {item.step_code} - Agendado {datetime(item.scheduled_at)}
                     </p>
@@ -1009,7 +1011,7 @@ const Cobrancas: React.FC = () => {
 
                 <div className="grid gap-2 text-sm md:grid-cols-3">
                   <p>
-                    <span className="text-muted-foreground">Cobranca:</span> {item.billing_charge_id.slice(0, 8)}...
+                    <span className="text-muted-foreground">Cobrança:</span> {item.billing_charge_id.slice(0, 8)}...
                   </p>
                   <p>
                     <span className="text-muted-foreground">Valor:</span> {currency(Number(item.billing_charge?.amount || 0))}
@@ -1021,10 +1023,10 @@ const Cobrancas: React.FC = () => {
                     <span className="text-muted-foreground">Tentativas:</span> {Number(item.attempt_count || 0)}
                   </p>
                   <p>
-                    <span className="text-muted-foreground">Ultima tentativa:</span> {datetime(item.last_attempt_at)}
+                    <span className="text-muted-foreground">Última tentativa:</span> {datetime(item.last_attempt_at)}
                   </p>
                   <p>
-                    <span className="text-muted-foreground">Proximo retry:</span> {datetime(item.next_retry_at)}
+                    <span className="text-muted-foreground">Próximo retry:</span> {datetime(item.next_retry_at)}
                   </p>
                 </div>
 

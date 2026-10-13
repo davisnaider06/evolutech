@@ -7,12 +7,16 @@ import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import {
   Users,
-  HeadphonesIcon,
-  GraduationCap,
-  CheckCircle,
+  UserCheck,
+  Wallet,
   ArrowRight,
   CalendarClock,
+  Calendar,
+  Store,
+  Repeat,
+  Link2,
 } from 'lucide-react';
+import { PainelPendencias } from '@/components/notificacoes/PainelPendencias';
 import { toast } from 'sonner';
 import { formatarDataHora } from '@/lib/horario';
 import { API_URL } from '@/config/api';
@@ -48,6 +52,18 @@ interface DashboardMetricsResponse {
 }
 
 const API_COMPANY_URL = `${API_URL}/company`;
+
+// Status gravados em ingles (pedido) ou sem acento (agenda) aparecem assim
+// para o dono — antes a lista mostrava "(paid)" e "(concluido)".
+const STATUS_PT: Record<string, string> = {
+  paid: 'pago',
+  pending: 'pendente',
+  pending_pix: 'aguardando PIX',
+  failed: 'falhou',
+  concluido: 'concluído',
+  no_show: 'não compareceu',
+};
+const statusPt = (status?: string) => STATUS_PT[String(status || '')] || status || 'pendente';
 
 const EmpresaDashboard: React.FC = () => {
   const { user, company } = useAuth();
@@ -100,7 +116,7 @@ const EmpresaDashboard: React.FC = () => {
           ? data.recentAppointments.map((item) => ({
               id: `appointment-${item.id}`,
               type: 'agendamento' as const,
-              description: `${item.customerName || 'Cliente'} - ${item.serviceName || 'Servico'} (${item.status || 'pendente'})`,
+              description: `${item.customerName || 'Cliente'} - ${item.serviceName || 'Serviço'} (${statusPt(item.status)})`,
               // Hora da barbearia: o dono e o barbeiro tem de ler o mesmo
               // horario que o cliente leu quando marcou.
               timestamp: formatarDataHora(item.scheduledAt),
@@ -112,7 +128,7 @@ const EmpresaDashboard: React.FC = () => {
           ? data.recentOrders.map((item) => ({
               id: `order-${item.id}`,
               type: 'pedido' as const,
-              description: `Pedido de ${item.customerName || 'Cliente'} - ${currency.format(Number(item.total || 0))} (${item.status || 'pending'})`,
+              description: `Venda para ${item.customerName || 'cliente'} - ${currency.format(Number(item.total || 0))} (${statusPt(item.status)})`,
               timestamp: formatarDataHora(item.createdAt),
               sortDate: item.createdAt,
               user: 'Vendas',
@@ -145,73 +161,67 @@ const EmpresaDashboard: React.FC = () => {
         </p>
       </div>
 
+      {/* O que pede acao agora (agendamento novo pelo link, mensalidade em
+          aberto, agenda de hoje) vem antes dos numeros. Antes este painel so
+          existia em "Minhas tarefas" e o dono nao via. */}
+      <PainelPendencias />
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {isOwner && (
-          <StatsCard
-            title="Funcionários"
-            value={loading ? '...' : metrics.employeesTotal}
-            change={{ value: 0, label: 'equipe ativa' }}
-            icon={Users}
-          />
-        )}
         <StatsCard
-          title="Clientes Ativos"
-          value={loading ? '...' : metrics.customersActive}
-          change={{ value: 0, label: `de ${metrics.customersTotal} clientes` }}
-          icon={HeadphonesIcon}
-        />
-        <StatsCard
-          title="Agendamentos Hoje"
+          title="Agendamentos hoje"
           value={loading ? '...' : metrics.appointmentsToday}
-          change={{ value: 0, label: `${metrics.upcomingAppointments} próximos` }}
+          change={{ label: `${metrics.upcomingAppointments} ainda por vir` }}
           icon={CalendarClock}
         />
         <StatsCard
-          title="Faturamento do Mês"
+          title="Faturamento do mês"
           value={loading ? '...' : currency.format(metrics.revenueMonth || 0)}
-          change={{ value: 0, label: 'receita atual' }}
-          icon={CheckCircle}
+          change={{ label: 'vendas pagas no mês' }}
+          icon={Wallet}
         />
+        <StatsCard
+          title="Clientes ativos"
+          value={loading ? '...' : metrics.customersActive}
+          change={{ label: `de ${metrics.customersTotal} cadastrados` }}
+          icon={UserCheck}
+        />
+        {isOwner && (
+          <StatsCard
+            title="Equipe"
+            value={loading ? '...' : metrics.employeesTotal}
+            change={{ label: 'profissionais ativos' }}
+            icon={Users}
+          />
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <RecentActivity items={recentItems} title="Recentes da empresa" />
+        <RecentActivity items={recentItems} title="Movimento recente" />
 
+        {/* Atalhos para o que o dono faz todo dia — antes eram suporte,
+            treinamentos e equipe, coisas de uma vez por mes. */}
         <Card>
           <CardHeader>
-            <CardTitle>Suas Ferramentas</CardTitle>
-            <CardDescription>Acesse rapidamente as principais funcionalidades</CardDescription>
+            <CardTitle>Atalhos do dia</CardTitle>
+            <CardDescription>O que você mais usa na barbearia</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Link to="/empresa/suporte">
-              <Button variant="outline" className="w-full justify-between">
-                <span className="flex items-center gap-2">
-                  <HeadphonesIcon className="h-4 w-4" />
-                  Abrir Ticket de Suporte
-                </span>
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
-            <Link to="/empresa/treinamentos">
-              <Button variant="outline" className="w-full justify-between">
-                <span className="flex items-center gap-2">
-                  <GraduationCap className="h-4 w-4" />
-                  Ver Treinamentos
-                </span>
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
-            {isOwner && (
-              <Link to="/empresa/equipe">
+            {[
+              { to: '/empresa/agendamentos', icon: Calendar, label: 'Agenda de hoje' },
+              { to: '/empresa/pdv', icon: Store, label: 'Abrir PDV (vender)' },
+              { to: '/empresa/assinaturas', icon: Repeat, label: 'Mensalidades' },
+              { to: '/empresa/agendamentos', icon: Link2, label: 'Link de agendamento para clientes' },
+            ].map((atalho) => (
+              <Link key={atalho.label} to={atalho.to} className="block">
                 <Button variant="outline" className="w-full justify-between">
                   <span className="flex items-center gap-2">
-                    <Users className="h-4 w-4" />
-                    Gerenciar Equipe
+                    <atalho.icon className="h-4 w-4" />
+                    {atalho.label}
                   </span>
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </Link>
-            )}
+            ))}
           </CardContent>
         </Card>
       </div>

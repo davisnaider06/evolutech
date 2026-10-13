@@ -232,11 +232,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       case 'SUPER_ADMIN_EVOLUTECH': return '/admin-evolutech';
       case 'ADMIN_EVOLUTECH': return '/admin-evolutech/operacional';
       case 'DONO_EMPRESA': return '/empresa/dashboard';
-      case 'FUNCIONARIO_EMPRESA': return '/empresa/app';
+      case 'FUNCIONARIO_EMPRESA': {
+        // O barbeiro abre o sistema para ver quem atende agora. Antes caia
+        // num quadro de tarefas pessoais; agora vai direto para a agenda,
+        // quando a empresa tem o modulo.
+        const modulos: Array<{ codigo?: string }> =
+          (company as any)?.modules || (authState.user as any)?.modules || [];
+        const temAgenda = modulos.some((modulo) =>
+          ['appointments', 'agendamentos'].includes(String(modulo?.codigo || '').toLowerCase())
+        );
+        return temAgenda ? '/empresa/agendamentos' : '/empresa/app';
+      }
       case 'CLIENTE': return '/cliente/dashboard';
       default: return '/login';
     }
-  }, [authState.user]);
+  }, [authState.user, company]);
 
   const hasPermission = (requiredRoles: UserRole[]) => {
     return authState.user ? requiredRoles.includes(authState.user.role) : false;

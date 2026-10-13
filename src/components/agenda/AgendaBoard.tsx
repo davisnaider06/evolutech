@@ -391,11 +391,11 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
   const handleSaveBlock = async () => {
     const { start_time: startTime, end_time: endTime } = blockForm;
     if (!startTime || !endTime) {
-      toast.error('Informe o horario inicial e final');
+      toast.error('Informe o horário inicial e final');
       return;
     }
     if (endTime <= startTime) {
-      toast.error('O horario final deve ser maior que o inicial');
+      toast.error('O horário final deve ser maior que o inicial');
       return;
     }
 
@@ -431,11 +431,11 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
         });
       }
 
-      toast.success('Horario bloqueado');
+      toast.success('Horário bloqueado');
       setBlockDialogOpen(false);
       await loadBoard();
     } catch (error: any) {
-      toast.error(error?.message || 'Erro ao bloquear horario');
+      toast.error(error?.message || 'Erro ao bloquear horário');
     } finally {
       setBlockSaving(false);
     }
@@ -508,7 +508,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
           : undefined,
       });
     } catch (error: any) {
-      toast.error(error?.message || 'Erro ao bloquear horario');
+      toast.error(error?.message || 'Erro ao bloquear horário');
     } finally {
       setBloqueandoRapido(false);
     }
@@ -554,7 +554,9 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
               Agenda do dia
             </CardTitle>
             <CardDescription>
-              Escolha o barbeiro acima e toque num horario para agendar ou bloquear.
+              {columns.length > 1
+                ? 'Escolha o barbeiro e toque num horário para agendar ou bloquear.'
+                : 'Toque num horário para agendar ou bloquear.'}
             </CardDescription>
           </div>
 
@@ -592,6 +594,9 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                escolher de quem e a agenda ficou melhor nos dois tamanhos. */
             <div className="space-y-4">
               {/* Tira de barbeiros. O carrossel aqui e a escolha de quem, nao a agenda. */}
+              {/* Com um barbeiro so (o funcionario ve a propria agenda) nao ha
+                  o que escolher: a tira so empurrava a agenda para baixo. */}
+              {columns.length > 1 && (
               <div className="-mx-2 flex gap-3 overflow-x-auto px-2 pb-2">
                 {columns.map((column) => {
                   const ativo = column.professional_id === barbeiroAtivoId;
@@ -640,6 +645,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                   );
                 })}
               </div>
+              )}
 
               {colunaAtiva && (
                 <div onTouchStart={aoTocar} onTouchEnd={aoSoltar} className="max-w-2xl space-y-3">
@@ -648,7 +654,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                       <p className="truncate font-medium">{colunaAtiva.professional_name}</p>
                       <p className="text-xs text-muted-foreground">
                         {colunaAtiva.summary.appointments} atendimentos
-                        {columns.length > 1 && isMobile && ' - arraste para o proximo barbeiro'}
+                        {columns.length > 1 && isMobile && ' - arraste para o próximo barbeiro'}
                       </p>
                     </div>
                     <Button
@@ -657,7 +663,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                       onClick={() => openBlockDialog(colunaAtiva.professional_id)}
                     >
                       <Ban className="mr-1.5 h-3.5 w-3.5" />
-                      Bloquear periodo
+                      Bloquear período
                     </Button>
                   </div>
 
@@ -718,7 +724,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                                   {fatia.agendamento.customer_phone
                                     ? `${fatia.agendamento.customer_phone} - `
                                     : ''}
-                                  {fatia.agendamento.service_name || 'Servico'} -{' '}
+                                  {fatia.agendamento.service_name || 'Serviço'} -{' '}
                                   {fatia.agendamento.duration_minutes} min
                                   {typeof fatia.agendamento.price === 'number'
                                     ? ` - ${fatia.agendamento.price.toLocaleString('pt-BR', {
@@ -746,7 +752,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                                 <Ban className="h-3.5 w-3.5" />
                                 {fatia.motivo || 'Bloqueado'}
                                 <span className="text-xs opacity-70">
-                                  ate {minutesToLabel(fatia.fim)}
+                                  até {minutesToLabel(fatia.fim)}
                                 </span>
                               </span>
                             </div>
@@ -807,7 +813,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
             </span>
             <span className="flex items-center gap-1">
               <span className="inline-block h-3 w-3 rounded border border-sky-500 bg-sky-100" />
-              Concluido
+              Concluído
             </span>
             <span className="flex items-center gap-1">
               <span className="inline-block h-3 w-3 rounded border border-destructive/50 bg-destructive/15" />
@@ -834,7 +840,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
           <div className="grid gap-2 py-2">
             <Button onClick={confirmarAgendar} disabled={bloqueandoRapido} className="justify-start">
               <Plus className="mr-2 h-4 w-4" />
-              Agendar horario
+              Agendar horário
             </Button>
             <Button
               variant="outline"
@@ -843,7 +849,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
               className="justify-start"
             >
               <Ban className="mr-2 h-4 w-4" />
-              {bloqueandoRapido ? 'Bloqueando...' : 'Bloquear horario'}
+              {bloqueandoRapido ? 'Bloqueando...' : 'Bloquear horário'}
             </Button>
             <p className="px-1 pt-1 text-xs text-muted-foreground">
               O bloqueio e gravado na hora. Da para desfazer no aviso que aparece em seguida.
@@ -855,10 +861,10 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
       <Dialog open={blockDialogOpen} onOpenChange={setBlockDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Bloquear periodo</DialogTitle>
+            <DialogTitle>Bloquear período</DialogTitle>
             <DialogDescription>
-              O periodo bloqueado some da agenda: ninguem consegue marcar nele, nem pelo
-              portal do cliente nem pelo link publico.
+              O período bloqueado some da agenda: ninguém consegue marcar nele, nem pelo
+              portal do cliente nem pelo link público.
             </DialogDescription>
           </DialogHeader>
 
@@ -875,7 +881,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                 />
               </div>
               <div className="space-y-2">
-                <Label>Ate</Label>
+                <Label>Até</Label>
                 <Input
                   type="time"
                   value={blockForm.end_time}
@@ -907,8 +913,8 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
             </div>
             {blockForm.is_recurring && (
               <p className="text-xs text-muted-foreground">
-                O bloqueio passa a valer para esse dia da semana pelos proximos 12 meses.
-                Use assim para o horario de almoco.
+                O bloqueio passa a valer para esse dia da semana pelos próximos 12 meses.
+                Use assim para o horário de almoco.
               </p>
             )}
           </div>

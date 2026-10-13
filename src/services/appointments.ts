@@ -109,14 +109,17 @@ export const appointmentsService = {
     const response = await fetch(`${COMPANY_API_URL}/appointments/${id}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
+      // Cliente e preco so vao quando foram informados: mandar sempre
+      // customerId '' e price null fazia o "Concluir" rapido (que so muda o
+      // status) desligar o cliente do atendimento e apagar o valor.
       body: JSON.stringify({
         serviceId: data.service_id,
         professionalId: data.professional_id,
-        customerId: data.customer_id ?? '',
+        ...('customer_id' in data ? { customerId: data.customer_id ?? '' } : {}),
         customerName: data.customer_name,
         serviceName: data.service_name,
         professionalName: data.professional_name,
-        price: data.price ?? null,
+        ...('price' in data ? { price: data.price ?? null } : {}),
         scheduledAt: data.scheduled_at,
         status: data.status,
       }),
@@ -157,7 +160,7 @@ export const appointmentsService = {
     const response = await fetch(`${PUBLIC_API_URL}/booking/${encodeURIComponent(slug)}/options`);
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.error || 'Erro ao carregar opcoes de agendamento');
+      throw new Error(error.error || 'Erro ao carregar opções de agendamento');
     }
     return response.json();
   },
@@ -172,7 +175,7 @@ export const appointmentsService = {
     );
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.error || 'Erro ao listar horarios');
+      throw new Error(error.error || 'Erro ao listar horários');
     }
     return response.json();
   },
@@ -190,7 +193,7 @@ export const appointmentsService = {
     );
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.error || 'Erro ao listar horarios disponiveis');
+      throw new Error(error.error || 'Erro ao listar horários disponíveis');
     }
     return response.json();
   },
@@ -214,7 +217,7 @@ export const appointmentsService = {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.error || 'Erro ao criar agendamento publico');
+      throw new Error(error.error || 'Erro ao criar agendamento público');
     }
 
     return response.json();

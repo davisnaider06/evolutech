@@ -68,17 +68,38 @@ const Login: React.FC = () => {
         throw new Error(data.error || 'Falha no login');
       }
 
-      // Sucesso! Salva no contexto e redireciona
+      // Destino decidido antes do login(): assim que a sessao entra no
+      // contexto, esta tela se redireciona sozinha (getRedirectPath) — e com
+      // a lista de modulos ainda vazia o barbeiro caia em "Minhas tarefas".
+      let destino = '/redirect';
+      if (data.user.role === 'SUPER_ADMIN_EVOLUTECH') {
+        destino = '/admin-evolutech';
+      } else if (data.user.role === 'DONO_EMPRESA') {
+        destino = '/empresa/dashboard';
+      } else if (data.user.role === 'FUNCIONARIO_EMPRESA') {
+        // O barbeiro abre o sistema para ver quem atende agora: vai direto
+        // para a agenda quando tem o modulo. O login devolve os modulos vazios
+        // (para responder rapido); a lista vem do /auth/me, ja aquecido.
+        let modulos: Array<{ codigo?: string }> = data.user?.modules?.length
+          ? data.user.modules
+          : data.company?.modules || [];
+        if (modulos.length === 0) {
+          const me = await fetch(`${API_URL}/auth/me`, {
+            headers: { Authorization: `Bearer ${data.token}` },
+          })
+            .then((resposta) => (resposta.ok ? resposta.json() : null))
+            .catch(() => null);
+          modulos = me?.user?.modules || me?.company?.modules || [];
+        }
+        const temAgenda = modulos.some((modulo) =>
+          ['appointments', 'agendamentos'].includes(String(modulo?.codigo || '').toLowerCase())
+        );
+        destino = temAgenda ? '/empresa/agendamentos' : '/empresa/app';
+      }
+
       login(data.token, data.user, data.company);
       toast.success(`Bem-vindo, ${data.user.name}!`);
-
-      if (data.user.role === 'SUPER_ADMIN_EVOLUTECH') {
-          navigate('/admin-evolutech', { replace: true });
-      } else if (data.user.role === 'DONO_EMPRESA') {
-          navigate('/empresa/dashboard', { replace: true });
-      } else {
-          navigate('/redirect', { replace: true });
-      }
+      navigate(destino, { replace: true });
 
     } catch (error: any) {
       toast.error(error.message || "Erro ao conectar com o servidor");
@@ -118,7 +139,7 @@ const Login: React.FC = () => {
           <div className="text-center mb-8">
             <h1 className="text-2xl font-bold text-foreground">Acesso da Equipe</h1>
             <p className="text-sm text-muted-foreground mt-2">
-              Dono e funcionarios — painel da empresa
+              Dono e funcionários — painel da empresa
             </p>
           </div>
 
@@ -132,7 +153,8 @@ const Login: React.FC = () => {
                     <Input 
                         id="email"
                         type="email" 
-                        placeholder="davisnaider06@gmail.com" 
+                        placeholder="voce@suaempresa.com"
+                        autoComplete="email"
                         className="pl-10 bg-background/50 border-input"
                         value={email}
                         onChange={e => setEmail(e.target.value)}
@@ -144,13 +166,17 @@ const Login: React.FC = () => {
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
                     <Label htmlFor="password">Senha</Label>
+                    <Link to="/esqueci-senha" className="text-xs text-primary hover:underline">
+                        Esqueci minha senha
+                    </Link>
                 </div>
                 <div className="relative">
                     <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input 
                         id="password"
                         type="password" 
-                        placeholder="••••••••" 
+                        placeholder="Sua senha"
+                        autoComplete="current-password"
                         className="pl-10 bg-background/50 border-input"
                         value={password}
                         onChange={e => setPassword(e.target.value)}
@@ -173,7 +199,7 @@ const Login: React.FC = () => {
             <div className="flex items-center gap-3">
               <span className="h-px flex-1 bg-border" />
               <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                Nao e da equipe?
+                Não é da equipe?
               </span>
               <span className="h-px flex-1 bg-border" />
             </div>
@@ -197,7 +223,7 @@ const Login: React.FC = () => {
 
             <p className="mt-4 text-center text-xs text-muted-foreground">
               <Link className="hover:underline" to="/entrar" onClick={esquecerTipoAcesso}>
-                Ver as opcoes de acesso novamente
+                Ver as opções de acesso novamente
               </Link>
             </p>
           </div>

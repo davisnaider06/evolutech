@@ -58,13 +58,16 @@ const CustomerRegister: React.FC = () => {
     // agendamento e fidelidade a esta pessoa, e sem ele nao ha como o cliente
     // reencontrar a propria conta depois. O backend recusa do mesmo jeito;
     // conferir aqui so evita a viagem.
-    if (!form.email.trim() && !form.phone.trim()) {
-      toast.error('Informe email ou telefone para identificar sua conta');
+    // Na barbearia tudo passa pelo WhatsApp (confirmacao, lembrete,
+    // cobranca), e a conta ja usa o telefone como chave. O e-mail fica
+    // opcional; o "um dos dois" confundia quem preenchia.
+    if (!form.phone.trim()) {
+      toast.error('Informe seu WhatsApp: é por ele que você entra e recebe os lembretes');
       return;
     }
 
     if (form.password !== form.confirmPassword) {
-      toast.error('As senhas nao conferem');
+      toast.error('As senhas não conferem');
       return;
     }
 
@@ -78,7 +81,7 @@ const CustomerRegister: React.FC = () => {
         password: form.password,
       });
       login(result.token, result.customer, result.company);
-      toast.success('Cadastro concluido com sucesso');
+      toast.success('Cadastro concluído!');
       navigate('/cliente/dashboard', { replace: true });
     } catch (error: any) {
       toast.error(error.message || 'Falha ao cadastrar');
@@ -100,68 +103,68 @@ const CustomerRegister: React.FC = () => {
               />
             </div>
           ) : null}
-          <CardTitle>Criar conta no Portal do Cliente</CardTitle>
-          <CardDescription>Selecione sua empresa e conclua seu cadastro.</CardDescription>
+          <CardTitle>
+            {hasSlugFromRoute && selectedCompany ? `Crie sua conta na ${selectedCompany.name}` : 'Criar conta'}
+          </CardTitle>
+          <CardDescription>Agende pelo celular e acompanhe seus horários e benefícios.</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="company_slug">Empresa</Label>
-              <select
-                id="company_slug"
-                value={form.company_slug}
-                onChange={(event) => setForm((old) => ({ ...old, company_slug: event.target.value }))}
-                required
-                disabled={loadingCompanies || hasSlugFromRoute}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                <option value="">
-                  {loadingCompanies ? 'Carregando empresas...' : 'Selecione sua empresa'}
-                </option>
-                {companies.map((company) => (
-                  <option key={company.id} value={company.slug}>
-                    {company.name}
+            {!hasSlugFromRoute && (
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="company_slug">Barbearia</Label>
+                <select
+                  id="company_slug"
+                  value={form.company_slug}
+                  onChange={(event) => setForm((old) => ({ ...old, company_slug: event.target.value }))}
+                  required
+                  disabled={loadingCompanies}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">
+                    {loadingCompanies ? 'Carregando...' : 'Selecione onde você é cliente'}
                   </option>
-                ))}
-              </select>
-              {hasSlugFromRoute && (
-                <p className="text-xs text-muted-foreground">Empresa identificada automaticamente pelo link.</p>
-              )}
-            </div>
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.slug}>
+                      {company.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="full_name">Nome completo</Label>
               <Input
                 id="full_name"
+                autoComplete="name"
                 value={form.full_name}
                 onChange={(event) => setForm((old) => ({ ...old, full_name: event.target.value }))}
                 required
               />
             </div>
-            <div className="space-y-2 md:col-span-2">
-              <p className="text-xs text-muted-foreground">
-                Informe email ou telefone (pelo menos um). E por ele que voce entra no portal e
-                que seus agendamentos e assinaturas ficam no seu nome.
-              </p>
-            </div>
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="cliente@email.com"
-                value={form.email}
-                onChange={(event) => setForm((old) => ({ ...old, email: event.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="phone">Telefone</Label>
+              <Label htmlFor="phone">WhatsApp</Label>
               <Input
                 id="phone"
                 type="tel"
                 inputMode="tel"
+                autoComplete="tel"
                 placeholder="(11) 91234-5678"
                 value={form.phone}
                 onChange={(event) => setForm((old) => ({ ...old, phone: event.target.value }))}
+                required
+              />
+              <p className="text-xs text-muted-foreground">É com ele que você entra e recebe lembretes.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">E-mail (opcional)</Label>
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                placeholder="voce@email.com"
+                value={form.email}
+                onChange={(event) => setForm((old) => ({ ...old, email: event.target.value }))}
               />
             </div>
             <div className="space-y-2">
@@ -169,6 +172,7 @@ const CustomerRegister: React.FC = () => {
               <Input
                 id="password"
                 type="password"
+                autoComplete="new-password"
                 value={form.password}
                 onChange={(event) => setForm((old) => ({ ...old, password: event.target.value }))}
                 required
@@ -191,7 +195,7 @@ const CustomerRegister: React.FC = () => {
             </div>
           </form>
           <p className="mt-4 text-sm text-muted-foreground">
-            Ja possui conta?{' '}
+            Já tem conta?{' '}
             <Link
               className="text-primary underline"
               to={hasSlugFromRoute ? `/cliente/${form.company_slug}/login` : '/cliente/login'}

@@ -19,7 +19,7 @@ const statusConfigs: Record<string, StatusConfig> = {
   pendente: { label: 'Pendente', variant: 'outline', className: 'bg-yellow-500/20 text-yellow-600 border-yellow-500/30' },
   confirmado: { label: 'Confirmado', variant: 'default', className: 'bg-blue-500/20 text-blue-600 border-blue-500/30' },
   cancelado: { label: 'Cancelado', variant: 'destructive', className: 'bg-red-500/20 text-red-600 border-red-500/30' },
-  concluido: { label: 'Concluido', variant: 'default', className: 'bg-green-500/20 text-green-600 border-green-500/30' },
+  concluido: { label: 'Concluído', variant: 'default', className: 'bg-green-500/20 text-green-600 border-green-500/30' },
   no_show: { label: 'No-show', variant: 'secondary', className: 'bg-slate-500/20 text-slate-600 border-slate-500/30' },
 
   // Orders
@@ -31,6 +31,8 @@ const statusConfigs: Record<string, StatusConfig> = {
   pago: { label: 'Pago', variant: 'default', className: 'bg-green-500/20 text-green-600 border-green-500/30' },
   parcial: { label: 'Parcial', variant: 'outline', className: 'bg-yellow-500/20 text-yellow-600 border-yellow-500/30' },
   vencido: { label: 'Vencido', variant: 'destructive', className: 'bg-red-500/20 text-red-600 border-red-500/30' },
+  aguardando_pix: { label: 'Aguardando PIX', variant: 'outline', className: 'bg-yellow-500/20 text-yellow-600 border-yellow-500/30' },
+  falhou: { label: 'Falhou', variant: 'destructive', className: 'bg-red-500/20 text-red-600 border-red-500/30' },
 
   // Tickets
   aberto: { label: 'Aberto', variant: 'outline', className: 'bg-blue-500/20 text-blue-600 border-blue-500/30' },

@@ -64,7 +64,7 @@ const statusOptions = [
   { value: 'pendente', label: 'Pendente' },
   { value: 'confirmado', label: 'Confirmado' },
   { value: 'cancelado', label: 'Cancelado' },
-  { value: 'concluido', label: 'Concluido' },
+  { value: 'concluido', label: 'Concluído' },
   { value: 'no_show', label: 'No-show' },
 ];
 
@@ -143,7 +143,7 @@ const Agendamentos: React.FC = () => {
         }))
       );
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao carregar servicos');
+      toast.error(error.message || 'Erro ao carregar serviços');
     }
   }, []);
 
@@ -227,7 +227,7 @@ const Agendamentos: React.FC = () => {
           <span className="text-muted-foreground">Sem cadastro</span>
         ),
     },
-    { key: 'service_name', label: 'Servico' },
+    { key: 'service_name', label: 'Serviço' },
     {
       key: 'price',
       label: 'Valor',
@@ -239,7 +239,7 @@ const Agendamentos: React.FC = () => {
     { key: 'professional_name', label: 'Profissional' },
     {
       key: 'scheduled_time',
-      label: 'Horario',
+      label: 'Horário',
       render: (item) => (
         <div className="flex items-center gap-1">
           <Clock className="h-4 w-4 text-muted-foreground" />
@@ -308,13 +308,13 @@ const Agendamentos: React.FC = () => {
     // Cliente saiu da lista de obrigatorios: quem agenda pela agenda quase
     // sempre esta com o cliente na frente e nao quer cadastrar ninguem.
     if (!formData.service_id || !formData.professional_id || !formData.scheduled_at) {
-      toast.error('Preencha servico, profissional e data/hora');
+      toast.error('Preencha serviço, profissional e data/hora');
       return;
     }
 
     const precoDigitado = formData.price.trim();
     if (precoDigitado && !(Number(precoDigitado) >= 0)) {
-      toast.error('Informe um valor valido');
+      toast.error('Informe um valor válido');
       return;
     }
 
@@ -330,7 +330,7 @@ const Agendamentos: React.FC = () => {
     };
 
     if (!payload.scheduled_at) {
-      toast.error('Data e hora invalidas');
+      toast.error('Data e hora inválidas');
       return;
     }
 
@@ -353,6 +353,32 @@ const Agendamentos: React.FC = () => {
     }
   };
 
+  // Atender e o que o barbeiro faz o dia inteiro. Antes, dar um horario por
+  // concluido era: abrir o formulario, trocar o select de status e salvar.
+  // Aqui e um toque, sem passar pelo resto do formulario.
+  const mudarStatusRapido = async (novoStatus: 'concluido' | 'confirmado' | 'no_show') => {
+    if (!editingAppointment) return;
+    setIsSubmitting(true);
+    try {
+      await appointmentsService.updateInternal(editingAppointment.id, { status: novoStatus });
+      const mensagens = {
+        concluido: 'Atendimento concluído',
+        confirmado: 'Horário confirmado',
+        no_show: 'Marcado como não compareceu',
+      };
+      toast.success(mensagens[novoStatus]);
+      setIsFormOpen(false);
+      fetchAppointments();
+      setBoardRefresh((prev) => prev + 1);
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao atualizar o agendamento');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const isFuncionario = user?.role === 'FUNCIONARIO_EMPRESA';
+
   const precoDoServicoSelecionado = (() => {
     const escolhido = services.find((service) => service.id === formData.service_id);
     return escolhido ? escolhido.price.toFixed(2) : '0.00';
@@ -364,7 +390,7 @@ const Agendamentos: React.FC = () => {
 
   const copyPublicLink = async () => {
     if (!publicLink) {
-      toast.error('Nao foi possivel gerar link de agendamento');
+      toast.error('Não foi possível gerar o link de agendamento');
       return;
     }
     await navigator.clipboard.writeText(publicLink);
@@ -374,8 +400,12 @@ const Agendamentos: React.FC = () => {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Agendamentos"
-        description="Gerencie os agendamentos e compartilhe o link publico com seus clientes"
+        title={isFuncionario ? 'Minha agenda' : 'Agendamentos'}
+        description={
+          isFuncionario
+            ? 'Seus atendimentos do dia. Toque num horário para marcar ou concluir.'
+            : 'Gerencie os agendamentos e compartilhe o link público com seus clientes'
+        }
         buttonLabel="Novo Agendamento"
         onButtonClick={handleNew}
       />
@@ -441,6 +471,9 @@ const Agendamentos: React.FC = () => {
 
       {/* Servicos sai daqui e vira tela propria: no celular esta pagina
           empilhava agenda e cadastro de servico, e nada era encontravel. */}
+      {/* Cadastro de servicos e coisa do dono; para o barbeiro era so mais
+          um cartao entre ele e a agenda. */}
+      {!isFuncionario && (
       <div className="grid gap-3">
         <button
           type="button"
@@ -449,17 +482,18 @@ const Agendamentos: React.FC = () => {
         >
           <Scissors className="h-5 w-5 shrink-0 text-primary" />
           <div>
-            <p className="font-medium">Servicos</p>
+            <p className="font-medium">Serviços</p>
             <p className="text-sm text-muted-foreground">
-              Nome, duracao e preco do que o cliente agenda
+              Nome, duração e preço do que o cliente agenda
             </p>
           </div>
         </button>
       </div>
+      )}
 
       <div className="rounded-lg border p-4 bg-card flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-sm text-muted-foreground break-all">
-          Link publico: <strong>{publicLink || 'indisponivel'}</strong>
+          Link de agendamento: <strong>{publicLink || 'indisponível'}</strong>
         </div>
         <Button type="button" variant="outline" onClick={copyPublicLink} className="gap-2">
           <Copy className="h-4 w-4" />
@@ -475,7 +509,7 @@ const Agendamentos: React.FC = () => {
           setSearch(value);
           setPage(1);
         }}
-        searchPlaceholder="Buscar por cliente ou servico..."
+        searchPlaceholder="Buscar por cliente ou serviço..."
         statusOptions={statusOptions}
         statusValue={status}
         onStatusChange={(value) => {
@@ -518,6 +552,36 @@ const Agendamentos: React.FC = () => {
         isSubmitting={isSubmitting}
         size="lg"
       >
+        {editingAppointment && !['concluido', 'cancelado', 'no_show'].includes(formData.status) && (
+          <div className="mb-4 flex flex-wrap gap-2 rounded-lg border border-border bg-secondary/40 p-3">
+            <Button
+              type="button"
+              onClick={() => mudarStatusRapido('concluido')}
+              disabled={isSubmitting}
+              className="flex-1"
+            >
+              Concluir atendimento
+            </Button>
+            {formData.status === 'pendente' && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => mudarStatusRapido('confirmado')}
+                disabled={isSubmitting}
+              >
+                Confirmar
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => mudarStatusRapido('no_show')}
+              disabled={isSubmitting}
+            >
+              Não veio
+            </Button>
+          </div>
+        )}
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
@@ -564,7 +628,7 @@ const Agendamentos: React.FC = () => {
             </p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="service_name">Servico *</Label>
+            <Label htmlFor="service_name">Serviço *</Label>
             <SearchableSelect
               value={formData.service_id}
               onValueChange={(value) => {
@@ -592,13 +656,13 @@ const Agendamentos: React.FC = () => {
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
               <Label htmlFor="price">Valor</Label>
-              {formData.price ? (
+              {formData.price && !isFuncionario ? (
                 <button
                   type="button"
                   onClick={() => setFormData({ ...formData, price: '' })}
                   className="text-xs text-muted-foreground underline-offset-2 hover:underline"
                 >
-                  Usar preco do servico
+                  Usar preço do serviço
                 </button>
               ) : null}
             </div>
@@ -610,9 +674,12 @@ const Agendamentos: React.FC = () => {
               value={formData.price}
               onChange={(e) => setFormData({ ...formData, price: e.target.value })}
               placeholder={precoDoServicoSelecionado}
+              disabled={isFuncionario}
             />
             <p className="text-xs text-muted-foreground">
-              Vem do servico e pode ser editado — desconto combinado, cortesia, valor fechado.
+              {isFuncionario
+                ? 'Preço do serviço. Desconto ou cortesia, só o dono altera.'
+                : 'Vem do serviço e pode ser editado — desconto combinado, cortesia, valor fechado.'}
             </p>
           </div>
           <div className="space-y-2">

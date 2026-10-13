@@ -81,9 +81,9 @@ const EscolhaAcesso: React.FC = () => {
           </div>
 
           <div className="mb-8 text-center">
-            <h1 className="text-2xl font-bold text-foreground">Como voce quer entrar?</h1>
+            <h1 className="text-2xl font-bold text-foreground">Como você quer entrar?</h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Escolha a opcao que combina com voce para ir ao lugar certo.
+              Escolha a opção que combina com você para ir ao lugar certo.
             </p>
           </div>
 
@@ -99,7 +99,7 @@ const EscolhaAcesso: React.FC = () => {
               <span className="min-w-0 flex-1">
                 <span className="block font-semibold text-foreground">Sou Cliente</span>
                 <span className="block text-xs text-muted-foreground">
-                  Agendar horario, ver historico e meus beneficios
+                  Agendar horário, ver histórico e meus benefícios
                 </span>
               </span>
               <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" />
@@ -116,7 +116,7 @@ const EscolhaAcesso: React.FC = () => {
               <span className="min-w-0 flex-1">
                 <span className="block font-semibold text-foreground">Sou da Equipe</span>
                 <span className="block text-xs text-muted-foreground">
-                  Dono ou funcionario — painel da empresa
+                  Dono ou funcionário — painel da empresa
                 </span>
               </span>
               <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" />
@@ -137,7 +137,7 @@ const EscolhaAcesso: React.FC = () => {
           <p className="mt-6 flex items-start gap-2 text-xs text-muted-foreground">
             <CalendarCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>
-              Primeira vez como cliente? Escolha <strong>Sou Cliente</strong> — a proxima tela tem o
+              Primeira vez como cliente? Escolha <strong>Sou Cliente</strong> — a próxima tela tem o
               cadastro.
             </span>
           </p>
