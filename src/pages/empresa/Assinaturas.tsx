@@ -138,7 +138,7 @@ const LinhaAtencao: React.FC<{
           {ocupado ? '...' : 'Recebi'}
         </Button>
         <Button size="sm" variant="outline" onClick={onPendente} disabled={ocupado}>
-          Nao recebi
+          Não recebi
         </Button>
       </div>
     </div>
@@ -366,7 +366,7 @@ const Assinaturas: React.FC = () => {
 
   const handleExportUsageExcel = () => {
     if (usage.length === 0) {
-      toast.error('Nao ha dados para exportar');
+      toast.error('Não há dados para exportar');
       return;
     }
 
@@ -446,10 +446,10 @@ const Assinaturas: React.FC = () => {
       */}
       <Card>
           <CardHeader>
-            <CardTitle>Precisam de atencao</CardTitle>
+            <CardTitle>Precisam de atenção</CardTitle>
             <CardDescription>
-              Mensalidades que vencem nos proximos dias e as que ja venceram e aguardam voce
-              confirmar o recebimento. Enquanto estiver em aberto, o cliente nao marca horario novo.
+              Mensalidades que vencem nos próximos dias e as que já venceram e aguardam você
+              confirmar o recebimento. Enquanto estiver em aberto, o cliente não marca horário novo.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -461,7 +461,7 @@ const Assinaturas: React.FC = () => {
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <h3 className="text-sm font-semibold text-destructive">
-                        Em aberto, aguardando voce ({atencao.em_aberto.length})
+                        Em aberto, aguardando você ({atencao.em_aberto.length})
                       </h3>
                       <span className="text-sm text-muted-foreground">
                         Total: <strong>{toMoney(atencao.total_em_aberto)}</strong>
@@ -534,7 +534,7 @@ const Assinaturas: React.FC = () => {
             </select>
           </div>
           <div className="space-y-1">
-            <Label>Preco</Label>
+            <Label>Preço</Label>
             <Input
               type="number"
               min={0}
@@ -544,7 +544,7 @@ const Assinaturas: React.FC = () => {
             />
           </div>
           <div className="space-y-1">
-            <Label>Servicos inclusos</Label>
+            <Label>Serviços inclusos</Label>
             <Input
               type="number"
               min={0}
@@ -556,7 +556,7 @@ const Assinaturas: React.FC = () => {
             />
           </div>
           <div className="space-y-1 md:col-span-2">
-            <Label>Descricao</Label>
+            <Label>Descrição</Label>
             <Input
               value={planForm.description}
               onChange={(e) => setPlanForm((p) => ({ ...p, description: e.target.value }))}
@@ -597,8 +597,8 @@ const Assinaturas: React.FC = () => {
             <p className="text-xs text-muted-foreground">
               {planForm.blocked_weekdays.length === 0
                 ? 'Nenhum dia bloqueado: o plano vale a semana inteira.'
-                : `O mensalista deste plano nao agenda ${nomeDiasBloqueados(planForm.blocked_weekdays)}. ` +
-                  'Ele continua podendo cortar nesses dias pagando avulso, pelo link publico ou no balcao.'}
+                : `O mensalista deste plano não agenda ${nomeDiasBloqueados(planForm.blocked_weekdays)}. ` +
+                  'Ele continua podendo cortar nesses dias pagando avulso, pelo link público ou no balcao.'}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -621,7 +621,7 @@ const Assinaturas: React.FC = () => {
             </Button>
             {planForm.id ? (
               <Button variant="outline" onClick={resetPlanForm}>
-                Cancelar edicao
+                Cancelar edição
               </Button>
             ) : null}
           </div>
@@ -681,7 +681,7 @@ const Assinaturas: React.FC = () => {
             </select>
           </div>
           <div className="space-y-1">
-            <Label>Inicio</Label>
+            <Label>Início</Label>
             <Input
               type="date"
               value={subscriptionForm.start_at}
@@ -703,7 +703,7 @@ const Assinaturas: React.FC = () => {
               checked={subscriptionForm.auto_renew}
               onCheckedChange={(checked) => setSubscriptionForm((p) => ({ ...p, auto_renew: checked }))}
             />
-            <Label>Renovacao automatica</Label>
+            <Label>Renovação automática</Label>
           </div>
           <Button onClick={handleSaveSubscription} disabled={savingSubscription}>
             {savingSubscription ? 'Salvando...' : 'Vincular assinatura'}
@@ -727,11 +727,11 @@ const Assinaturas: React.FC = () => {
                   <p className="font-medium">{plan.name}</p>
                   <p className="text-muted-foreground">
                     {plan.interval} - {toMoney(plan.price)} -{' '}
-                    {plan.is_unlimited ? 'Ilimitado' : `${plan.included_services || 0} servicos`}
+                    {plan.is_unlimited ? 'Ilimitado' : `${plan.included_services || 0} serviços`}
                   </p>
                   {nomeDiasBloqueados(plan.blocked_weekdays) && (
                     <p className="text-destructive text-xs">
-                      Nao atende: {nomeDiasBloqueados(plan.blocked_weekdays)}
+                      Não atende: {nomeDiasBloqueados(plan.blocked_weekdays)}
                     </p>
                   )}
                 </div>
@@ -759,11 +759,11 @@ const Assinaturas: React.FC = () => {
                 <div>
                   <p className="font-medium">{item.customer_name || 'Cliente'} - {item.plan_name || 'Plano'}</p>
                   <p className="text-muted-foreground">
-                    {item.status} - Inicio {new Date(item.start_at).toLocaleDateString('pt-BR')} - Fim{' '}
+                    {item.status} - Início {new Date(item.start_at).toLocaleDateString('pt-BR')} - Fim{' '}
                     {new Date(item.end_at).toLocaleDateString('pt-BR')}
                   </p>
                   <p className="text-muted-foreground">
-                    Barbeiro: {item.professional_name || 'nao definido'}
+                    Barbeiro: {item.professional_name || 'não definido'}
                   </p>
                 </div>
                 <div className="text-right">
@@ -780,8 +780,8 @@ const Assinaturas: React.FC = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle>Historico de Consumo da Assinatura</CardTitle>
-          <CardDescription>Uso por pedido e servico coberto no PDV.</CardDescription>
+          <CardTitle>Histórico de Consumo da Assinatura</CardTitle>
+          <CardDescription>Uso por pedido e serviço coberto no PDV.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-3 md:grid-cols-3">
@@ -817,7 +817,7 @@ const Assinaturas: React.FC = () => {
             </div>
             <div className="flex items-end gap-2">
               <Button variant="outline" onClick={loadUsage} disabled={usageLoading}>
-                {usageLoading ? 'Atualizando...' : 'Atualizar historico'}
+                {usageLoading ? 'Atualizando...' : 'Atualizar histórico'}
               </Button>
               <Button onClick={handleExportUsageExcel} disabled={usageLoading || usage.length === 0}>
                 Exportar Excel
@@ -826,7 +826,7 @@ const Assinaturas: React.FC = () => {
           </div>
 
           {usageLoading ? (
-            <p className="text-sm text-muted-foreground">Carregando historico...</p>
+            <p className="text-sm text-muted-foreground">Carregando histórico...</p>
           ) : usage.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhum consumo registrado.</p>
           ) : (
@@ -838,7 +838,7 @@ const Assinaturas: React.FC = () => {
                       {item.customer_name || 'Cliente'} - {item.plan_name || 'Plano'}
                     </p>
                     <p className="text-muted-foreground">
-                      {item.service_name || 'Servico'} x{item.quantity} • Pedido:{' '}
+                      {item.service_name || 'Serviço'} x{item.quantity} • Pedido:{' '}
                       {item.order_id ? item.order_id.slice(0, 8) : '-'}
                     </p>
                   </div>

@@ -206,13 +206,13 @@ const Financeiro: React.FC = () => {
       return;
     }
 
-    toast.error('Nao ha dados para exportar');
+    toast.error('Não há dados para exportar');
   };
 
   if (!isSuperAdmin && !isOwner) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-muted-foreground">Acesso nao autorizado</p>
+        <p className="text-muted-foreground">Acesso não autorizado</p>
       </div>
     );
   }
@@ -277,7 +277,7 @@ const Financeiro: React.FC = () => {
               onChange={(event) => setPeriodGroup(event.target.value as 'daily' | 'monthly' | 'yearly')}
               className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
             >
-              <option value="daily">Diario</option>
+              <option value="daily">Diário</option>
               <option value="monthly">Mensal</option>
               <option value="yearly">Anual</option>
             </select>
@@ -302,10 +302,10 @@ const Financeiro: React.FC = () => {
 
         <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
           {customerFilter ? <Badge variant="outline">Cliente: {customerFilter}</Badge> : null}
-          {serviceFilter ? <Badge variant="outline">Servico: {serviceFilter}</Badge> : null}
+          {serviceFilter ? <Badge variant="outline">Serviço: {serviceFilter}</Badge> : null}
           {dayFilter ? <Badge variant="outline">Dia: {dayFilter}</Badge> : null}
           <Badge variant="outline">
-            Agrupamento: {periodGroup === 'yearly' ? 'Anual' : periodGroup === 'monthly' ? 'Mensal' : 'Diario'}
+            Agrupamento: {periodGroup === 'yearly' ? 'Anual' : periodGroup === 'monthly' ? 'Mensal' : 'Diário'}
           </Badge>
         </div>
 
@@ -321,7 +321,7 @@ const Financeiro: React.FC = () => {
               </div>
               <div className={`mt-2 flex items-center text-sm ${growth >= 0 ? 'text-role-client-admin' : 'text-destructive'}`}>
                 {growth >= 0 ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
-                {Math.abs(growth).toFixed(1)}% vs mes anterior
+                {Math.abs(growth).toFixed(1)}% vs mês anterior
               </div>
             </CardContent>
           </Card>
@@ -364,7 +364,7 @@ const Financeiro: React.FC = () => {
           <Card>
             <CardHeader>
               <CardTitle>
-                Fluxo {periodGroup === 'yearly' ? 'Anual' : periodGroup === 'monthly' ? 'Mensal' : 'Diario'} (pago vs pendente)
+                Fluxo {periodGroup === 'yearly' ? 'Anual' : periodGroup === 'monthly' ? 'Mensal' : 'Diário'} (pago vs pendente)
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -385,13 +385,13 @@ const Financeiro: React.FC = () => {
 
           <Card>
             <CardHeader>
-              <CardTitle>Receita por Metodo</CardTitle>
+              <CardTitle>Receita por Método</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="h-[320px]">
                 {paymentMethodsSeries.length === 0 ? (
                   <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                    Sem pagamentos pagos no periodo para detalhar por metodo.
+                    Sem pagamentos pagos no período para detalhar por método.
                   </div>
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
@@ -449,7 +449,7 @@ const Financeiro: React.FC = () => {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold lg:text-3xl">Financeiro</h1>
-          <p className="text-muted-foreground">Visao financeira consolidada da plataforma</p>
+          <p className="text-muted-foreground">Visão financeira consolidada da plataforma</p>
         </div>
         <div className="flex gap-2">
           <Input

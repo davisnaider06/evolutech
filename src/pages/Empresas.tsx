@@ -121,7 +121,7 @@ const Empresas: React.FC = () => {
     const file = event.target.files?.[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
-      toast.error('A logo deve ter no maximo 2MB');
+      toast.error('A logo deve ter no máximo 2MB');
       return;
     }
 
@@ -138,7 +138,7 @@ const Empresas: React.FC = () => {
     e.preventDefault();
 
     if (!formData.empresaNome || !formData.sistemaBaseId) {
-      toast.error('Preencha os campos obrigatorios');
+      toast.error('Preencha os campos obrigatórios');
       return;
     }
 
@@ -245,7 +245,7 @@ const Empresas: React.FC = () => {
     try {
       await adminService.excluirTenant(empresa.id);
       setEmpresas((prev) => prev.filter((item) => item.id !== empresa.id));
-      toast.success('Empresa excluida');
+      toast.success('Empresa excluída');
     } catch (error: any) {
       toast.error(error.message || 'Erro ao excluir empresa');
     }
@@ -256,7 +256,7 @@ const Empresas: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold lg:text-3xl">Empresas</h1>
-          <p className="text-muted-foreground">Crie a empresa e vincule o sistema base. O dono e equipe sao cadastrados depois.</p>
+          <p className="text-muted-foreground">Crie a empresa e vincule o sistema base. O dono e equipe são cadastrados depois.</p>
         </div>
         <Button className="gap-2" onClick={() => setIsDialogOpen(true)}>
           <Plus className="h-4 w-4" />
@@ -279,7 +279,7 @@ const Empresas: React.FC = () => {
                   <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Plano</th>
                   <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Status</th>
                   <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Criado em</th>
-                  <th className="px-6 py-4 text-right text-sm font-medium text-muted-foreground">Acoes</th>
+                  <th className="px-6 py-4 text-right text-sm font-medium text-muted-foreground">Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -401,7 +401,7 @@ const Empresas: React.FC = () => {
                 </button>
                 <div className="text-sm text-muted-foreground">
                   <p>Selecione a logo da empresa (opcional).</p>
-                  <p>Formatos: PNG/JPG/WEBP/SVG ate 2MB.</p>
+                  <p>Formatos: PNG/JPG/WEBP/SVG até 2MB.</p>
                 </div>
               </div>
               <input

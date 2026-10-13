@@ -82,7 +82,7 @@ const Configuracoes: React.FC = () => {
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      toast.error('Informe um e-mail valido');
+      toast.error('Informe um e-mail válido');
       return;
     }
 
@@ -101,7 +101,7 @@ const Configuracoes: React.FC = () => {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(data.error || 'Nao foi possivel salvar o perfil');
+        throw new Error(data.error || 'Não foi possível salvar o perfil');
       }
 
       // Recarrega a sessao para o nome novo aparecer no menu na hora.
@@ -141,12 +141,12 @@ const Configuracoes: React.FC = () => {
       });
       setHorarioPersonalizado(Boolean(salvo?.agenda_hours_customized));
       toast.success(
-        `Horario salvo. A agenda e o link publico passam a valer das ${
+        `Horário salvo. A agenda e o link público passam a valer das ${
           salvo?.agenda_start_time || horario.inicio
         } as ${salvo?.agenda_end_time || horario.fim}.`
       );
     } catch (error: any) {
-      toast.error(error?.message || 'Erro ao salvar o horario');
+      toast.error(error?.message || 'Erro ao salvar o horário');
     } finally {
       setSavingHorario(false);
     }
@@ -185,7 +185,7 @@ const Configuracoes: React.FC = () => {
       return;
     }
     if (form.new_password !== form.confirm_password) {
-      toast.error('A confirmacao da nova senha nao confere');
+      toast.error('A confirmação da nova senha não confere');
       return;
     }
 
@@ -205,7 +205,7 @@ const Configuracoes: React.FC = () => {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(data.error || 'Nao foi possivel alterar a senha');
+        throw new Error(data.error || 'Não foi possível alterar a senha');
       }
 
       setForm({ current_password: '', new_password: '', confirm_password: '' });
@@ -220,8 +220,8 @@ const Configuracoes: React.FC = () => {
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h1 className="text-2xl font-bold lg:text-3xl">Configuracoes</h1>
-        <p className="text-muted-foreground">Gerencie suas configuracoes de conta.</p>
+        <h1 className="text-2xl font-bold lg:text-3xl">Configurações</h1>
+        <p className="text-muted-foreground">Gerencie suas configurações de conta.</p>
       </div>
 
       <div className="glass rounded-xl p-4 sm:p-6">
@@ -230,7 +230,7 @@ const Configuracoes: React.FC = () => {
           <h2 className="text-lg font-semibold">Meu perfil</h2>
         </div>
         <p className="mb-6 text-sm text-muted-foreground">
-          Como seu nome aparece no sistema e para os clientes, e o e-mail que voce usa
+          Como seu nome aparece no sistema e para os clientes, e o e-mail que você usa
           para entrar.
         </p>
 
@@ -256,7 +256,7 @@ const Configuracoes: React.FC = () => {
               autoComplete="email"
             />
             <p className="text-xs text-muted-foreground">
-              Este e o e-mail de login. Se mudar, use o novo no proximo acesso.
+              Este e o e-mail de login. Se mudar, use o novo no próximo acesso.
             </p>
           </div>
         </div>
@@ -281,13 +281,13 @@ const Configuracoes: React.FC = () => {
         <div className="glass rounded-xl p-4 sm:p-6">
           <div className="flex items-center gap-3 mb-2">
             <Clock className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-semibold">Horario de funcionamento</h2>
+            <h2 className="text-lg font-semibold">Horário de funcionamento</h2>
           </div>
           <p className="mb-6 text-sm text-muted-foreground">
             De que horas a que horas a barbearia atende. Vale para a agenda da equipe e
-            para o link publico, e e igual para todos os barbeiros. Se um deles nao puder
-            num horario especifico, ele fecha aquele pedaco em Bloquear horario, na
-            propria agenda.
+            para o link público, e e igual para todos os barbeiros. Se um deles não puder
+            num horário específico, ele fecha aquele pedaco em Bloquear horário, na
+            própria agenda.
           </p>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -326,9 +326,9 @@ const Configuracoes: React.FC = () => {
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
             {horarioPersonalizado
-              ? 'Horario definido por voce.'
-              : 'Ainda no horario padrao do sistema.'}{' '}
-            Agendamento ja marcado fora da faixa nova nao e apagado — ele continua na
+              ? 'Horário definido por você.'
+              : 'Ainda no horário padrão do sistema.'}{' '}
+            Agendamento já marcado fora da faixa nova não e apagado — ele continua na
             agenda.
           </p>
         </div>
@@ -341,9 +341,9 @@ const Configuracoes: React.FC = () => {
             <h2 className="text-lg font-semibold">Avisos de mensalidade</h2>
           </div>
           <p className="mb-6 text-sm text-muted-foreground">
-            Todo dia o sistema manda a lista de quem vence em breve e de quem ja venceu e
-            aguarda voce confirmar o recebimento. O resumo sempre chega no seu e-mail e no
-            painel de Assinaturas; informe um WhatsApp para receber tambem por la.
+            Todo dia o sistema manda a lista de quem vence em breve e de quem já venceu e
+            aguarda você confirmar o recebimento. O resumo sempre chega no seu e-mail e no
+            painel de Assinaturas; informe um WhatsApp para receber também por la.
           </p>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -357,7 +357,7 @@ const Configuracoes: React.FC = () => {
                 disabled={loadingSettings}
               />
               <p className="text-xs text-muted-foreground">
-                Deixe em branco para nao receber por WhatsApp.
+                Deixe em branco para não receber por WhatsApp.
               </p>
             </div>
             <Button onClick={handleSaveSettings} disabled={savingSettings || loadingSettings}>
@@ -375,12 +375,12 @@ const Configuracoes: React.FC = () => {
       <div className="glass rounded-xl p-6">
         <div className="flex items-center gap-3 mb-6">
           <Shield className="h-5 w-5 text-primary" />
-          <h2 className="text-lg font-semibold">Seguranca</h2>
+          <h2 className="text-lg font-semibold">Segurança</h2>
         </div>
 
         {!isOwner ? (
           <p className="text-sm text-muted-foreground">
-            Alteracao de senha por esta tela disponivel apenas para DONO_EMPRESA.
+            Alteração de senha por esta tela disponível apenas para DONO_EMPRESA.
           </p>
         ) : (
           <div className="space-y-4">

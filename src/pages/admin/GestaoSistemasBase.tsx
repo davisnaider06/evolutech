@@ -166,7 +166,7 @@ export default function GestaoSistemasBase() {
 
   const handleSave = async () => {
     if (!formData.nome.trim() || !formData.nicho.trim()) {
-      toast({ title: 'Nome e nicho sao obrigatorios', variant: 'destructive' });
+      toast({ title: 'Nome e nicho são obrigatórios', variant: 'destructive' });
       return;
     }
 
@@ -253,7 +253,7 @@ export default function GestaoSistemasBase() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <p className="text-sm text-muted-foreground">{sistema.descricao || 'Sem descricao'}</p>
+                <p className="text-sm text-muted-foreground">{sistema.descricao || 'Sem descrição'}</p>
                 <p className="text-sm"><strong>Nicho:</strong> {sistema.categoria || 'Generico'}</p>
                 <div className="flex gap-2">
                   <Button variant="outline" className="flex-1" onClick={() => openEdit(sistema)}>
@@ -288,7 +288,7 @@ export default function GestaoSistemasBase() {
             </div>
 
             <div className="space-y-2">
-              <Label>Descricao</Label>
+              <Label>Descrição</Label>
               <Textarea value={formData.descricao} onChange={(e) => setFormData({ ...formData, descricao: e.target.value })} />
             </div>
 
@@ -312,7 +312,7 @@ export default function GestaoSistemasBase() {
                 <Tabs value={activeRoleTab} onValueChange={(value) => setActiveRoleTab(value as 'DONO_EMPRESA' | 'FUNCIONARIO_EMPRESA')}>
                   <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="DONO_EMPRESA">Dono</TabsTrigger>
-                    <TabsTrigger value="FUNCIONARIO_EMPRESA">Funcionario</TabsTrigger>
+                    <TabsTrigger value="FUNCIONARIO_EMPRESA">Funcionário</TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="DONO_EMPRESA" className="space-y-2">

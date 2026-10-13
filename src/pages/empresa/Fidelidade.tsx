@@ -111,9 +111,9 @@ const Fidelidade: React.FC = () => {
     setSaving(true);
     try {
       await companyService.updateLoyaltySettings(settings);
-      toast.success('Configuracoes de fidelidade atualizadas');
+      toast.success('Configurações de fidelidade atualizadas');
     } catch (error: any) {
-      toast.error(error?.message || 'Erro ao salvar configuracoes');
+      toast.error(error?.message || 'Erro ao salvar configurações');
     } finally {
       setSaving(false);
     }
@@ -126,16 +126,16 @@ const Fidelidade: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Fidelidade" description="Configure pontos, cashback e regra do 10o atendimento gratis" />
+      <PageHeader title="Fidelidade" description="Configure pontos, cashback e regra do 10o atendimento grátis" />
 
       <Card>
         <CardHeader>
-          <CardTitle>Configuracoes Globais</CardTitle>
+          <CardTitle>Configurações Globais</CardTitle>
           <CardDescription>Estas regras se aplicam a toda a empresa.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-3">
           <div className="space-y-2">
-            <Label>Pontos por servico</Label>
+            <Label>Pontos por serviço</Label>
             <Input
               type="number"
               min={0}
@@ -177,7 +177,7 @@ const Fidelidade: React.FC = () => {
                 setSettings((prev) => ({ ...prev, tenth_service_free: checked }))
               }
             />
-            <Label>10o servico gratis</Label>
+            <Label>10o serviço grátis</Label>
           </div>
           <div className="flex items-center gap-2">
             <Switch
@@ -188,7 +188,7 @@ const Fidelidade: React.FC = () => {
           </div>
           <div>
             <Button onClick={handleSave} disabled={loading || saving}>
-              {saving ? 'Salvando...' : 'Salvar configuracoes'}
+              {saving ? 'Salvando...' : 'Salvar configurações'}
             </Button>
           </div>
         </CardContent>
@@ -246,7 +246,7 @@ const Fidelidade: React.FC = () => {
                 </Card>
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Servicos acumulados</CardTitle>
+                    <CardTitle className="text-sm">Serviços acumulados</CardTitle>
                   </CardHeader>
                   <CardContent className="text-xl font-semibold">
                     {Number(profile.profile.total_services_count || 0)}
@@ -256,11 +256,11 @@ const Fidelidade: React.FC = () => {
 
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Ultimas transacoes</CardTitle>
+                  <CardTitle className="text-sm">Últimas transações</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {latestTransactions.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Nenhuma transacao.</p>
+                    <p className="text-sm text-muted-foreground">Nenhuma transação.</p>
                   ) : (
                     latestTransactions.map((item) => (
                       <div key={item.id} className="flex items-center justify-between rounded border p-2 text-sm">

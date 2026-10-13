@@ -22,7 +22,7 @@ const lerComoDataUrl = (arquivo: File) =>
   new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(new Error('Nao consegui ler o arquivo'));
+    reader.onerror = () => reject(new Error('Não consegui ler o arquivo'));
     reader.readAsDataURL(arquivo);
   });
 
@@ -33,7 +33,7 @@ export async function uploadImagem(
 ): Promise<{ url: string; id: string }> {
   const limite = opcoes?.limiteBytes ?? LIMITE_PADRAO;
   if (arquivo.size > limite) {
-    throw new Error(`A imagem deve ter no maximo ${(limite / 1024 / 1024).toFixed(1)} MB`);
+    throw new Error(`A imagem deve ter no máximo ${(limite / 1024 / 1024).toFixed(1)} MB`);
   }
   if (!arquivo.type.startsWith('image/')) {
     throw new Error('Envie um arquivo de imagem');
@@ -58,7 +58,7 @@ export async function uploadImagem(
 
   if (!resposta.ok) {
     const erro = await resposta.json().catch(() => ({}));
-    throw new Error(erro.error || 'Nao consegui enviar a imagem');
+    throw new Error(erro.error || 'Não consegui enviar a imagem');
   }
 
   const dados = await resposta.json();

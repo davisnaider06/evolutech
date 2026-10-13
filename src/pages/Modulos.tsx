@@ -127,13 +127,13 @@ export default function Modulos() {
 
   const handleDelete = async (modulo: Modulo) => {
     if (modulo.isCore) {
-      toast({ title: 'Nao e possivel excluir modulo core', variant: 'destructive' });
+      toast({ title: 'Não e possível excluir modulo core', variant: 'destructive' });
       return;
     }
 
     try {
       await adminService.excluirModulo(modulo.id);
-      toast({ title: 'Modulo excluido' });
+      toast({ title: 'Modulo excluído' });
       fetchModulos();
     } catch (error: any) {
       toast({ title: error.message || 'Erro ao excluir modulo', variant: 'destructive' });
@@ -177,11 +177,11 @@ export default function Modulos() {
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <Input placeholder="Nome" value={formData.nome} onChange={(e) => setFormData({ ...formData, nome: e.target.value })} required />
-              <Input placeholder="Codigo unico" value={formData.codigo} onChange={(e) => setFormData({ ...formData, codigo: e.target.value })} required disabled={!!selectedModulo} />
-              <Input placeholder="Descricao" value={formData.descricao} onChange={(e) => setFormData({ ...formData, descricao: e.target.value })} />
+              <Input placeholder="Código único" value={formData.codigo} onChange={(e) => setFormData({ ...formData, codigo: e.target.value })} required disabled={!!selectedModulo} />
+              <Input placeholder="Descrição" value={formData.descricao} onChange={(e) => setFormData({ ...formData, descricao: e.target.value })} />
               <Input placeholder="Nicho (ex: barbearia, clinica)" value={formData.nicho} onChange={(e) => setFormData({ ...formData, nicho: e.target.value })} />
               <Input placeholder="Icone" value={formData.icone} onChange={(e) => setFormData({ ...formData, icone: e.target.value })} />
-              <Input type="number" placeholder="Preco mensal" value={formData.preco_mensal} onChange={(e) => setFormData({ ...formData, preco_mensal: Number(e.target.value) })} />
+              <Input type="number" placeholder="Preço mensal" value={formData.preco_mensal} onChange={(e) => setFormData({ ...formData, preco_mensal: Number(e.target.value) })} />
               <div className="flex items-center justify-between">
                 <span>Modulo core</span>
                 <Switch checked={formData.is_core} onCheckedChange={(checked) => setFormData({ ...formData, is_core: checked })} />
@@ -207,7 +207,7 @@ export default function Modulos() {
                       checked={formData.allowed_roles.includes('FUNCIONARIO_EMPRESA')}
                       onChange={() => toggleAllowedRole('FUNCIONARIO_EMPRESA')}
                     />
-                    Funcionario
+                    Funcionário
                   </label>
                 </div>
               </div>
@@ -251,9 +251,9 @@ export default function Modulos() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <p className="text-sm text-muted-foreground">{modulo.descricao || 'Sem descricao'}</p>
+                <p className="text-sm text-muted-foreground">{modulo.descricao || 'Sem descrição'}</p>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Codigo: {modulo.codigo}</span>
+                  <span className="text-sm text-muted-foreground">Código: {modulo.codigo}</span>
                   <span className="font-semibold text-primary">{formatCurrency(Number(modulo.precoMensal || 0))}</span>
                 </div>
                 <div className="flex flex-wrap gap-2">

@@ -78,7 +78,7 @@ const GatewaysPagamento: React.FC = () => {
 
   const createGateway = async () => {
     if (!form.empresa_id.trim() || !form.provedor.trim() || !form.secret_key.trim()) {
-      toast.error('empresa_id, provedor e secret_key sao obrigatorios');
+      toast.error('empresa_id, provedor e secret_key são obrigatórios');
       return;
     }
     setSaving(true);
