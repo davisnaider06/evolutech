@@ -1,6 +1,9 @@
 import { prisma } from '../db';
 
 export interface BlockedInterval {
+  /** Para a agenda oferecer "Desbloquear" no proprio bloqueio. */
+  id: string;
+  isRecurring: boolean;
   startMs: number;
   endMs: number;
   reason: string | null;
@@ -56,6 +59,7 @@ export async function getBlockedIntervals(
       ],
     },
     select: {
+      id: true,
       startAt: true,
       endAt: true,
       isRecurring: true,
@@ -79,6 +83,8 @@ export async function getBlockedIntervals(
       end.setHours(0, endMin, 0, 0);
 
       intervals.push({
+        id: block.id,
+        isRecurring: true,
         startMs: start.getTime(),
         endMs: end.getTime(),
         reason: block.reason || null,
@@ -90,7 +96,7 @@ export async function getBlockedIntervals(
     const startMs = Math.max(new Date(block.startAt).getTime(), dayStart.getTime());
     const endMs = Math.min(new Date(block.endAt).getTime(), dayEnd.getTime());
     if (endMs > startMs) {
-      intervals.push({ startMs, endMs, reason: block.reason || null });
+      intervals.push({ id: block.id, isRecurring: false, startMs, endMs, reason: block.reason || null });
     }
   }
 

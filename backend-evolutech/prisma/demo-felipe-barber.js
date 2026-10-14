@@ -709,6 +709,7 @@ async function montar() {
       const cliente = clientes[nomesClientes[(i + j) % nomesClientes.length]];
       const base = [45, 70, 35, 90, 115, 180][(i + j) % 6];
       pedidos.push({
+        id: require('crypto').randomUUID(),
         companyId,
         customerName: cliente.name,
         total: base,
@@ -719,6 +720,20 @@ async function montar() {
     }
   }
   await prisma.order.createMany({ data: pedidos });
+  // A forma de pagamento de venda sem gateway vive no log do checkout do PDV.
+  // Sem ele o Caixa mostra tudo como "desconhecido" e o fechamento zera.
+  const formas = ['dinheiro', 'pix', 'debito', 'credito'];
+  await prisma.auditLog.deleteMany({ where: { companyId, action: 'PDV_CHECKOUT' } });
+  await prisma.auditLog.createMany({
+    data: pedidos.map((p, i) => ({
+      userId: felipe.id,
+      companyId,
+      action: 'PDV_CHECKOUT',
+      resource: 'orders',
+      details: { orderId: p.id, paymentMethod: formas[i % formas.length], subtotal: p.total, discount: 0 },
+      createdAt: p.createdAt,
+    })),
+  });
   const faturamento = pedidos.reduce((soma, p) => soma + p.total, 0);
   console.log(`pedidos pagos: ${pedidos.length} (faturamento de R$ ${faturamento.toFixed(2)})`);
 

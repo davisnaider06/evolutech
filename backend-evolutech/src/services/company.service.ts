@@ -1566,6 +1566,8 @@ export class CompanyService {
 
     for (const [indice, professional] of professionals.entries()) {
       const blocks = bloqueiosPorProfissional[indice].map((item) => ({
+        id: item.id,
+        is_recurring: item.isRecurring,
         start_minutes: minutesFromDayStart(new Date(item.startMs)),
         end_minutes: minutesFromDayStart(new Date(item.endMs)),
         reason: item.reason,
