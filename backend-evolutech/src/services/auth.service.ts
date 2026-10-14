@@ -75,10 +75,11 @@ export class AuthService {
     if (!companyId) return [];
 
     const [companyModules, sistemaBaseModules, employeePermissions] = await Promise.all([
+      // Sem filtrar isActive aqui: as linhas desligadas tambem servem, para
+      // tirar o modulo que o sistema base traria (ver abaixo).
       prisma.companyModule.findMany({
         where: {
           companyId,
-          isActive: true,
           modulo: { status: 'active' },
         },
         include: { modulo: true },
@@ -118,7 +119,15 @@ export class AuthService {
         }
       >();
 
+      // Modulo desligado so para esta empresa (super admin > Empresas >
+      // Modulos). O sistema base continua listando-o; sem este corte ele
+      // voltava ao menu pelo laco do sistema base.
+      const desligadosNaEmpresa = new Set(
+        companyModules.filter((item) => !item.isActive).map((item) => item.moduloId)
+      );
+
       for (const item of companyModules) {
+        if (!item.isActive) continue;
         if (deniedModuleIds.has(item.modulo.id)) continue;
         moduleMap.set(item.modulo.id, {
           id: item.modulo.id,
@@ -136,6 +145,7 @@ export class AuthService {
 
       for (const item of sistemaBaseModules) {
         if (deniedModuleIds.has(item.modulo.id)) continue;
+        if (desligadosNaEmpresa.has(item.moduloId)) continue;
         moduleMap.set(item.modulo.id, {
           id: item.modulo.id,
           codigo: item.modulo.codigo,
