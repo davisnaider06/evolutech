@@ -45,6 +45,8 @@ interface BoardAppointment {
 }
 
 interface BoardBlock {
+  id?: string;
+  is_recurring?: boolean;
   start_minutes: number;
   end_minutes: number;
   reason: string | null;
@@ -117,7 +119,7 @@ const statusStyles: Record<string, string> = {
 /** Uma fatia da agenda do dia: agendamento, bloqueio, livre ou fora do expediente. */
 type Fatia =
   | { tipo: 'agendamento'; inicio: number; fim: number; agendamento: BoardAppointment }
-  | { tipo: 'bloqueio'; inicio: number; fim: number; motivo: string | null }
+  | { tipo: 'bloqueio'; inicio: number; fim: number; motivo: string | null; id?: string; recorrente?: boolean }
   | { tipo: 'livre'; inicio: number; fim: number }
   | { tipo: 'fora'; inicio: number; fim: number };
 
@@ -177,6 +179,31 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
     fim: number;
   } | null>(null);
   const [bloqueandoRapido, setBloqueandoRapido] = useState(false);
+  // Bloqueio tocado na agenda, para desbloquear depois que o aviso sumiu.
+  const [bloqueioAberto, setBloqueioAberto] = useState<{
+    id: string;
+    inicio: number;
+    fim: number;
+    motivo: string | null;
+    recorrente: boolean;
+    professionalName: string;
+  } | null>(null);
+  const [desbloqueando, setDesbloqueando] = useState(false);
+
+  const desbloquear = async () => {
+    if (!bloqueioAberto) return;
+    setDesbloqueando(true);
+    try {
+      await companyService.deleteAppointmentBlock(bloqueioAberto.id);
+      toast.success(`Horário das ${minutesToLabel(bloqueioAberto.inicio)} liberado`);
+      setBloqueioAberto(null);
+      await loadBoard();
+    } catch (error: any) {
+      toast.error(error?.message || 'Erro ao desbloquear');
+    } finally {
+      setDesbloqueando(false);
+    }
+  };
 
   /** Caixa rolante da lista de horarios e a linha em que ela deve abrir. */
   const listaRef = useRef<HTMLDivElement>(null);
@@ -316,6 +343,8 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
             inicio: bloqueio.start_minutes,
             fim: bloqueio.end_minutes,
             motivo: bloqueio.reason,
+            id: bloqueio.id,
+            recorrente: bloqueio.is_recurring,
           });
           cursor = Math.max(bloqueio.end_minutes, cursor + 1);
           continue;
@@ -740,10 +769,23 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
 
                         if (fatia.tipo === 'bloqueio') {
                           return (
-                            <div
+                            <button
                               key={chave}
                               ref={refFoco}
-                              className="flex items-center gap-3 rounded-md border border-dashed border-destructive/50 bg-destructive/5 px-3 py-2.5"
+                              type="button"
+                              disabled={!fatia.id}
+                              onClick={() =>
+                                fatia.id &&
+                                setBloqueioAberto({
+                                  id: fatia.id,
+                                  inicio: fatia.inicio,
+                                  fim: fatia.fim,
+                                  motivo: fatia.motivo,
+                                  recorrente: Boolean(fatia.recorrente),
+                                  professionalName: colunaAtiva.professional_name,
+                                })
+                              }
+                              className="flex w-full items-center gap-3 rounded-md border border-dashed border-destructive/50 bg-destructive/5 px-3 py-2.5 text-left transition hover:bg-destructive/10"
                             >
                               <span className="w-11 shrink-0 font-mono text-xs text-muted-foreground">
                                 {hora}
@@ -755,7 +797,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                                   até {minutesToLabel(fatia.fim)}
                                 </span>
                               </span>
-                            </div>
+                            </button>
                           );
                         }
 
@@ -852,9 +894,40 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
               {bloqueandoRapido ? 'Bloqueando...' : 'Bloquear horário'}
             </Button>
             <p className="px-1 pt-1 text-xs text-muted-foreground">
-              O bloqueio e gravado na hora. Da para desfazer no aviso que aparece em seguida.
+              O bloqueio é gravado na hora. Para liberar depois, toque nele na agenda.
             </p>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Toque num bloqueio: liberar o horario. */}
+      <Dialog open={Boolean(bloqueioAberto)} onOpenChange={(aberto) => !aberto && !desbloqueando && setBloqueioAberto(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Ban className="h-4 w-4" />
+              {bloqueioAberto
+                ? `Bloqueado ${minutesToLabel(bloqueioAberto.inicio)} - ${minutesToLabel(bloqueioAberto.fim)}`
+                : ''}
+            </DialogTitle>
+            <DialogDescription>
+              {bloqueioAberto ? `${bloqueioAberto.professionalName} - ${cabecalhoData}` : ''}
+              {bloqueioAberto?.motivo ? ` - ${bloqueioAberto.motivo}` : ''}
+            </DialogDescription>
+          </DialogHeader>
+          {bloqueioAberto?.recorrente && (
+            <p className="text-sm text-muted-foreground">
+              Este bloqueio se repete toda semana. Desbloquear libera o horário em todas as semanas.
+            </p>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setBloqueioAberto(null)} disabled={desbloqueando}>
+              Manter bloqueado
+            </Button>
+            <Button onClick={desbloquear} disabled={desbloqueando}>
+              {desbloqueando ? 'Liberando...' : 'Desbloquear'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

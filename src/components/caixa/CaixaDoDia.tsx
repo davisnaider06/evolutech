@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Banknote, CreditCard, QrCode, Wallet, Printer } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ArrowDownCircle, ArrowUpCircle, Banknote, CreditCard, QrCode, Wallet, Printer } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -70,39 +70,66 @@ export function CaixaDoDia({ atualizar }: { atualizar: number }) {
   const cartoes = valorDe('credito') + valorDe('debito') + valorDe('cartao');
   const naGaveta = valorDe('dinheiro') + (resumo?.entradas || 0) - (resumo?.saidas || 0);
 
+  const entradasDoDia = (resumo?.total || 0) + (resumo?.entradas || 0);
+  const saldoDoDia = entradasDoDia - (resumo?.saidas || 0);
+  const formasComValor = (['dinheiro', 'pix', 'credito', 'debito'] as const).filter((forma) => valorDe(forma) > 0);
+
+  // Uma faixa so: o dono bate o olho e ve o dia sem rolar a tela.
   return (
     <>
       <Card className="border-primary/40">
-        <CardHeader className="flex flex-row items-start justify-between gap-3 pb-2">
-          <div>
-            <CardTitle>Caixa de hoje</CardTitle>
-            <CardDescription>{formatarData(new Date())}</CardDescription>
+        <CardContent className="space-y-3 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="font-semibold">Caixa de hoje</p>
+              <p className="text-xs text-muted-foreground">{formatarData(new Date())}</p>
+            </div>
+            <Button size="sm" onClick={() => setFechando(true)} disabled={!resumo}>
+              Fechar o dia
+            </Button>
           </div>
-          <Button onClick={() => setFechando(true)} disabled={!resumo}>
-            Fechar o dia
-          </Button>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <p className="text-4xl font-bold">{resumo ? reais(resumo.total) : '...'}</p>
-            <p className="text-sm text-muted-foreground">
-              {resumo ? `${resumo.vendas} ${resumo.vendas === 1 ? 'recebimento' : 'recebimentos'} hoje` : 'Carregando...'}
-            </p>
+
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg bg-emerald-500/10 p-2.5">
+              <p className="flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400">
+                <ArrowUpCircle className="h-3.5 w-3.5" />
+                Entradas
+              </p>
+              <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">
+                {resumo ? reais(entradasDoDia) : '...'}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {resumo ? `${resumo.vendas} ${resumo.vendas === 1 ? 'recebimento' : 'recebimentos'}` : ''}
+              </p>
+            </div>
+            <div className="rounded-lg bg-red-500/10 p-2.5">
+              <p className="flex items-center gap-1 text-xs text-red-700 dark:text-red-400">
+                <ArrowDownCircle className="h-3.5 w-3.5" />
+                Saídas
+              </p>
+              <p className="text-lg font-bold text-red-700 dark:text-red-400">
+                {resumo ? reais(resumo.saidas) : '...'}
+              </p>
+            </div>
+            <div className="rounded-lg border p-2.5">
+              <p className="text-xs text-muted-foreground">Saldo do dia</p>
+              <p className="text-lg font-bold">{resumo ? reais(saldoDoDia) : '...'}</p>
+            </div>
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {(['dinheiro', 'pix', 'credito', 'debito'] as const).map((forma) => {
-              const Icone = FORMAS[forma].icone;
-              return (
-                <div key={forma} className="rounded-lg border p-3">
-                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+
+          {formasComValor.length > 0 && (
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              {formasComValor.map((forma) => {
+                const Icone = FORMAS[forma].icone;
+                return (
+                  <span key={forma} className="flex items-center gap-1">
                     <Icone className="h-3.5 w-3.5" />
-                    {FORMAS[forma].nome}
-                  </p>
-                  <p className="text-lg font-semibold">{reais(valorDe(forma))}</p>
-                </div>
-              );
-            })}
-          </div>
+                    {FORMAS[forma].nome} <span className="font-medium text-foreground">{reais(valorDe(forma))}</span>
+                  </span>
+                );
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
 
