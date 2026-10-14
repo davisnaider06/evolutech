@@ -68,6 +68,9 @@ export const adminService = {
   atualizarTenant: async (id: string, dados: any) => request(`/tenants/${id}`, { method: 'PATCH', body: JSON.stringify(dados) }),
   excluirTenant: async (id: string) => request(`/tenants/${id}`, { method: 'DELETE' }),
   criarTenant: async (dados: any) => request('/tenants', { method: 'POST', body: JSON.stringify(dados) }),
+  listarModulosDaEmpresa: async (id: string) => request(`/tenants/${id}/modulos`),
+  salvarModulosDaEmpresa: async (id: string, modulos: Array<{ modulo_id: string; ativo: boolean }>) =>
+    request(`/tenants/${id}/modulos`, { method: 'PUT', body: JSON.stringify({ modulos }) }),
   obterTemaTenant: async (id: string) => request(`/tenants/${id}/theme`),
   salvarTemaTenant: async (id: string, dados: any) => request(`/tenants/${id}/theme`, { method: 'PUT', body: JSON.stringify(dados) }),
 

@@ -169,10 +169,10 @@ const defaultFormData: CustomerFormData = {
 /** Faixas de inatividade oferecidas no filtro de "cliente sumido". */
 const INACTIVE_RANGES = [
   { value: '', label: 'Todos os clientes' },
-  { value: '30', label: 'Sem vir ha 30+ dias' },
-  { value: '60', label: 'Sem vir ha 60+ dias' },
-  { value: '90', label: 'Sem vir ha 90+ dias' },
-  { value: '180', label: 'Sem vir ha 180+ dias' },
+  { value: '30', label: 'Sem vir há 30+ dias' },
+  { value: '60', label: 'Sem vir há 60+ dias' },
+  { value: '90', label: 'Sem vir há 90+ dias' },
+  { value: '180', label: 'Sem vir há 180+ dias' },
 ];
 
 const emptyHistoryEntryForm: HistoryEntryFormData = {
@@ -207,6 +207,8 @@ const Clientes: React.FC = () => {
   const [historyData, setHistoryData] = useState<CustomerHistoryResponse | null>(null);
   const [historyLoyalty, setHistoryLoyalty] = useState<CustomerLoyaltyProfileResponse | null>(null);
   const [historyTarget, setHistoryTarget] = useState<Customer | null>(null);
+  const [linkSenha, setLinkSenha] = useState<{ url: string; phone: string | null; mensagem: string } | null>(null);
+  const [gerandoLinkSenha, setGerandoLinkSenha] = useState(false);
   const [historyEntryDialogOpen, setHistoryEntryDialogOpen] = useState(false);
   const [historyEntrySaving, setHistoryEntrySaving] = useState(false);
   const [historyEntryForm, setHistoryEntryForm] = useState<HistoryEntryFormData>(emptyHistoryEntryForm);
@@ -343,7 +345,7 @@ const Clientes: React.FC = () => {
     },
     {
       key: 'days_since_last_visit',
-      label: 'Ultima visita',
+      label: 'Última visita',
       render: (item) => {
         if (item.days_since_last_visit === null) {
           return <span className="text-muted-foreground">Nunca veio</span>;
@@ -356,7 +358,7 @@ const Clientes: React.FC = () => {
             : item.days_since_last_visit >= 60
               ? 'text-amber-600 font-medium'
               : '';
-        return <span className={tone}>ha {item.days_since_last_visit} dias</span>;
+        return <span className={tone}>há {item.days_since_last_visit} dias</span>;
       },
     },
     {
@@ -367,7 +369,7 @@ const Clientes: React.FC = () => {
           <StatusBadge status={item.isActive ? 'active' : 'inactive'} />
           {!item.isActive && item.days_inactive !== null && (
             <span className="text-xs text-muted-foreground">
-              desativado ha {item.days_inactive} dias
+              desativado há {item.days_inactive} dias
             </span>
           )}
         </div>
@@ -448,8 +450,29 @@ const Clientes: React.FC = () => {
     }
   };
 
+  const gerarLinkSenha = async (customer: Customer | null) => {
+    if (!customer?.id) return;
+    setGerandoLinkSenha(true);
+    try {
+      const resultado = await companyService.createCustomerPasswordLink(customer.id);
+      const primeiroNome = String(resultado.customer_name || customer.name || '').split(' ')[0];
+      setLinkSenha({
+        url: resultado.url,
+        phone: resultado.phone || customer.phone || null,
+        mensagem:
+          `Oi${primeiroNome ? `, ${primeiroNome}` : ''}! Para criar uma nova senha no app da ` +
+          `${resultado.company_name}, abra este link (vale por 24h): ${resultado.url}`,
+      });
+    } catch (error: any) {
+      toast.error(error.message || 'Não foi possível gerar o link');
+    } finally {
+      setGerandoLinkSenha(false);
+    }
+  };
+
   const handleViewHistory = async (customer: Customer) => {
     setHistoryTarget(customer);
+    setLinkSenha(null);
     setHistoryData(null);
     setHistoryLoyalty(null);
     setIsHistoryOpen(true);
@@ -462,7 +485,7 @@ const Clientes: React.FC = () => {
       setHistoryData(historyResult);
       setHistoryLoyalty(loyaltyResult);
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao carregar historico do cliente');
+      toast.error(error.message || 'Erro ao carregar histórico do cliente');
     } finally {
       setHistoryLoading(false);
     }
@@ -476,11 +499,11 @@ const Clientes: React.FC = () => {
 
   const handleCreateHistoryEntry = async () => {
     if (!historyTarget?.id) {
-      toast.error('Selecione um cliente para registrar o historico');
+      toast.error('Selecione um cliente para registrar o histórico');
       return;
     }
     if (!historyEntryForm.service_name.trim() || !historyEntryForm.service_date) {
-      toast.error('Informe o servico e a data do atendimento');
+      toast.error('Informe o serviço e a data do atendimento');
       return;
     }
 
@@ -496,11 +519,11 @@ const Clientes: React.FC = () => {
         notes: historyEntryForm.notes.trim() || undefined,
         return_in_days: historyEntryForm.return_in_days ? Number(historyEntryForm.return_in_days) : null,
       });
-      toast.success('Historico retroativo adicionado');
+      toast.success('Histórico retroativo adicionado');
       setHistoryEntryDialogOpen(false);
       await Promise.all([handleViewHistory(historyTarget), loadFollowUps()]);
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao adicionar historico retroativo');
+      toast.error(error.message || 'Erro ao adicionar histórico retroativo');
     } finally {
       setHistoryEntrySaving(false);
     }
@@ -511,10 +534,10 @@ const Clientes: React.FC = () => {
     if (!window.confirm('Deseja excluir este historico retroativo?')) return;
     try {
       await companyService.deleteCustomerHistoryEntry(historyTarget.id, entryId);
-      toast.success('Historico retroativo excluido');
+      toast.success('Histórico retroativo excluído');
       await Promise.all([handleViewHistory(historyTarget), loadFollowUps()]);
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao excluir historico retroativo');
+      toast.error(error.message || 'Erro ao excluir histórico retroativo');
     }
   };
 
@@ -526,7 +549,7 @@ const Clientes: React.FC = () => {
     try {
       await companyService.sendWhatsApp({
         phone: item.customer_phone,
-        message: `Oi, ${item.customer_name}! Tudo bem? Estamos passando para lembrar do seu retorno de ${item.service_name}. Pela nossa agenda, o ideal seria voltar por volta de ${formatDateTime(item.return_due_at)}. Se quiser, podemos organizar seu proximo atendimento.`,
+        message: `Oi, ${item.customer_name}! Tudo bem? Estamos passando para lembrar do seu retorno de ${item.service_name}. Pela nossa agenda, o ideal seria voltar por volta de ${formatDateTime(item.return_due_at)}. Se quiser, podemos organizar seu próximo atendimento.`,
       });
       toast.success('Mensagem enviada no WhatsApp');
     } catch (error: any) {
@@ -559,13 +582,13 @@ const Clientes: React.FC = () => {
         <CardHeader>
           <CardTitle>Retornos do CRM</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Clientes com retorno previsto para hoje, atrasados ou proximos. Os retornos automáticos usam o prazo configurado no servico.
+            Clientes com retorno previsto para hoje, atrasados ou próximos. Os retornos automáticos usam o prazo configurado no serviço.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 md:grid-cols-3">
             <Input
-              placeholder="Buscar por nome, telefone ou servico"
+              placeholder="Buscar por nome, telefone ou serviço"
               value={followUpSearch}
               onChange={(e) => setFollowUpSearch(e.target.value)}
             />
@@ -577,8 +600,8 @@ const Clientes: React.FC = () => {
               <option value="all">Todos os retornos</option>
               <option value="overdue">Atrasados</option>
               <option value="today">Para hoje</option>
-              <option value="upcoming">Proximos</option>
-              <option value="sent">Ja enviados</option>
+              <option value="upcoming">Próximos</option>
+              <option value="sent">Já enviados</option>
             </select>
             <Button type="button" variant="outline" onClick={() => loadFollowUps()}>
               Atualizar retornos
@@ -602,7 +625,7 @@ const Clientes: React.FC = () => {
                       {item.service_name} - retorno {formatDateTime(item.return_due_at)}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {item.professional_name || 'Profissional nao informado'} - origem {item.source === 'manual' ? 'retroativa' : 'agendamento'}
+                      {item.professional_name || 'Profissional não informado'} - origem {item.source === 'manual' ? 'retroativa' : 'agendamento'}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -613,7 +636,7 @@ const Clientes: React.FC = () => {
                           ? 'Hoje'
                           : item.status === 'sent'
                             ? 'Enviado'
-                            : 'Proximo'}
+                            : 'Próximo'}
                     </span>
                     <Button type="button" variant="outline" onClick={() => handleSendFollowUp(item)} disabled={!item.customer_phone}>
                       Enviar WhatsApp
@@ -791,7 +814,7 @@ const Clientes: React.FC = () => {
             <Label htmlFor="preferredProfessional">Barbeiro responsavel</Label>
             {isEmployee ? (
               <div className="rounded-md border border-dashed border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-                O cliente sera vinculado automaticamente a sua carteira.
+                O cliente será vinculado automaticamente a sua carteira.
               </div>
             ) : (
               <SearchableSelect
@@ -808,8 +831,8 @@ const Clientes: React.FC = () => {
             )}
             <p className="text-xs text-muted-foreground">
               {isEmployee
-                ? 'O sistema define o barbeiro automaticamente para o seu usuario.'
-                : 'Define de quem e a carteira. O barbeiro escolhido ve esse cliente em "Meus clientes", e novas mensalidades ja nascem vinculadas a ele.'}
+                ? 'O sistema define o barbeiro automaticamente para o seu usuário.'
+                : 'Define de quem e a carteira. O barbeiro escolhido vê esse cliente em "Meus clientes", e novas mensalidades já nascem vinculadas a ele.'}
             </p>
           </div>
 
@@ -828,22 +851,60 @@ const Clientes: React.FC = () => {
         <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              Historico do Cliente
+              Histórico do Cliente
             </DialogTitle>
             <DialogDescription>
-              {historyTarget?.name || 'Cliente'}: servicos, frequencia, barbeiro favorito e valor total gasto.
+              {historyTarget?.name || 'Cliente'}: serviços, frequência, barbeiro favorito e valor total gasto.
             </DialogDescription>
-            <div className="pt-2">
+            <div className="flex flex-wrap gap-2 pt-2">
               <Button type="button" size="sm" onClick={() => openHistoryEntryDialog(historyTarget)}>
-                Adicionar historico retroativo
+                Adicionar histórico retroativo
+              </Button>
+              {/* O cliente se cadastra so com WhatsApp: sem e-mail, o
+                  "esqueci a senha" nao tem para onde mandar o link. Quem
+                  atende gera aqui e manda pela conversa. */}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={gerandoLinkSenha || !historyTarget?.id}
+                onClick={() => gerarLinkSenha(historyTarget)}
+              >
+                {gerandoLinkSenha ? 'Gerando...' : 'Link de nova senha'}
               </Button>
             </div>
+            {linkSenha && (
+              <div className="mt-2 space-y-2 rounded-md border bg-muted/40 p-3 text-sm">
+                <p>Link pronto. Vale por 24 horas e só pode ser usado uma vez.</p>
+                <div className="flex flex-wrap gap-2">
+                  <WhatsAppButton
+                    phone={linkSenha.phone}
+                    name={historyTarget?.name}
+                    message={linkSenha.mensagem}
+                    variant="button"
+                    label="Enviar pelo WhatsApp"
+                    className="border"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(linkSenha.mensagem);
+                      toast.success('Mensagem copiada');
+                    }}
+                  >
+                    Copiar mensagem
+                  </Button>
+                </div>
+              </div>
+            )}
           </DialogHeader>
 
           {historyLoading ? (
-            <div className="py-10 text-center text-muted-foreground">Carregando historico...</div>
+            <div className="py-10 text-center text-muted-foreground">Carregando histórico...</div>
           ) : !historyData ? (
-            <div className="py-10 text-center text-muted-foreground">Nao foi possivel carregar o historico.</div>
+            <div className="py-10 text-center text-muted-foreground">Não foi possível carregar o histórico.</div>
           ) : (
             <div className="space-y-6">
               <div className="grid gap-3 md:grid-cols-4">
@@ -863,7 +924,7 @@ const Clientes: React.FC = () => {
                 </Card>
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Frequencia Media</CardTitle>
+                    <CardTitle className="text-sm">Frequência Média</CardTitle>
                   </CardHeader>
                   <CardContent className="text-xl font-semibold">
                     {historyData.frequency.average_appointments_per_month.toFixed(2)}/mes
@@ -925,7 +986,7 @@ const Clientes: React.FC = () => {
                 </Card>
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Ultimo Atendimento</CardTitle>
+                    <CardTitle className="text-sm">Último Atendimento</CardTitle>
                   </CardHeader>
                   <CardContent>{formatDateTime(historyData.frequency.last_appointment_at)}</CardContent>
                 </Card>
@@ -933,17 +994,17 @@ const Clientes: React.FC = () => {
 
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Servicos Anteriores</CardTitle>
+                  <CardTitle className="text-sm">Serviços Anteriores</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {historyData.services_history.length === 0 ? (
-                    <p className="text-muted-foreground text-sm">Nenhum servico encontrado.</p>
+                    <p className="text-muted-foreground text-sm">Nenhum serviço encontrado.</p>
                   ) : (
                     <div className="space-y-2">
                       {historyData.services_history.slice(0, 10).map((item) => (
                         <div key={item.appointment_id} className="flex items-center justify-between rounded border p-2 text-sm">
                           <div>
-                            <p className="font-medium">{item.service_name || 'Servico'}</p>
+                            <p className="font-medium">{item.service_name || 'Serviço'}</p>
                             <p className="text-muted-foreground">
                               {item.professional_name || 'Profissional'} • {formatDateTime(item.scheduled_at)}
                             </p>
@@ -992,7 +1053,7 @@ const Clientes: React.FC = () => {
       <Dialog open={historyEntryDialogOpen} onOpenChange={setHistoryEntryDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Historico retroativo do cliente</DialogTitle>
+            <DialogTitle>Histórico retroativo do cliente</DialogTitle>
             <DialogDescription>
               Lance atendimentos antigos para enriquecer o CRM e gerar a previsao de retorno.
             </DialogDescription>
@@ -1003,7 +1064,7 @@ const Clientes: React.FC = () => {
               <Input value={historyTarget?.name || ''} disabled />
             </div>
             <div className="space-y-2">
-              <Label>Servico</Label>
+              <Label>Serviço</Label>
               <SearchableSelect
                 value={historyEntryForm.service_id}
                 onValueChange={(value) => {
@@ -1021,12 +1082,12 @@ const Clientes: React.FC = () => {
                   label:
                     item.recommendedReturnDays != null ? `${item.name} - retorno ${item.recommendedReturnDays} dias` : item.name,
                 }))}
-                placeholder="Selecionar servico"
-                searchPlaceholder="Buscar servico..."
+                placeholder="Selecionar serviço"
+                searchPlaceholder="Buscar serviço..."
               />
             </div>
             <div className="space-y-2">
-              <Label>Nome do servico</Label>
+              <Label>Nome do serviço</Label>
               <Input
                 value={historyEntryForm.service_name}
                 onChange={(e) => setHistoryEntryForm((prev) => ({ ...prev, service_name: e.target.value }))}
@@ -1079,7 +1140,7 @@ const Clientes: React.FC = () => {
               />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label>Observacoes</Label>
+              <Label>Observações</Label>
               <Input
                 value={historyEntryForm.notes}
                 onChange={(e) => setHistoryEntryForm((prev) => ({ ...prev, notes: e.target.value }))}
@@ -1092,7 +1153,7 @@ const Clientes: React.FC = () => {
               Cancelar
             </Button>
             <Button type="button" onClick={handleCreateHistoryEntry} disabled={historyEntrySaving}>
-              {historyEntrySaving ? 'Salvando...' : 'Salvar historico'}
+              {historyEntrySaving ? 'Salvando...' : 'Salvar histórico'}
             </Button>
           </DialogFooter>
         </DialogContent>

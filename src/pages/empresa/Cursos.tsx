@@ -218,7 +218,7 @@ const Cursos: React.FC = () => {
 
   const uploadAsset = async (file: File, folder: 'contents' | 'covers') => {
     const companyId = company?.id || user?.tenantId;
-    if (!companyId) throw new Error('Empresa nao identificada para upload');
+    if (!companyId) throw new Error('Empresa não identificada para upload');
 
     const { url } = await uploadImagem(file, folder === 'covers' ? 'course_cover' : 'course_media', {
       companyId,
@@ -241,9 +241,9 @@ const Cursos: React.FC = () => {
     try {
       const url = await uploadAsset(file, 'contents');
       setForm((prev) => ({ ...prev, contentUrl: url }));
-      toast.success('Conteudo enviado');
+      toast.success('Conteúdo enviado');
     } catch (error: any) {
-      toast.error(error.message || 'Falha ao enviar conteudo');
+      toast.error(error.message || 'Falha ao enviar conteúdo');
     } finally {
       setUploadingContent(false);
     }
@@ -268,11 +268,11 @@ const Cursos: React.FC = () => {
 
   const saveCourse = async () => {
     if (!form.title.trim()) {
-      toast.error('Informe o titulo do curso');
+      toast.error('Informe o título do curso');
       return;
     }
     if (!form.contentUrl.trim()) {
-      toast.error('Informe o conteudo principal do curso');
+      toast.error('Informe o conteúdo principal do curso');
       return;
     }
 
@@ -317,11 +317,11 @@ const Cursos: React.FC = () => {
 
   const exportRevenueExcel = () => {
     if (!overview) {
-      toast.error('Nao ha dados para exportar');
+      toast.error('Não há dados para exportar');
       return;
     }
     if (!overview.courses.length && !overview.recent_sales.length) {
-      toast.error('Nao ha dados para exportar');
+      toast.error('Não há dados para exportar');
       return;
     }
 
@@ -368,7 +368,7 @@ const Cursos: React.FC = () => {
 
     const stamp = new Date().toISOString().slice(0, 10);
     XLSX.writeFile(workbook, `receita-cursos-${stamp}.xlsx`);
-    toast.success('Relatorio exportado');
+    toast.success('Relatório exportado');
   };
 
   const renderPreview = (course: Pick<CourseItem, 'title' | 'content_type' | 'content_url' | 'cover_image_url'>) => {
@@ -436,7 +436,7 @@ const Cursos: React.FC = () => {
       <div className={`grid gap-6 ${isOwner ? 'xl:grid-cols-[2fr_1fr]' : ''}`}>
         <Card>
           <CardHeader>
-            <CardTitle>Catalogo de cursos</CardTitle>
+            <CardTitle>Catálogo de cursos</CardTitle>
             <CardDescription>
               {isOwner
                 ? 'Crie, edite, ative e acompanhe o desempenho de cada curso.'
@@ -463,13 +463,13 @@ const Cursos: React.FC = () => {
                       </Badge>
                     </div>
                     <div className="grid gap-1 text-sm text-muted-foreground">
-                      <p>Preco: {toMoney(course.price)}</p>
+                      <p>Preço: {toMoney(course.price)}</p>
                       {isOwner ? (
                         <>
                           <p>Vendas confirmadas: {course.active_sales || 0}</p>
                           <p>Vendas pendentes: {course.pending_sales || 0}</p>
                           <p>Receita confirmada: {toMoney(course.revenue_confirmed || 0)}</p>
-                          <p>Ultima venda: {formatDateTime(course.last_sale_at)}</p>
+                          <p>Última venda: {formatDateTime(course.last_sale_at)}</p>
                         </>
                       ) : (
                         <p>Status do curso: {course.is_active ? 'Ativo' : 'Inativo'}</p>
@@ -480,7 +480,7 @@ const Cursos: React.FC = () => {
                       <Button size="sm" variant="destructive" onClick={() => removeCourse(course.id)}>Excluir</Button>
                       {course.content_url ? (
                         <Button size="sm" variant="secondary" asChild>
-                          <a href={course.content_url} target="_blank" rel="noreferrer">Abrir conteudo</a>
+                          <a href={course.content_url} target="_blank" rel="noreferrer">Abrir conteúdo</a>
                         </Button>
                       ) : null}
                     </div>
@@ -505,7 +505,7 @@ const Cursos: React.FC = () => {
                 <p className="text-sm text-muted-foreground">Pendentes: {overview?.summary.pending_sales || 0}</p>
               </div>
               {!overview?.recent_sales.length ? (
-                <p className="text-sm text-muted-foreground">Nenhuma venda recente no periodo.</p>
+                <p className="text-sm text-muted-foreground">Nenhuma venda recente no período.</p>
               ) : (
                 overview.recent_sales.map((sale) => (
                   <div key={sale.id} className="rounded-lg border p-3">
@@ -537,21 +537,21 @@ const Cursos: React.FC = () => {
           <DialogHeader>
             <DialogTitle>{editingId ? 'Editar curso' : 'Novo curso'}</DialogTitle>
             <DialogDescription>
-              Cadastre o conteudo do curso e controle se ele pode ser vendido no portal do cliente.
+              Cadastre o conteúdo do curso e controle se ele pode ser vendido no portal do cliente.
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="title">Titulo</Label>
+              <Label htmlFor="title">Título</Label>
               <Input id="title" value={form.title} onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))} />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="description">Descricao</Label>
+              <Label htmlFor="description">Descrição</Label>
               <Textarea id="description" value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} rows={4} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="contentType">Tipo de conteudo</Label>
+              <Label htmlFor="contentType">Tipo de conteúdo</Label>
               <select
                 id="contentType"
                 value={form.contentType}
@@ -564,7 +564,7 @@ const Cursos: React.FC = () => {
               </select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="price">Preco</Label>
+              <Label htmlFor="price">Preço</Label>
               <Input
                 id="price"
                 type="number"
@@ -575,7 +575,7 @@ const Cursos: React.FC = () => {
               />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="contentUrl">URL do conteudo</Label>
+              <Label htmlFor="contentUrl">URL do conteúdo</Label>
               <Input
                 id="contentUrl"
                 value={form.contentUrl}

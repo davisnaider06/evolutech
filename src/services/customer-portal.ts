@@ -106,6 +106,18 @@ export const customerAuthService = {
 
 export const customerPortalService = {
   dashboard: () => customerRequest<CustomerDashboardResponse>('/customer/dashboard'),
+  getPushPublicKey: () => customerRequest<{ public_key: string }>('/customer/push/public-key'),
+  subscribePush: (subscription: unknown) =>
+    customerRequest('/customer/push/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({ subscription }),
+    }),
+  unsubscribePush: (endpoint: string) =>
+    customerRequest('/customer/push/unsubscribe', {
+      method: 'POST',
+      body: JSON.stringify({ endpoint }),
+    }),
+  sendPushTest: () => customerRequest('/customer/push/test', { method: 'POST' }),
   bookingOptions: () => customerRequest<CustomerBookingOptionsResponse>('/customer/booking-options'),
   appointments: () => customerRequest<CustomerAppointment[]>('/customer/appointments'),
   appointmentSlots: (params: { date: string; service_id: string; professional_id: string }) => {

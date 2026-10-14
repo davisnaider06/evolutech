@@ -476,36 +476,57 @@ model Task {
 }
 
 model Appointment {
-  id               String    @id @default(uuid())
-  companyId        String    @map("empresa_id")
+  id               String                    @id @default(uuid())
+  companyId        String                    @map("empresa_id")
   // Opcional: agendamento feito pelo barbeiro na propria agenda costuma nao
   // ter cadastro. NULL aparece como "Sem cadastro" na agenda.
-  customerName     String?   @map("customer_name")
-  serviceName      String    @map("service_name")
+  customerName     String?                   @map("customer_name")
+  serviceName      String                    @map("service_name")
   // Valor combinado deste atendimento. NULL = vale o preco do servico.
-  price            Decimal?  @db.Decimal(10, 2)
-  scheduledAt      DateTime  @map("scheduled_at")
-  status           String    @default("scheduled")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
+  price            Decimal?                  @db.Decimal(10, 2)
+  scheduledAt      DateTime                  @map("scheduled_at")
+  status           String                    @default("scheduled")
+  createdAt        DateTime                  @default(now()) @map("created_at")
+  updatedAt        DateTime                  @updatedAt @map("updated_at")
   barber_name      String?
-  serviceId        String?   @map("service_id")
-  professionalId   String?   @map("professional_id")
-  professionalName String?   @map("professional_name")
-  customerId       String?   @map("customer_id")
-  customer         Customer? @relation(fields: [customerId], references: [id])
-  company          Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  serviceId        String?                   @map("service_id")
+  professionalId   String?                   @map("professional_id")
+  professionalName String?                   @map("professional_name")
+  customerId       String?                   @map("customer_id")
+  customer         Customer?                 @relation(fields: [customerId], references: [id])
+  company          Company                   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  notifications    AppointmentNotification[]
 
   @@index([companyId, customerId, scheduledAt])
   @@index([companyId, professionalId, scheduledAt], map: "idx_appointments_company_prof_time")
   @@index([companyId, serviceId], map: "idx_appointments_company_service")
+  @@index([scheduledAt], map: "idx_appointments_scheduled_at")
   @@map("appointments")
 }
 
+/// Aviso de agendamento ja enviado (confirmacao ou lembrete).
+///
+/// A linha e gravada antes do envio e o UNIQUE impede o segundo envio, mesmo
+/// com duas instancias do job. `scheduledAt` na chave faz a regua recomecar
+/// quando o agendamento e remarcado.
+model AppointmentNotification {
+  id            String      @id @default(uuid())
+  appointmentId String      @map("appointment_id")
+  companyId     String      @map("empresa_id")
+  stage         String
+  scheduledAt   DateTime    @map("scheduled_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@unique([appointmentId, stage, scheduledAt], map: "appointment_notifications_appt_stage_time_key")
+  @@index([companyId])
+  @@map("appointment_notifications")
+}
+
 model CustomerAccount {
-  id           String    @id @default(uuid())
-  companyId    String    @map("empresa_id")
-  customerId   String    @unique @map("customer_id")
+  id                String             @id @default(uuid())
+  companyId         String             @map("empresa_id")
+  customerId        String             @unique @map("customer_id")
   // Email e telefone sao os dois identificadores possiveis: o cadastro exige
   // pelo menos um, e o login aceita qualquer um dos dois. Por isso os dois sao
   // opcionais aqui e a regra de "pelo menos um" fica no service, que sabe
@@ -513,15 +534,16 @@ model CustomerAccount {
   // 55 e sem o nono digito, ver utils/telefone.util), a mesma que o balcao e o
   // link publico usam, para "(11) 91234-5678" e "5511912345678" caírem na
   // mesma conta.
-  email        String?
-  phone        String?
-  passwordHash String    @map("password_hash")
-  isActive     Boolean   @default(true) @map("is_active")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
-  lastLoginAt  DateTime? @map("last_login_at")
-  customer     Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  email             String?
+  phone             String?
+  passwordHash      String             @map("password_hash")
+  isActive          Boolean            @default(true) @map("is_active")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  lastLoginAt       DateTime?          @map("last_login_at")
+  customer          Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  company           Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  pushSubscriptions PushSubscription[]
 
   @@unique([companyId, email])
   @@unique([companyId, phone])
@@ -997,18 +1019,22 @@ enum CourseAccessStatus {
 /// Inscricao morta (o servico de push responde 404 ou 410) e apagada no
 /// proprio envio: nao existe evento de "desinstalei o app" para escutar.
 model PushSubscription {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  companyId String?  @map("company_id")
-  endpoint  String   @unique
-  p256dh    String
-  auth      String
-  userAgent String?  @map("user_agent")
-  createdAt DateTime @default(now()) @map("created_at")
-  lastSeenAt DateTime @default(now()) @map("last_seen_at")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                String           @id @default(uuid())
+  // Exatamente um dos dois: equipe (profiles) ou cliente do portal.
+  userId            String?          @map("user_id")
+  customerAccountId String?          @map("customer_account_id")
+  companyId         String?          @map("company_id")
+  endpoint          String           @unique
+  p256dh            String
+  auth              String
+  userAgent         String?          @map("user_agent")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  lastSeenAt        DateTime         @default(now()) @map("last_seen_at")
+  user              User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customerAccount   CustomerAccount? @relation(fields: [customerAccountId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([customerAccountId])
   @@index([companyId])
   @@map("push_subscriptions")
 }

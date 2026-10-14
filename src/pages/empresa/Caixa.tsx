@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '@/components/crud/PageHeader';
+import { CaixaDoDia } from '@/components/caixa/CaixaDoDia';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -131,25 +132,25 @@ const paymentOptions = [
   { value: 'all', label: 'Todos pagamentos' },
   { value: 'dinheiro', label: 'Dinheiro' },
   { value: 'pix', label: 'PIX' },
-  { value: 'cartao', label: 'Cartao' },
-  { value: 'credito', label: 'Credito' },
-  { value: 'debito', label: 'Debito' },
+  { value: 'cartao', label: 'Cartão' },
+  { value: 'credito', label: 'Crédito' },
+  { value: 'debito', label: 'Débito' },
 ];
 
 const itemTypeOptions = [
   { value: 'all', label: 'Todos os itens' },
   { value: 'product', label: 'Produtos' },
-  { value: 'service', label: 'Servicos' },
+  { value: 'service', label: 'Serviços' },
 ];
 
 const manualTypeOptions = [
   { value: 'entrada', label: 'Entrada' },
-  { value: 'saida', label: 'Saida' },
+  { value: 'saida', label: 'Saída' },
 ];
 
 const manualCategoryOptions = [
   { value: 'vendas', label: 'Vendas' },
-  { value: 'servicos', label: 'Servicos' },
+  { value: 'servicos', label: 'Serviços' },
   { value: 'despesas', label: 'Despesas' },
   { value: 'retirada', label: 'Retirada' },
   { value: 'suprimento', label: 'Suprimento' },
@@ -216,6 +217,9 @@ const Caixa: React.FC = () => {
   const [manualSaving, setManualSaving] = useState(false);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [manualForm, setManualForm] = useState(emptyManualForm);
+  const [verDetalhes, setVerDetalhes] = useState(false);
+  // Muda quando um lancamento manual e salvo, para o "Caixa de hoje" recarregar.
+  const [atualizarHoje, setAtualizarHoje] = useState(0);
   const [filters, setFilters] = useState({
     search: '',
     payment_method: 'all',
@@ -274,7 +278,7 @@ const Caixa: React.FC = () => {
       setManualTransactions(Array.isArray(result?.data) ? result.data : []);
       setManualTotal(Number(result?.total || 0));
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao carregar movimentacoes manuais');
+      toast.error(error.message || 'Erro ao carregar movimentações manuais');
     } finally {
       setManualLoading(false);
     }
@@ -340,7 +344,7 @@ const Caixa: React.FC = () => {
 
   const exportExcel = () => {
     if (!overview || (overview.entries.length === 0 && manualTransactions.length === 0)) {
-      toast.error('Nao ha dados para exportar');
+      toast.error('Não há dados para exportar');
       return;
     }
 
@@ -416,12 +420,12 @@ const Caixa: React.FC = () => {
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(itemRows), 'Itens');
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(manualRows), 'Movimentacoes');
     XLSX.writeFile(workbook, `caixa-${new Date().toISOString().slice(0, 10)}.xlsx`);
-    toast.success('Relatorio exportado');
+    toast.success('Relatório exportado');
   };
 
   const exportDailyReport = () => {
     if (!overview || overview.entries.length === 0) {
-      toast.error('Nao ha dados para exportar no relatorio diario');
+      toast.error('Não há dados para exportar no relatório diário');
       return;
     }
 
@@ -476,7 +480,7 @@ const Caixa: React.FC = () => {
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(productRows), 'Produtos');
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(paymentSummaryRows), 'Pagamentos');
     XLSX.writeFile(workbook, `relatorio-diario-${new Date().toISOString().slice(0, 10)}.xlsx`);
-    toast.success('Relatorio diario exportado');
+    toast.success('Relatório diário exportado');
   };
 
   const openCreateManualDialog = () => {
@@ -499,11 +503,11 @@ const Caixa: React.FC = () => {
 
   const saveManualTransaction = async () => {
     if (!manualForm.description.trim()) {
-      toast.error('Informe a descricao da movimentacao');
+      toast.error('Informe a descrição da movimentação');
       return;
     }
     if (Number(manualForm.amount || 0) <= 0) {
-      toast.error('Informe um valor valido');
+      toast.error('Informe um valor válido');
       return;
     }
 
@@ -520,30 +524,32 @@ const Caixa: React.FC = () => {
 
       if (manualForm.id) {
         await companyService.update('cash_transactions', manualForm.id, payload);
-        toast.success('Movimentacao manual atualizada');
+        toast.success('Movimentação manual atualizada');
       } else {
         await companyService.create('cash_transactions', payload);
-        toast.success('Movimentacao manual registrada');
+        toast.success('Movimentação manual registrada');
       }
+      setAtualizarHoje((valor) => valor + 1);
 
       setManualDialogOpen(false);
       setManualForm(emptyManualForm);
       await loadManualTransactions();
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao salvar movimentacao');
+      toast.error(error.message || 'Erro ao salvar movimentação');
     } finally {
       setManualSaving(false);
     }
   };
 
   const removeManualTransaction = async (id: string) => {
-    if (!window.confirm('Deseja excluir esta movimentacao manual?')) return;
+    if (!window.confirm('Excluir este lançamento?')) return;
     try {
       await companyService.remove('cash_transactions', id);
-      toast.success('Movimentacao manual excluida');
+      toast.success('Movimentação manual excluída');
+      setAtualizarHoje((valor) => valor + 1);
       await loadManualTransactions();
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao excluir movimentacao');
+      toast.error(error.message || 'Erro ao excluir movimentação');
     }
   };
 
@@ -552,17 +558,35 @@ const Caixa: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Caixa" description="Recebimentos de vendas separados das movimentacoes manuais.">
-        <Button variant="outline" onClick={exportExcel}>
-          Exportar
-        </Button>
-        <Button variant="outline" onClick={exportDailyReport}>
-          Exportar diario
-        </Button>
-        <Button onClick={openCreateManualDialog}>
-          Nova movimentacao manual
+      <PageHeader title="Caixa" description="O que entrou hoje e o fechamento do dia.">
+        <Button variant="outline" onClick={openCreateManualDialog}>
+          Lançar entrada ou saída
         </Button>
       </PageHeader>
+
+      <CaixaDoDia atualizar={atualizarHoje} />
+
+      {/* Relatorios por periodo, filtros, graficos e lancamentos ficam atras
+          de um botao: abrir o Caixa e dar de cara com doze cartoes e quatro
+          graficos afastava o dono que so queria saber quanto entrou hoje. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="ghost" onClick={() => setVerDetalhes((atual) => !atual)}>
+          {verDetalhes ? 'Esconder relatórios e lançamentos' : 'Ver relatórios, filtros e lançamentos'}
+        </Button>
+        {verDetalhes && (
+          <>
+            <Button variant="outline" size="sm" onClick={exportExcel}>
+              Exportar
+            </Button>
+            <Button variant="outline" size="sm" onClick={exportDailyReport}>
+              Exportar diário
+            </Button>
+          </>
+        )}
+      </div>
+
+      {verDetalhes && (
+      <>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {overview
@@ -589,7 +613,7 @@ const Caixa: React.FC = () => {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Saldo inicial</CardTitle>
-            <CardDescription>Posicao antes do inicio do periodo</CardDescription>
+            <CardDescription>Posição antes do início do período</CardDescription>
           </CardHeader>
           <CardContent>
             <div className={`text-2xl font-bold ${openingBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -600,7 +624,7 @@ const Caixa: React.FC = () => {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Recebimentos de vendas</CardTitle>
-            <CardDescription>Vendas pagas dentro do periodo</CardDescription>
+            <CardDescription>Vendas pagas dentro do período</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(periodSalesTotal)}</div>
@@ -609,7 +633,7 @@ const Caixa: React.FC = () => {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Entradas manuais</CardTitle>
-            <CardDescription>Lancamentos manuais do periodo</CardDescription>
+            <CardDescription>Lançamentos manuais do período</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(periodManualEntries)}</div>
@@ -617,8 +641,8 @@ const Caixa: React.FC = () => {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Saidas manuais</CardTitle>
-            <CardDescription>Lancamentos manuais do periodo</CardDescription>
+            <CardTitle className="text-sm font-medium">Saídas manuais</CardTitle>
+            <CardDescription>Lançamentos manuais do período</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(periodManualExits)}</div>
@@ -627,7 +651,7 @@ const Caixa: React.FC = () => {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Saldo final</CardTitle>
-            <CardDescription>Saldo inicial + vendas + entradas - saidas</CardDescription>
+            <CardDescription>Saldo inicial + vendas + entradas - saídas</CardDescription>
           </CardHeader>
           <CardContent>
             <div className={`text-2xl font-bold ${closingBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -639,7 +663,7 @@ const Caixa: React.FC = () => {
       <Card>
         <CardHeader>
           <CardTitle>Filtros</CardTitle>
-          <CardDescription>Controle o periodo e refine a listagem de recebimentos.</CardDescription>
+          <CardDescription>Controle o período e refine a listagem de recebimentos.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
           <Input
@@ -730,7 +754,7 @@ const Caixa: React.FC = () => {
                   <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                     <div>
                       <p className="font-medium">{entry.customer_name}</p>
-                      <p className="text-sm text-muted-foreground">{entry.item_summary || 'Itens nao informados'}</p>
+                      <p className="text-sm text-muted-foreground">{entry.item_summary || 'Itens não informados'}</p>
                     </div>
                     <div className="text-right">
                       <p className="font-semibold">{formatCurrency(entry.total)}</p>
@@ -767,7 +791,7 @@ const Caixa: React.FC = () => {
 
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
-                Pagina {page} de {totalPages}
+                Página {page} de {totalPages}
               </p>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((prev) => prev - 1)}>
@@ -779,7 +803,7 @@ const Caixa: React.FC = () => {
                   disabled={page >= totalPages}
                   onClick={() => setPage((prev) => prev + 1)}
                 >
-                  Proxima
+                  Próxima
                 </Button>
               </div>
             </div>
@@ -789,14 +813,14 @@ const Caixa: React.FC = () => {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Comparativo de periodo</CardTitle>
-              <CardDescription>Compara o filtro atual com o periodo imediatamente anterior.</CardDescription>
+              <CardTitle>Comparativo de período</CardTitle>
+              <CardDescription>Compara o filtro atual com o período imediatamente anterior.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="rounded-lg border p-3">
-                <p className="text-sm font-medium">Periodo anterior</p>
+                <p className="text-sm font-medium">Período anterior</p>
                 <p className="text-sm text-muted-foreground">
-                  {formatDateTime(overview?.comparison.previous_period.date_from)} ate{' '}
+                  {formatDateTime(overview?.comparison.previous_period.date_from)} até{' '}
                   {formatDateTime(overview?.comparison.previous_period.date_to)}
                 </p>
               </div>
@@ -833,11 +857,11 @@ const Caixa: React.FC = () => {
           <Card>
             <CardHeader>
               <CardTitle>Formas de pagamento</CardTitle>
-              <CardDescription>Distribuicao das entradas de vendas no periodo.</CardDescription>
+              <CardDescription>Distribuição das entradas de vendas no período.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {!overview?.selected_period.payment_methods.length ? (
-                <p className="text-sm text-muted-foreground">Sem dados no periodo.</p>
+                <p className="text-sm text-muted-foreground">Sem dados no período.</p>
               ) : (
                 overview.selected_period.payment_methods.map((item) => (
                   <div key={item.payment_method} className="flex items-center justify-between rounded border p-3 text-sm">
@@ -852,11 +876,11 @@ const Caixa: React.FC = () => {
           <Card>
             <CardHeader>
               <CardTitle>Mix vendido</CardTitle>
-              <CardDescription>Quantas vendas tiveram servicos ou produtos.</CardDescription>
+              <CardDescription>Quantas vendas tiveram serviços ou produtos.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {!overview?.selected_period.item_types.length ? (
-                <p className="text-sm text-muted-foreground">Sem dados no periodo.</p>
+                <p className="text-sm text-muted-foreground">Sem dados no período.</p>
               ) : (
                 overview.selected_period.item_types.map((item) => (
                   <div key={item.item_type} className="flex items-center justify-between rounded border p-3 text-sm">
@@ -871,11 +895,11 @@ const Caixa: React.FC = () => {
           <Card>
             <CardHeader>
               <CardTitle>Ranking de itens</CardTitle>
-              <CardDescription>Top produtos e servicos por faturamento no periodo filtrado.</CardDescription>
+              <CardDescription>Top produtos e serviços por faturamento no período filtrado.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {!overview?.rankings.top_items.length ? (
-                <p className="text-sm text-muted-foreground">Sem dados no periodo.</p>
+                <p className="text-sm text-muted-foreground">Sem dados no período.</p>
               ) : (
                 overview.rankings.top_items.map((item, index) => (
                   <div key={`${item.item_type}-${item.item_name}-${index}`} className="rounded border p-3 text-sm">
@@ -898,13 +922,13 @@ const Caixa: React.FC = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle>Movimentacoes manuais</CardTitle>
-          <CardDescription>Entradas e saidas lancadas manualmente, separadas dos recebimentos de vendas.</CardDescription>
+          <CardTitle>Movimentações manuais</CardTitle>
+          <CardDescription>Entradas e saídas lançadas manualmente, separadas dos recebimentos de vendas.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <Input
-              placeholder="Buscar descricao, categoria ou pagamento"
+              placeholder="Buscar descrição, categoria ou pagamento"
               value={manualFilters.search}
               onChange={(event) => {
                 setManualPage(1);
@@ -960,14 +984,14 @@ const Caixa: React.FC = () => {
           <div className="grid gap-3 md:grid-cols-4">
             <div className="rounded-lg border p-3">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Resultado filtrado</p>
-              <p className="mt-1 text-lg font-semibold">{manualTotal} movimentacoes</p>
+              <p className="mt-1 text-lg font-semibold">{manualTotal} movimentações</p>
             </div>
             <div className="rounded-lg border p-3">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Entradas filtradas</p>
               <p className="mt-1 text-lg font-semibold text-green-600">{formatCurrency(manualSummary.entradas)}</p>
             </div>
             <div className="rounded-lg border p-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Saidas filtradas</p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Saídas filtradas</p>
               <p className="mt-1 text-lg font-semibold text-red-600">{formatCurrency(manualSummary.saidas)}</p>
             </div>
             <div className="rounded-lg border p-3">
@@ -979,9 +1003,9 @@ const Caixa: React.FC = () => {
           </div>
 
           {manualLoading ? (
-            <p className="text-sm text-muted-foreground">Carregando movimentacoes manuais...</p>
+            <p className="text-sm text-muted-foreground">Carregando movimentações manuais...</p>
           ) : !manualTransactions.length ? (
-            <p className="text-sm text-muted-foreground">Nenhuma movimentacao manual encontrada.</p>
+            <p className="text-sm text-muted-foreground">Nenhuma movimentação manual encontrada.</p>
           ) : (
             manualTransactions.map((item) => (
               <div key={item.id} className="flex flex-col gap-3 rounded-lg border p-3 md:flex-row md:items-center md:justify-between">
@@ -994,7 +1018,7 @@ const Caixa: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <div className="text-right">
                     <Badge variant={item.type === 'entrada' ? 'default' : 'secondary'}>
-                      {item.type === 'entrada' ? 'Entrada' : 'Saida'}
+                      {item.type === 'entrada' ? 'Entrada' : 'Saída'}
                     </Badge>
                     <p className="mt-1 font-semibold">{formatCurrency(Number(item.amount || 0))}</p>
                   </div>
@@ -1011,7 +1035,7 @@ const Caixa: React.FC = () => {
 
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
-              Pagina {manualPage} de {manualTotalPages}
+              Página {manualPage} de {manualTotalPages}
             </p>
             <div className="flex gap-2">
               <Button
@@ -1028,18 +1052,21 @@ const Caixa: React.FC = () => {
                 disabled={manualPage >= manualTotalPages}
                 onClick={() => setManualPage((prev) => prev + 1)}
               >
-                Proxima
+                Próxima
               </Button>
             </div>
           </div>
         </CardContent>
       </Card>
 
+      </>
+      )}
+
       <Dialog open={manualDialogOpen} onOpenChange={setManualDialogOpen}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>{manualForm.id ? 'Editar movimentacao manual' : 'Nova movimentacao manual'}</DialogTitle>
-            <DialogDescription>Registre entradas e saidas que nao vieram direto de vendas do sistema.</DialogDescription>
+            <DialogTitle>{manualForm.id ? 'Editar movimentação manual' : 'Nova movimentação manual'}</DialogTitle>
+            <DialogDescription>Registre entradas e saídas que não vieram direto de vendas do sistema.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
@@ -1073,7 +1100,7 @@ const Caixa: React.FC = () => {
               </select>
             </div>
             <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="manual-description">Descricao</Label>
+              <Label htmlFor="manual-description">Descrição</Label>
               <Textarea
                 id="manual-description"
                 value={manualForm.description}
@@ -1122,7 +1149,7 @@ const Caixa: React.FC = () => {
               Cancelar
             </Button>
             <Button onClick={saveManualTransaction} disabled={manualSaving}>
-              {manualSaving ? 'Salvando...' : manualForm.id ? 'Atualizar movimentacao' : 'Salvar movimentacao'}
+              {manualSaving ? 'Salvando...' : manualForm.id ? 'Atualizar movimentação' : 'Salvar movimentação'}
             </Button>
           </DialogFooter>
         </DialogContent>

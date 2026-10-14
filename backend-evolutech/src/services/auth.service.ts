@@ -4,6 +4,14 @@ import jwt from 'jsonwebtoken';
 import { Prisma } from '@prisma/client';
 import { AppRole, AuthenticatedUser } from '../types';
 import { JWT_SECRET } from '../config/secrets';
+import { notificationService } from './notification.service';
+import {
+  SENHA_MINIMA,
+  enderecoDoApp,
+  gerarTokenDeRedefinicao,
+  lerTokenDeRedefinicao,
+  tokenValeParaSenha,
+} from '../utils/redefinicao-senha.util';
 
 // Validade de cada token, nao da sessao: toda abertura do app chama /auth/me,
 // que devolve um token novo com o prazo zerado. So precisa logar de novo quem
@@ -15,14 +23,16 @@ import { JWT_SECRET } from '../config/secrets';
 const JWT_EXPIRES_IN = (process.env.JWT_EXPIRES_IN || '30d') as jwt.SignOptions['expiresIn'];
 const OWNER_DEFAULT_MODULES = [
   { codigo: 'dashboard', nome: 'Dashboard' },
-  { codigo: 'reports', nome: 'Relatorios' },
-  { codigo: 'finance', nome: 'Financeiro' },
   { codigo: 'users', nome: 'Equipe' },
   { codigo: 'permissions', nome: 'Permissoes' },
   // 'gateways' saiu daqui: virou modulo concedido por empresa, via
   // empresa_modulos. O espelho desta lista vive em src/hooks/useCompanyModules.ts
   // (OWNER_DEFAULT_CODES) e as duas precisam andar juntas.
-  { codigo: 'commissions_owner', nome: 'Comissoes' },
+  //
+  // Relatorios, Financeiro e Comissoes tambem sairam: aparecendo sempre, o
+  // super admin nao conseguia deixar o menu curto (perfil Essencial) para o
+  // dono que se perde com muita coisa. O sistema base da barbearia ja traz os
+  // tres como modulo.
 ];
 const COMPANY_DEFAULT_MODULES = [
   { codigo: 'support', nome: 'Suporte', allowed_roles: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] as string[] },
@@ -65,10 +75,11 @@ export class AuthService {
     if (!companyId) return [];
 
     const [companyModules, sistemaBaseModules, employeePermissions] = await Promise.all([
+      // Sem filtrar isActive aqui: as linhas desligadas tambem servem, para
+      // tirar o modulo que o sistema base traria (ver abaixo).
       prisma.companyModule.findMany({
         where: {
           companyId,
-          isActive: true,
           modulo: { status: 'active' },
         },
         include: { modulo: true },
@@ -108,7 +119,15 @@ export class AuthService {
         }
       >();
 
+      // Modulo desligado so para esta empresa (super admin > Empresas >
+      // Modulos). O sistema base continua listando-o; sem este corte ele
+      // voltava ao menu pelo laco do sistema base.
+      const desligadosNaEmpresa = new Set(
+        companyModules.filter((item) => !item.isActive).map((item) => item.moduloId)
+      );
+
       for (const item of companyModules) {
+        if (!item.isActive) continue;
         if (deniedModuleIds.has(item.modulo.id)) continue;
         moduleMap.set(item.modulo.id, {
           id: item.modulo.id,
@@ -126,6 +145,7 @@ export class AuthService {
 
       for (const item of sistemaBaseModules) {
         if (deniedModuleIds.has(item.modulo.id)) continue;
+        if (desligadosNaEmpresa.has(item.moduloId)) continue;
         moduleMap.set(item.modulo.id, {
           id: item.modulo.id,
           codigo: item.modulo.codigo,
@@ -458,6 +478,64 @@ export class AuthService {
       data: { passwordHash: nextHash },
     });
 
+    return { ok: true };
+  }
+
+  /**
+   * "Esqueci minha senha" da equipe. Responde igual exista ou nao a conta:
+   * dizer "e-mail nao cadastrado" ensinaria quem tenta adivinhar quais
+   * e-mails tem acesso ao sistema.
+   */
+  async solicitarRedefinicaoDeSenha(emailDigitado: string) {
+    const email = String(emailDigitado || '').trim().toLowerCase();
+    if (!email.includes('@')) {
+      throw new Error('Informe um e-mail valido');
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        fullName: true,
+        isActive: true,
+        passwordHash: true,
+        roles: { select: { company: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 1 },
+      },
+    });
+
+    if (user?.isActive) {
+      const token = gerarTokenDeRedefinicao('equipe', user.id, user.passwordHash, '1h');
+      await notificationService.redefinicaoDeSenha({
+        to: email,
+        companyName: user.roles[0]?.company?.name || 'Evolutech',
+        nome: String(user.fullName || '').split(' ')[0] || 'tudo bem',
+        link: `${enderecoDoApp()}/redefinir-senha?token=${encodeURIComponent(token)}`,
+        validade: '1 hora',
+      });
+    }
+
+    return { ok: true };
+  }
+
+  async redefinirSenhaComToken(token: string, novaSenha: string) {
+    const senha = String(novaSenha || '');
+    if (senha.length < SENHA_MINIMA) {
+      throw new Error(`A nova senha deve ter pelo menos ${SENHA_MINIMA} caracteres`);
+    }
+
+    const userId = lerTokenDeRedefinicao(token, 'equipe');
+    const user = userId
+      ? await prisma.user.findUnique({ where: { id: userId }, select: { id: true, isActive: true, passwordHash: true } })
+      : null;
+
+    if (!user || !user.isActive || !tokenValeParaSenha(token, user.passwordHash)) {
+      throw new Error('Link invalido ou vencido. Peca um novo.');
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash: await bcrypt.hash(senha, 10) },
+    });
     return { ok: true };
   }
 }

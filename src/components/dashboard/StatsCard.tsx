@@ -6,7 +6,8 @@ interface StatsCardProps {
   title: string;
   value: string | number;
   change?: {
-    value: number;
+    /** Variacao percentual real. Sem ela, mostra so o texto de apoio. */
+    value?: number;
     label: string;
   };
   icon: LucideIcon;
@@ -22,7 +23,10 @@ export const StatsCard: React.FC<StatsCardProps> = ({
   iconColor = 'text-primary',
   className,
 }) => {
-  const isPositive = change && change.value >= 0;
+  // "+0%" fixo em todo cartao parecia numero de mentira: o percentual so
+  // aparece quando alguem calcula uma variacao de verdade.
+  const temVariacao = typeof change?.value === 'number' && change.value !== 0;
+  const isPositive = temVariacao && (change?.value as number) >= 0;
 
   return (
     <div className={cn(
@@ -39,12 +43,14 @@ export const StatsCard: React.FC<StatsCardProps> = ({
             <p className="mt-2 text-3xl font-bold tracking-tight">{value}</p>
             {change && (
               <div className="mt-2 flex items-center gap-1">
-                <span className={cn(
-                  'text-sm font-medium',
-                  isPositive ? 'text-role-client-admin' : 'text-destructive'
-                )}>
-                  {isPositive ? '+' : ''}{change.value}%
-                </span>
+                {temVariacao && (
+                  <span className={cn(
+                    'text-sm font-medium',
+                    isPositive ? 'text-role-client-admin' : 'text-destructive'
+                  )}>
+                    {isPositive ? '+' : ''}{change.value}%
+                  </span>
+                )}
                 <span className="text-xs text-muted-foreground">{change.label}</span>
               </div>
             )}

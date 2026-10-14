@@ -70,7 +70,7 @@ const ServicosAgendamento: React.FC = () => {
         }))
       );
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao carregar servicos');
+      toast.error(error.message || 'Erro ao carregar serviços');
     } finally {
       setCarregando(false);
     }
@@ -100,7 +100,7 @@ const ServicosAgendamento: React.FC = () => {
   const salvar = async () => {
     const nome = form.name.trim();
     if (!nome) {
-      toast.error('Informe o nome do servico');
+      toast.error('Informe o nome do serviço');
       return;
     }
 
@@ -115,15 +115,15 @@ const ServicosAgendamento: React.FC = () => {
     try {
       if (editando) {
         await companyService.update('appointment_services', editando.id, dados);
-        toast.success('Servico atualizado');
+        toast.success('Serviço atualizado');
       } else {
         await companyService.create('appointment_services', dados);
-        toast.success('Servico cadastrado');
+        toast.success('Serviço cadastrado');
       }
       setDialogAberto(false);
       carregar();
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao salvar servico');
+      toast.error(error.message || 'Erro ao salvar serviço');
     } finally {
       setSalvando(false);
     }
@@ -133,10 +133,10 @@ const ServicosAgendamento: React.FC = () => {
     if (!paraExcluir) return;
     try {
       await companyService.remove('appointment_services', paraExcluir.id);
-      toast.success('Servico removido');
+      toast.success('Serviço removido');
       carregar();
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao remover servico');
+      toast.error(error.message || 'Erro ao remover serviço');
     } finally {
       setParaExcluir(null);
     }
@@ -145,9 +145,9 @@ const ServicosAgendamento: React.FC = () => {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Servicos"
-        description="O que o cliente escolhe ao agendar: nome, duracao e preco."
-        buttonLabel="Novo servico"
+        title="Serviços"
+        description="O que o cliente escolhe ao agendar: nome, duração e preço."
+        buttonLabel="Novo serviço"
         onButtonClick={abrirNovo}
         showButton={isOwner}
       />
@@ -156,21 +156,21 @@ const ServicosAgendamento: React.FC = () => {
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <Scissors className="h-4 w-4 text-primary" />
-            Servicos do agendamento
+            Serviços do agendamento
           </CardTitle>
           <CardDescription>
-            A duracao e o que define de quanto em quanto tempo os horarios sao oferecidos
-            no link publico. Servico desativado some da lista do cliente sem perder o
-            historico.
+            A duração e o que define de quanto em quanto tempo os horários são oferecidos
+            no link público. Serviço desativado some da lista do cliente sem perder o
+            histórico.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {carregando ? (
-            <p className="text-sm text-muted-foreground">Carregando servicos...</p>
+            <p className="text-sm text-muted-foreground">Carregando serviços...</p>
           ) : servicos.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Nenhum servico cadastrado ainda.
-              {isOwner ? ' Toque em "Novo servico" para comecar.' : ''}
+              Nenhum serviço cadastrado ainda.
+              {isOwner ? ' Toque em "Novo serviço" para comecar.' : ''}
             </p>
           ) : (
             <div className="space-y-2">
@@ -222,14 +222,14 @@ const ServicosAgendamento: React.FC = () => {
       <FormDialog
         open={dialogAberto}
         onOpenChange={setDialogAberto}
-        title={editando ? 'Editar servico' : 'Novo servico'}
+        title={editando ? 'Editar serviço' : 'Novo serviço'}
         description="Estes dados aparecem para o cliente na hora de agendar."
         onSubmit={salvar}
         isSubmitting={salvando}
       >
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="servico-nome">Nome do servico *</Label>
+            <Label htmlFor="servico-nome">Nome do serviço *</Label>
             <Input
               id="servico-nome"
               placeholder="Ex: Corte masculino"
@@ -240,7 +240,7 @@ const ServicosAgendamento: React.FC = () => {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="servico-duracao">Duracao (min)</Label>
+              <Label htmlFor="servico-duracao">Duração (min)</Label>
               <Input
                 id="servico-duracao"
                 type="number"
@@ -253,7 +253,7 @@ const ServicosAgendamento: React.FC = () => {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="servico-preco">Preco (R$)</Label>
+              <Label htmlFor="servico-preco">Preço (R$)</Label>
               <Input
                 id="servico-preco"
                 type="number"
@@ -267,9 +267,9 @@ const ServicosAgendamento: React.FC = () => {
 
           <div className="flex items-center justify-between rounded-lg border p-3">
             <div>
-              <p className="text-sm font-medium">Disponivel para agendamento</p>
+              <p className="text-sm font-medium">Disponível para agendamento</p>
               <p className="text-xs text-muted-foreground">
-                Desligado, o cliente nao ve este servico no link publico.
+                Desligado, o cliente não vê este serviço no link público.
               </p>
             </div>
             <Switch
@@ -283,10 +283,10 @@ const ServicosAgendamento: React.FC = () => {
       <AlertDialog open={!!paraExcluir} onOpenChange={(aberto) => !aberto && setParaExcluir(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir servico</AlertDialogTitle>
+            <AlertDialogTitle>Excluir serviço</AlertDialogTitle>
             <AlertDialogDescription>
-              Remover "{paraExcluir?.name}" da lista de agendamento. Se voce so quer tira-lo
-              do link publico por um tempo, prefira desativar na edicao.
+              Remover "{paraExcluir?.name}" da lista de agendamento. Se você so quer tira-lo
+              do link público por um tempo, prefira desativar na edição.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

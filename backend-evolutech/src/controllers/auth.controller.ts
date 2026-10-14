@@ -126,4 +126,28 @@ export class AuthController {
       return res.status(500).json({ error: message });
     }
   }
+
+  async forgotPassword(req: Request, res: Response) {
+    try {
+      return res.json(await service.solicitarRedefinicaoDeSenha(req.body?.email));
+    } catch (error: any) {
+      const message = String(error?.message || '');
+      if (message.includes('valido')) return res.status(400).json({ error: message });
+      console.error('[auth.controller] forgot-password', error);
+      return res.status(500).json({ error: 'Nao foi possivel enviar o link agora. Tente em instantes.' });
+    }
+  }
+
+  async resetPassword(req: Request, res: Response) {
+    try {
+      return res.json(await service.redefinirSenhaComToken(req.body?.token, req.body?.password));
+    } catch (error: any) {
+      const message = String(error?.message || '');
+      if (message.includes('pelo menos') || message.includes('Link')) {
+        return res.status(400).json({ error: message });
+      }
+      console.error('[auth.controller] reset-password', error);
+      return res.status(500).json({ error: 'Erro interno. Tente novamente em instantes.' });
+    }
+  }
 }

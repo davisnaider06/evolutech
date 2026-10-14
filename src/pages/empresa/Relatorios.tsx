@@ -85,7 +85,7 @@ const Relatorios: React.FC = () => {
       })) as ReportsResponse;
       setData(response);
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao carregar relatorios');
+      toast.error(error.message || 'Erro ao carregar relatórios');
     } finally {
       setLoading(false);
     }
@@ -151,7 +151,7 @@ const Relatorios: React.FC = () => {
 
   const exportExcel = () => {
     if (!data) {
-      toast.error('Nao ha dados para exportar');
+      toast.error('Não há dados para exportar');
       return;
     }
 
@@ -195,7 +195,7 @@ const Relatorios: React.FC = () => {
   if (!data && loading) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-bold lg:text-3xl">Relatorios</h1>
+        <h1 className="text-2xl font-bold lg:text-3xl">Relatórios</h1>
         <p className="text-muted-foreground">Carregando dados...</p>
       </div>
     );
@@ -205,8 +205,8 @@ const Relatorios: React.FC = () => {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold lg:text-3xl">Relatorios</h1>
-          <p className="text-muted-foreground">Clientes, produtos, pedidos, agendamentos e faturamento por periodo</p>
+          <h1 className="text-2xl font-bold lg:text-3xl">Relatórios</h1>
+          <p className="text-muted-foreground">Clientes, produtos, pedidos, agendamentos e faturamento por período</p>
         </div>
         <div className="grid grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-6">
           <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
@@ -233,7 +233,7 @@ const Relatorios: React.FC = () => {
             onChange={(event) => setPeriodGroup(event.target.value as 'daily' | 'monthly' | 'yearly')}
             className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
-            <option value="daily">Diario</option>
+            <option value="daily">Diário</option>
             <option value="monthly">Mensal</option>
             <option value="yearly">Anual</option>
           </select>
@@ -260,10 +260,10 @@ const Relatorios: React.FC = () => {
 
       <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
         {customerFilter ? <span className="rounded-full border border-border px-3 py-1">Cliente: {customerFilter}</span> : null}
-        {serviceFilter ? <span className="rounded-full border border-border px-3 py-1">Servico: {serviceFilter}</span> : null}
+        {serviceFilter ? <span className="rounded-full border border-border px-3 py-1">Serviço: {serviceFilter}</span> : null}
         {dayFilter ? <span className="rounded-full border border-border px-3 py-1">Dia: {dayFilter}</span> : null}
         <span className="rounded-full border border-border px-3 py-1">
-          Agrupamento: {periodGroup === 'yearly' ? 'Anual' : periodGroup === 'monthly' ? 'Mensal' : 'Diario'}
+          Agrupamento: {periodGroup === 'yearly' ? 'Anual' : periodGroup === 'monthly' ? 'Mensal' : 'Diário'}
         </span>
       </div>
 
@@ -337,7 +337,7 @@ const Relatorios: React.FC = () => {
         <Card>
           <CardHeader>
             <CardTitle>
-              Faturamento por {periodGroup === 'yearly' ? 'ano' : periodGroup === 'monthly' ? 'mes' : 'dia'}
+              Faturamento por {periodGroup === 'yearly' ? 'ano' : periodGroup === 'monthly' ? 'mês' : 'dia'}
             </CardTitle>
           </CardHeader>
           <CardContent>

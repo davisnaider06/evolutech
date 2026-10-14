@@ -92,7 +92,7 @@ const CardResultado: React.FC<{
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium leading-tight">{linha.professional_name}</p>
           <p className="text-xs text-muted-foreground">
-            {linha.service_commission_pct}% servico
+            {linha.service_commission_pct}% serviço
             {Number(linha.product_revenue || 0) > 0
               ? ` - ${linha.product_commission_pct}% produto`
               : ''}
@@ -109,7 +109,7 @@ const CardResultado: React.FC<{
 
       <dl className="space-y-1.5 text-sm">
         <div className="flex items-baseline justify-between gap-2">
-          <dt className="text-muted-foreground">Vendeu em servicos</dt>
+          <dt className="text-muted-foreground">Vendeu em serviços</dt>
           <dd className="font-medium tabular-nums">{toMoney(Number(linha.service_revenue || 0))}</dd>
         </div>
 
@@ -131,7 +131,7 @@ const CardResultado: React.FC<{
 
         {Number(linha.monthly_adjustments || 0) !== 0 && (
           <div className="flex items-baseline justify-between gap-2">
-            <dt className="text-muted-foreground">Ajustes do mes</dt>
+            <dt className="text-muted-foreground">Ajustes do mês</dt>
             <dd className="tabular-nums">{toMoney(Number(linha.monthly_adjustments || 0))}</dd>
           </div>
         )}
@@ -211,7 +211,7 @@ const Comissoes: React.FC = () => {
         setSelectedProfessionalId(normalizedProfiles[0].professional_id);
       }
     } catch (error: any) {
-      toast.error(error?.message || 'Erro ao carregar comissoes');
+      toast.error(error?.message || 'Erro ao carregar comissões');
     } finally {
       setLoading(false);
     }
@@ -271,7 +271,7 @@ const Comissoes: React.FC = () => {
         product_commission_pct: Number(productPct || 0),
         monthly_fixed_amount: Number(monthlyFixed || 0),
       });
-      toast.success('Regra de comissao salva');
+      toast.success('Regra de comissão salva');
       await loadData();
     } catch (error: any) {
       toast.error(error?.message || 'Erro ao salvar regra');
@@ -329,9 +329,9 @@ const Comissoes: React.FC = () => {
       a.download = `comissoes-${month}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
-      toast.success('Relatorio exportado');
+      toast.success('Relatório exportado');
     } catch (error: any) {
-      toast.error(error?.message || 'Erro ao exportar relatorio');
+      toast.error(error?.message || 'Erro ao exportar relatório');
     }
   };
 
@@ -369,21 +369,21 @@ const Comissoes: React.FC = () => {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Comissoes"
+        title="Comissões"
         description={
           isOwner
             ? 'Controle mensal por barbeiro/profissional'
-            : 'Seu resultado do mes. Cada profissional ve apenas os proprios numeros.'
+            : 'Seu resultado do mês. Cada profissional vê apenas os próprios números.'
         }
       />
 
       <Card>
         <CardHeader>
-          <CardTitle>{isOwner ? 'Resultado por barbeiro' : 'Seu resultado do mes'}</CardTitle>
+          <CardTitle>{isOwner ? 'Resultado por barbeiro' : 'Seu resultado do mês'}</CardTitle>
           <CardDescription>
             {isOwner
-              ? 'Quanto cada um produziu no mes, quanto fica com ele e quanto sobra para a casa.'
-              : 'Quanto voce produziu no mes e quanto disso e sua comissao.'}
+              ? 'Quanto cada um produziu no mês, quanto fica com ele e quanto sobra para a casa.'
+              : 'Quanto você produziu no mês e quanto disso e sua comissão.'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -391,8 +391,8 @@ const Comissoes: React.FC = () => {
             <p className="text-sm text-muted-foreground">Carregando...</p>
           ) : rows.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Nenhum resultado neste mes. A comissao de servico vem dos agendamentos marcados
-              como concluidos; a de produto, das vendas no PDV.
+              Nenhum resultado neste mês. A comissão de serviço vem dos agendamentos marcados
+              como concluídos; a de produto, das vendas no PDV.
             </p>
           ) : (
             <>
@@ -413,13 +413,13 @@ const Comissoes: React.FC = () => {
               {isOwner && rows.length > 1 && (
                 <div className="mt-4 flex flex-wrap gap-x-8 gap-y-2 border-t pt-3 text-sm">
                   <span className="text-muted-foreground">
-                    Receita do mes:{' '}
+                    Receita do mês:{' '}
                     <strong className="tabular-nums text-foreground">
                       {toMoney(summary.service + summary.product)}
                     </strong>
                   </span>
                   <span className="text-muted-foreground">
-                    Comissoes:{' '}
+                    Comissões:{' '}
                     <strong className="tabular-nums text-foreground">
                       {toMoney(summary.total)}
                     </strong>
@@ -439,20 +439,20 @@ const Comissoes: React.FC = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle>Periodo e exportacao</CardTitle>
-          <CardDescription>Fechamento mensal de comissoes por profissional.</CardDescription>
+          <CardTitle>Período e exportação</CardTitle>
+          <CardDescription>Fechamento mensal de comissões por profissional.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-3">
           <div className="space-y-1">
-            <Label>Mes</Label>
+            <Label>Mês</Label>
             <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label>Receita servicos</Label>
+            <Label>Receita serviços</Label>
             <Input readOnly value={toMoney(summary.service)} />
           </div>
           <div className="space-y-1">
-            <Label>Total comissoes</Label>
+            <Label>Total comissões</Label>
             <Input readOnly value={toMoney(summary.total)} />
           </div>
           <Button variant="outline" onClick={loadData} disabled={loading}>
@@ -466,7 +466,7 @@ const Comissoes: React.FC = () => {
       <Card>
         <CardHeader>
           <CardTitle>Regra por profissional</CardTitle>
-          <CardDescription>Comissao por servico, produto e valor fixo mensal.</CardDescription>
+          <CardDescription>Comissão por serviço, produto e valor fixo mensal.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-5">
           <div className="space-y-1 md:col-span-2">
@@ -485,7 +485,7 @@ const Comissoes: React.FC = () => {
             </select>
           </div>
           <div className="space-y-1">
-            <Label>% servico</Label>
+            <Label>% serviço</Label>
             <Input type="number" min={0} max={100} step="0.01" value={servicePct} onChange={(e) => setServicePct(e.target.value)} />
           </div>
           <div className="space-y-1">
@@ -506,10 +506,10 @@ const Comissoes: React.FC = () => {
       {isOwner ? (
       <Card>
         <CardHeader>
-          <CardTitle>Ajuste de comissao</CardTitle>
+          <CardTitle>Ajuste de comissão</CardTitle>
           <CardDescription>
-            Bonus ou desconto manual. Informe o dia para lancar em uma data especifica,
-            ou deixe vazio para aplicar no fechamento do mes inteiro.
+            Bônus ou desconto manual. Informe o dia para lançar em uma data específica,
+            ou deixe vazio para aplicar no fechamento do mês inteiro.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-5">
@@ -522,7 +522,7 @@ const Comissoes: React.FC = () => {
               max={lastDayOfMonth}
               onChange={(e) => setAdjustmentDate(e.target.value)}
             />
-            <p className="text-xs text-muted-foreground">Vazio = mes inteiro</p>
+            <p className="text-xs text-muted-foreground">Vazio = mês inteiro</p>
           </div>
           <div className="space-y-1">
             <Label>Valor (+/-)</Label>
@@ -552,9 +552,9 @@ const Comissoes: React.FC = () => {
       {/* Extrato dia a dia dos ajustes do mes. */}
       <Card>
         <CardHeader>
-          <CardTitle>Historico de ajustes do mes</CardTitle>
+          <CardTitle>Histórico de ajustes do mês</CardTitle>
           <CardDescription>
-            Cada aumento ou desconto lancado, com o dia e o motivo.
+            Cada aumento ou desconto lançado, com o dia e o motivo.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -563,7 +563,7 @@ const Comissoes: React.FC = () => {
           ) : !selectedProfessionalId ? (
             <p className="text-sm text-muted-foreground">Selecione um profissional.</p>
           ) : adjustments.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nenhum ajuste lancado neste mes.</p>
+            <p className="text-sm text-muted-foreground">Nenhum ajuste lançado neste mês.</p>
           ) : (
             <div className="space-y-2">
               {adjustments.map((item) => (
@@ -575,7 +575,7 @@ const Comissoes: React.FC = () => {
                     <p className="font-medium">
                       {item.ref_date
                         ? new Date(`${item.ref_date}T12:00:00`).toLocaleDateString('pt-BR')
-                        : 'Mes inteiro'}
+                        : 'Mês inteiro'}
                       {' - '}
                       <span className={item.amount < 0 ? 'text-destructive' : 'text-emerald-600'}>
                         {toMoney(item.amount)}
@@ -604,7 +604,7 @@ const Comissoes: React.FC = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle>Relatorio por profissional</CardTitle>
+          <CardTitle>Relatório por profissional</CardTitle>
           <CardDescription>Apuracao mensal consolidada.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -613,15 +613,15 @@ const Comissoes: React.FC = () => {
               <thead>
                 <tr className="border-b text-left text-muted-foreground">
                   <th className="p-2">Profissional</th>
-                  <th className="p-2">Servicos</th>
+                  <th className="p-2">Serviços</th>
                   <th className="p-2">Produtos</th>
-                  <th className="p-2">Com. Servicos</th>
+                  <th className="p-2">Com. Serviços</th>
                   <th className="p-2">Com. Produtos</th>
                   <th className="p-2">Fixo/Ajustes</th>
                   <th className="p-2">Total</th>
                   <th className="p-2">Pagamento</th>
                   <th className="p-2">Pago em</th>
-                  {isOwner ? <th className="p-2">Acoes</th> : null}
+                  {isOwner ? <th className="p-2">Ações</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -670,7 +670,7 @@ const Comissoes: React.FC = () => {
                 {!loading && rows.length === 0 && (
                   <tr>
                     <td className="p-3 text-muted-foreground" colSpan={isOwner ? 10 : 9}>
-                      Nenhum dado de comissao para o periodo.
+                      Nenhum dado de comissão para o período.
                     </td>
                   </tr>
                 )}

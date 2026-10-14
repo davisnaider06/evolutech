@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { adminService } from '@/services/admin';
+import { ModulosDaEmpresaDialog } from '@/components/admin/ModulosDaEmpresaDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,7 +20,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Plus, Building2, MoreVertical, Trash2, Power, PowerOff, Pencil, Upload } from 'lucide-react';
+import { Plus, Building2, MoreVertical, Trash2, Power, PowerOff, Pencil, Upload, LayoutGrid } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,6 +59,7 @@ const Empresas: React.FC = () => {
   const [creating, setCreating] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [selectedEmpresa, setSelectedEmpresa] = useState<Tenant | null>(null);
+  const [empresaModulos, setEmpresaModulos] = useState<Tenant | null>(null);
   const createLogoInputRef = useRef<HTMLInputElement>(null);
   const [createLogoPreview, setCreateLogoPreview] = useState<string | null>(null);
   const [createLogoDataUrl, setCreateLogoDataUrl] = useState<string | null>(null);
@@ -121,7 +123,7 @@ const Empresas: React.FC = () => {
     const file = event.target.files?.[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
-      toast.error('A logo deve ter no maximo 2MB');
+      toast.error('A logo deve ter no máximo 2MB');
       return;
     }
 
@@ -138,7 +140,7 @@ const Empresas: React.FC = () => {
     e.preventDefault();
 
     if (!formData.empresaNome || !formData.sistemaBaseId) {
-      toast.error('Preencha os campos obrigatorios');
+      toast.error('Preencha os campos obrigatórios');
       return;
     }
 
@@ -245,7 +247,7 @@ const Empresas: React.FC = () => {
     try {
       await adminService.excluirTenant(empresa.id);
       setEmpresas((prev) => prev.filter((item) => item.id !== empresa.id));
-      toast.success('Empresa excluida');
+      toast.success('Empresa excluída');
     } catch (error: any) {
       toast.error(error.message || 'Erro ao excluir empresa');
     }
@@ -256,7 +258,7 @@ const Empresas: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold lg:text-3xl">Empresas</h1>
-          <p className="text-muted-foreground">Crie a empresa e vincule o sistema base. O dono e equipe sao cadastrados depois.</p>
+          <p className="text-muted-foreground">Crie a empresa e vincule o sistema base. O dono e equipe são cadastrados depois.</p>
         </div>
         <Button className="gap-2" onClick={() => setIsDialogOpen(true)}>
           <Plus className="h-4 w-4" />
@@ -279,7 +281,7 @@ const Empresas: React.FC = () => {
                   <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Plano</th>
                   <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Status</th>
                   <th className="px-6 py-4 text-left text-sm font-medium text-muted-foreground">Criado em</th>
-                  <th className="px-6 py-4 text-right text-sm font-medium text-muted-foreground">Acoes</th>
+                  <th className="px-6 py-4 text-right text-sm font-medium text-muted-foreground">Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -321,6 +323,9 @@ const Empresas: React.FC = () => {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => openEdit(empresa)}>
                             <Pencil className="h-4 w-4 mr-2" />Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setEmpresaModulos(empresa)}>
+                            <LayoutGrid className="h-4 w-4 mr-2" />Módulos
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => toggleStatus(empresa)}>
                             {empresa.status === 'active' ? (
@@ -401,7 +406,7 @@ const Empresas: React.FC = () => {
                 </button>
                 <div className="text-sm text-muted-foreground">
                   <p>Selecione a logo da empresa (opcional).</p>
-                  <p>Formatos: PNG/JPG/WEBP/SVG ate 2MB.</p>
+                  <p>Formatos: PNG/JPG/WEBP/SVG até 2MB.</p>
                 </div>
               </div>
               <input
@@ -495,6 +500,7 @@ const Empresas: React.FC = () => {
         </DialogContent>
       </Dialog>
 
+      <ModulosDaEmpresaDialog empresa={empresaModulos} onOpenChange={(open) => !open && setEmpresaModulos(null)} />
     </div>
   );
 };

@@ -17,6 +17,7 @@ import { EmpresaLayout } from "@/components/layouts/EmpresaLayout";
 // Public pages
 import Index from "./pages/Index";
 import Login from "./pages/Login";
+import RedefinirSenha from "./pages/RedefinirSenha";
 import EscolhaAcesso from "./pages/EscolhaAcesso";
 import AcceptInvite from "./pages/AcceptInvite";
 import NotFound from "./pages/NotFound";
@@ -97,6 +98,10 @@ const App = () => (
                 <Route path="/cliente/cadastro" element={<CustomerRegister />} />
                 <Route path="/cliente/:slug/login" element={<CustomerLogin />} />
                 <Route path="/cliente/:slug/cadastro" element={<CustomerRegister />} />
+                <Route path="/cliente/:slug/esqueci-senha" element={<RedefinirSenha tipo="cliente" />} />
+                <Route path="/cliente/:slug/redefinir-senha" element={<RedefinirSenha tipo="cliente" />} />
+                <Route path="/esqueci-senha" element={<RedefinirSenha tipo="equipe" />} />
+                <Route path="/redefinir-senha" element={<RedefinirSenha tipo="equipe" />} />
                 <Route path="/cliente" element={<Navigate to="/cliente/login" replace />} />
                 <Route
                   path="/cliente/dashboard"
@@ -327,7 +332,9 @@ const App = () => (
                   <Route
                     path="/empresa/fidelidade"
                     element={
-                      <AuthGuard allowedRoles={['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA']}>
+                      // So o dono: a tela le e grava a regra de pontos, que o
+                      // backend restringe ao dono. O funcionario abria e via erro.
+                      <AuthGuard allowedRoles={['DONO_EMPRESA']}>
                         <ModuleGuard moduleCode="loyalty">
                           <Fidelidade />
                         </ModuleGuard>

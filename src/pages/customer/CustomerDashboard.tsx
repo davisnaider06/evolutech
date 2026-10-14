@@ -23,7 +23,8 @@ import {
   CustomerPlanCatalogItem,
   CustomerSubscription,
 } from '@/types/customer-portal';
-import { formatarDataHora, hojeNaBarbearia } from '@/lib/horario';
+import { formatarData, formatarDataHora, hojeNaBarbearia } from '@/lib/horario';
+import { AtivarNotificacoes } from '@/components/notificacoes/AtivarNotificacoes';
 
 /**
  * Hora da barbearia, sempre.
@@ -39,6 +40,47 @@ const formatDateTime = (value?: string | null) => {
 
 const formatCurrency = (value?: number | null) =>
   Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+// O cliente le "Confirmado", nao "confirmado" nem "no_show".
+const STATUS_AGENDAMENTO: Record<string, { texto: string; classe: string }> = {
+  pendente: { texto: 'Aguardando confirmação', classe: 'border-amber-500/40 text-amber-600' },
+  confirmado: { texto: 'Confirmado', classe: 'border-emerald-500/40 text-emerald-600' },
+  concluido: { texto: 'Concluído', classe: 'text-muted-foreground' },
+  cancelado: { texto: 'Cancelado', classe: 'text-muted-foreground' },
+  no_show: { texto: 'Não compareceu', classe: 'text-muted-foreground' },
+};
+const statusAgendamento = (status: string) =>
+  STATUS_AGENDAMENTO[status] || { texto: status, classe: 'text-muted-foreground' };
+
+const STATUS_ASSINATURA: Record<string, string> = {
+  active: 'Ativa',
+  pending: 'Aguardando pagamento',
+  overdue: 'Vencida',
+  expired: 'Encerrada',
+  canceled: 'Cancelada',
+  suspended: 'Suspensa',
+};
+
+const PERIODO: Record<string, string> = {
+  monthly: 'por mês',
+  quarterly: 'por trimestre',
+  yearly: 'por ano',
+};
+
+const rotuloServico = (service: { name: string; duration_minutes?: number; price?: number }) => {
+  const detalhes = [
+    service.duration_minutes ? `${service.duration_minutes} min` : '',
+    Number(service.price || 0) > 0 ? formatCurrency(service.price) : '',
+  ].filter(Boolean);
+  return detalhes.length ? `${service.name} — ${detalhes.join(' · ')}` : service.name;
+};
+
+const resumoPlano = (plan: { is_unlimited: boolean; included_services?: number | null }) =>
+  plan.is_unlimited
+    ? 'Serviços ilimitados no período'
+    : plan.included_services
+      ? `${plan.included_services} serviços no período`
+      : '';
 
 const CustomerDashboard: React.FC = () => {
   const [dashboard, setDashboard] = useState<CustomerDashboardResponse | null>(null);
@@ -83,7 +125,7 @@ const CustomerDashboard: React.FC = () => {
 
     const firstError = results.find((result) => result.status === 'rejected');
     if (firstError?.status === 'rejected') {
-      toast.error(firstError.reason?.message || 'Alguns dados do portal nao puderam ser carregados');
+      toast.error(firstError.reason?.message || 'Alguns dados do portal não puderam ser carregados');
     }
     setLoading(false);
   };
@@ -111,7 +153,7 @@ const CustomerDashboard: React.FC = () => {
       } catch (error: any) {
         setAvailableSlots([]);
         setAppointmentForm((old) => ({ ...old, scheduled_at: '' }));
-        toast.error(error.message || 'Erro ao carregar horarios disponiveis');
+        toast.error(error.message || 'Erro ao carregar horários disponíveis');
       } finally {
         setLoadingSlots(false);
       }
@@ -125,7 +167,7 @@ const CustomerDashboard: React.FC = () => {
   const handleCreateAppointment = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!appointmentForm.service_id || !appointmentForm.professional_id || !appointmentForm.date || !appointmentForm.scheduled_at) {
-      toast.error('Preencha servico, profissional, data e horario');
+      toast.error('Escolha serviço, profissional, dia e horário');
       return;
     }
     setCreatingAppointment(true);
@@ -135,26 +177,26 @@ const CustomerDashboard: React.FC = () => {
         professional_id: appointmentForm.professional_id,
         scheduled_at: appointmentForm.scheduled_at,
       });
-      toast.success('Agendamento criado com sucesso');
+      toast.success('Horário marcado!');
       setAppointmentForm({ service_id: '', professional_id: '', date: '', scheduled_at: '' });
       setAvailableSlots([]);
       await loadData();
     } catch (error: any) {
-      toast.error(error.message || 'Nao foi possivel agendar');
+      toast.error(error.message || 'Não foi possível agendar');
     } finally {
       setCreatingAppointment(false);
     }
   };
 
   const handleCancelAppointment = async (appointmentId: string) => {
-    if (!window.confirm('Deseja cancelar este agendamento?')) return;
+    if (!window.confirm('Cancelar este horário?')) return;
     setCancelingId(appointmentId);
     try {
       await customerPortalService.cancelAppointment(appointmentId);
-      toast.success('Agendamento cancelado');
+      toast.success('Horário cancelado');
       await loadData();
     } catch (error: any) {
-      toast.error(error.message || 'Nao foi possivel cancelar');
+      toast.error(error.message || 'Não foi possível cancelar');
     } finally {
       setCancelingId(null);
     }
@@ -174,7 +216,7 @@ const CustomerDashboard: React.FC = () => {
         payment_method: paymentMethod,
       });
       setSubscriptionPaymentResult(result.payment_gateway || null);
-      toast.success('Assinatura criada. Finalize o pagamento para ativacao.');
+      toast.success('Assinatura criada. Finalize o pagamento para ativar.');
       await loadData();
     } catch (error: any) {
       toast.error(error.message || 'Falha ao assinar plano');
@@ -191,10 +233,41 @@ const CustomerDashboard: React.FC = () => {
     );
   }
 
+  // Proximos em ordem de data (o mais perto primeiro); o resto e historico.
+  // A API devolve tudo do mais novo para o mais velho, e o horario de
+  // amanha ficava escondido no meio da lista.
+  const agora = Date.now();
+  const proximos = appointments
+    .filter((item) => canCancelStatus.has(item.status) && new Date(item.scheduled_at).getTime() >= agora)
+    .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
+  const historico = appointments.filter((item) => !proximos.includes(item));
+  const proximo = proximos[0];
+  const planosAtivos = new Set(
+    subscriptions.filter((item) => item.status === 'active' || item.status === 'pending').map((item) => item.plan?.id)
+  );
+  const agendaDisponivel = Boolean(bookingOptions?.services?.length && bookingOptions?.professionals?.length);
+
+  const linhaAgendamento = (item: CustomerAppointment) => {
+    const status = statusAgendamento(item.status);
+    return (
+      <div key={item.id} className="flex items-center justify-between gap-3 rounded-md border p-3">
+        <div className="min-w-0">
+          <p className="font-medium">{item.service_name || 'Serviço'}</p>
+          <p className="text-sm text-muted-foreground">
+            {formatDateTime(item.scheduled_at)} · {item.professional_name || 'Profissional'}
+          </p>
+        </div>
+        <Badge variant="outline" className={`shrink-0 ${status.classe}`}>
+          {status.texto}
+        </Badge>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-6xl space-y-6 p-4 md:p-8">
-        <div className="flex flex-col gap-4 rounded-xl border bg-card p-4 md:flex-row md:items-center md:justify-between">
+      <div className="mx-auto max-w-3xl space-y-5 p-4 md:p-8">
+        <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             {company?.logo_url ? (
               <img
@@ -204,194 +277,231 @@ const CustomerDashboard: React.FC = () => {
               />
             ) : null}
             <div>
-              <h1 className="text-2xl font-bold">Portal do Cliente</h1>
-              <p className="text-sm text-muted-foreground">
-                {customer?.name} - {company?.name}
-              </p>
+              <h1 className="text-xl font-bold">{company?.name || 'Meus horários'}</h1>
+              <p className="text-sm text-muted-foreground">Olá, {customer?.name?.split(' ')[0]}</p>
             </div>
           </div>
-          <Button variant="outline" onClick={handleLogout}>
+          <Button variant="ghost" size="sm" onClick={handleLogout}>
             Sair
           </Button>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2">
-          <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Agendamentos</p><p className="text-xl font-bold">{dashboard?.summary.appointments_total || 0}</p></CardContent></Card>
-          <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Proximos</p><p className="text-xl font-bold">{dashboard?.summary.upcoming_appointments || 0}</p></CardContent></Card>
-        </div>
+        {/* O que o cliente abre o portal para saber: quando e o proximo
+            horario. Antes o topo eram dois numeros (total e proximos). */}
+        <Card className="border-primary/40">
+          <CardContent className="p-4">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Seu próximo horário</p>
+            {proximo ? (
+              <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <p className="text-2xl font-bold">{formatDateTime(proximo.scheduled_at)}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {proximo.service_name || 'Serviço'} com {proximo.professional_name || 'profissional'}
+                  </p>
+                  <Badge variant="outline" className={`mt-2 ${statusAgendamento(proximo.status).classe}`}>
+                    {statusAgendamento(proximo.status).texto}
+                  </Badge>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="self-start text-muted-foreground sm:self-end"
+                  disabled={cancelingId === proximo.id}
+                  onClick={() => handleCancelAppointment(proximo.id)}
+                >
+                  {cancelingId === proximo.id ? 'Cancelando...' : 'Cancelar horário'}
+                </Button>
+              </div>
+            ) : (
+              <p className="mt-1 text-sm text-muted-foreground">Nenhum horário marcado. Agende abaixo.</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <AtivarNotificacoes
+          api={customerPortalService}
+          textos={{
+            ativo: 'Este aparelho recebe a confirmação e os lembretes dos seus horários.',
+            convite: 'Receba a confirmação do agendamento e lembretes um dia, uma hora e 15 minutos antes.',
+          }}
+        />
 
         <Tabs defaultValue="appointments" className="space-y-4">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="appointments">Agendamentos</TabsTrigger>
-            <TabsTrigger value="subscriptions">Assinaturas</TabsTrigger>
+            <TabsTrigger value="appointments">Horários</TabsTrigger>
+            <TabsTrigger value="subscriptions">Planos</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="appointments">
+          <TabsContent value="appointments" className="space-y-4">
             <Card>
-              <CardHeader>
-                <CardTitle>Meus Agendamentos</CardTitle>
-                <CardDescription>Visualize e cancele agendamentos pendentes.</CardDescription>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">Marcar horário</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <form className="grid gap-2 rounded border p-3 md:grid-cols-5" onSubmit={handleCreateAppointment}>
-                  <select
-                    className="h-10 rounded border border-input bg-background px-2 text-sm text-foreground"
-                    value={appointmentForm.service_id}
-                    onChange={(event) =>
-                      setAppointmentForm((old) => ({
-                        ...old,
-                        service_id: event.target.value,
-                        scheduled_at: '',
-                      }))
-                    }
-                  >
-                    <option value="">Servico</option>
-                    {(bookingOptions?.services || []).map((item) => (
-                      <option key={item.id} value={item.id}>{item.name}</option>
-                    ))}
-                  </select>
-                  <select
-                    className="h-10 rounded border border-input bg-background px-2 text-sm text-foreground"
-                    value={appointmentForm.professional_id}
-                    onChange={(event) =>
-                      setAppointmentForm((old) => ({
-                        ...old,
-                        professional_id: event.target.value,
-                        scheduled_at: '',
-                      }))
-                    }
-                  >
-                    <option value="">Profissional</option>
-                    {(bookingOptions?.professionals || []).map((item) => (
-                      <option key={item.id} value={item.id}>{item.name}</option>
-                    ))}
-                  </select>
-                  <input
-                    className="h-10 rounded border border-input bg-background px-2 text-sm text-foreground"
-                    type="date"
-                    min={hojeNaBarbearia()}
-                    value={appointmentForm.date}
-                    onChange={(event) =>
-                      setAppointmentForm((old) => ({
-                        ...old,
-                        date: event.target.value,
-                        scheduled_at: '',
-                      }))
-                    }
-                  />
-                  <select
-                    className="h-10 rounded border border-input bg-background px-2 text-sm text-foreground"
-                    value={appointmentForm.scheduled_at}
-                    onChange={(event) => setAppointmentForm((old) => ({ ...old, scheduled_at: event.target.value }))}
-                    disabled={
-                      !appointmentForm.date ||
-                      !appointmentForm.service_id ||
-                      !appointmentForm.professional_id ||
-                      loadingSlots
-                    }
-                  >
-                    <option value="">
-                      {loadingSlots
-                        ? 'Carregando horarios...'
-                        : !appointmentForm.date
-                          ? 'Selecione a data'
-                          : 'Selecione um horario'}
-                    </option>
-                    {availableSlots.map((slot) => (
-                      <option key={slot.scheduled_at} value={slot.scheduled_at}>
-                        {slot.time}
-                      </option>
-                    ))}
-                  </select>
-                  <Button type="submit" disabled={creatingAppointment || !appointmentForm.scheduled_at}>
-                    {creatingAppointment ? 'Agendando...' : 'Novo agendamento'}
-                  </Button>
-                </form>
-                {(!bookingOptions?.services?.length || !bookingOptions?.professionals?.length) && (
+              <CardContent>
+                {!agendaDisponivel ? (
                   <p className="text-sm text-muted-foreground">
-                    Agendamento indisponivel no momento: a empresa precisa publicar um servico e configurar a disponibilidade de um profissional.
+                    A agenda online ainda não está aberta. Fale com a barbearia para marcar.
                   </p>
-                )}
-                {appointments.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Nenhum agendamento encontrado.</p>
                 ) : (
-                  appointments.map((item) => (
-                    <div key={item.id} className="flex flex-col gap-2 rounded border p-3 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <p className="font-medium">{item.service_name || 'Servico nao informado'}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {formatDateTime(item.scheduled_at)} • Profissional: {item.professional_name || '-'}
-                        </p>
+                  // Mesma ordem do link publico: servico (com preco),
+                  // profissional, dia e horario em botoes.
+                  <form className="space-y-3" onSubmit={handleCreateAppointment}>
+                    <select
+                      aria-label="Serviço"
+                      className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                      value={appointmentForm.service_id}
+                      onChange={(event) =>
+                        setAppointmentForm((old) => ({ ...old, service_id: event.target.value, scheduled_at: '' }))
+                      }
+                    >
+                      <option value="">1. Escolha o serviço</option>
+                      {(bookingOptions?.services || []).map((item) => (
+                        <option key={item.id} value={item.id}>{rotuloServico(item)}</option>
+                      ))}
+                    </select>
+                    <select
+                      aria-label="Profissional"
+                      className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                      value={appointmentForm.professional_id}
+                      onChange={(event) =>
+                        setAppointmentForm((old) => ({ ...old, professional_id: event.target.value, scheduled_at: '' }))
+                      }
+                    >
+                      <option value="">2. Escolha o profissional</option>
+                      {(bookingOptions?.professionals || []).map((item) => (
+                        <option key={item.id} value={item.id}>{item.name}</option>
+                      ))}
+                    </select>
+                    <input
+                      aria-label="Dia"
+                      className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                      type="date"
+                      min={hojeNaBarbearia()}
+                      value={appointmentForm.date}
+                      onChange={(event) =>
+                        setAppointmentForm((old) => ({ ...old, date: event.target.value, scheduled_at: '' }))
+                      }
+                    />
+                    {availableSlots.length > 0 ? (
+                      <div className="grid grid-cols-4 gap-2 sm:grid-cols-6" role="radiogroup" aria-label="Horários livres">
+                        {availableSlots.map((slot) => {
+                          const ativo = appointmentForm.scheduled_at === slot.scheduled_at;
+                          return (
+                            <button
+                              key={slot.scheduled_at}
+                              type="button"
+                              role="radio"
+                              aria-checked={ativo}
+                              onClick={() => setAppointmentForm((old) => ({ ...old, scheduled_at: slot.scheduled_at }))}
+                              className={`h-10 rounded-md border text-sm font-medium transition-colors ${
+                                ativo
+                                  ? 'border-primary bg-primary text-primary-foreground'
+                                  : 'border-input bg-background hover:border-primary'
+                              }`}
+                            >
+                              {slot.time}
+                            </button>
+                          );
+                        })}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline">{item.status}</Badge>
-                        {canCancelStatus.has(item.status) && (
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            disabled={cancelingId === item.id}
-                            onClick={() => handleCancelAppointment(item.id)}
-                          >
-                            {cancelingId === item.id ? 'Cancelando...' : 'Cancelar'}
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  ))
+                    ) : (
+                      <p className="rounded-md border border-dashed border-input px-3 py-3 text-sm text-muted-foreground">
+                        {!appointmentForm.service_id || !appointmentForm.professional_id || !appointmentForm.date
+                          ? 'Escolha serviço, profissional e dia para ver os horários.'
+                          : loadingSlots
+                            ? 'Carregando horários...'
+                            : 'Nenhum horário livre nesse dia. Tente outra data ou outro profissional.'}
+                      </p>
+                    )}
+                    <Button
+                      type="submit"
+                      className="h-11 w-full"
+                      disabled={creatingAppointment || !appointmentForm.scheduled_at}
+                    >
+                      {creatingAppointment ? 'Agendando...' : 'Confirmar horário'}
+                    </Button>
+                  </form>
                 )}
               </CardContent>
             </Card>
+
+            {proximos.length > 1 && (
+              <div className="space-y-2">
+                <h2 className="text-sm font-semibold text-muted-foreground">Outros horários marcados</h2>
+                {proximos.slice(1).map(linhaAgendamento)}
+              </div>
+            )}
+
+            {historico.length > 0 && (
+              <div className="space-y-2">
+                <h2 className="text-sm font-semibold text-muted-foreground">Histórico</h2>
+                {historico.map(linhaAgendamento)}
+              </div>
+            )}
           </TabsContent>
 
-          <TabsContent value="subscriptions">
-            <Card>
-              <CardHeader>
-                <CardTitle>Minhas Assinaturas</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid gap-3 md:grid-cols-2">
+          {/* Primeiro o que o cliente ja tem; depois o que pode contratar.
+              Antes os planos a venda vinham sob "Minhas Assinaturas" e
+              pareciam ser dele. */}
+          <TabsContent value="subscriptions" className="space-y-4">
+            <div className="space-y-2">
+              <h2 className="text-sm font-semibold text-muted-foreground">Seu plano</h2>
+              {subscriptions.length === 0 ? (
+                <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                  Você ainda não tem plano.
+                </p>
+              ) : (
+                subscriptions.map((item) => (
+                  <div key={item.id} className="rounded-md border p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-medium">{item.plan?.name || 'Plano removido'}</p>
+                      <Badge variant="outline">{STATUS_ASSINATURA[item.status] || item.status}</Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {formatCurrency(item.amount)} {PERIODO[item.plan?.interval || ''] || ''}
+                      {item.end_at ? ` · válido até ${formatarData(item.end_at)}` : ''}
+                    </p>
+                    {item.remaining_services != null && !item.plan?.is_unlimited && (
+                      <p className="text-sm">Restam {item.remaining_services} serviços</p>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {plansCatalog.length > 0 && (
+              <div className="space-y-2">
+                <h2 className="text-sm font-semibold text-muted-foreground">Planos disponíveis</h2>
+                <div className="grid gap-3 sm:grid-cols-2">
                   {plansCatalog.map((plan) => (
-                    <div key={plan.id} className="rounded border p-3">
+                    <div key={plan.id} className="flex flex-col rounded-md border p-3">
                       <p className="font-medium">{plan.name}</p>
-                      <p className="text-sm text-muted-foreground">{plan.description || '-'}</p>
-                      <p className="text-sm">Valor: {formatCurrency(plan.price)}</p>
-                      <Button
-                        size="sm"
-                        className="mt-2"
-                        onClick={() => {
-                          setSubscribePlanId(plan.id);
-                          setPaymentMethod('pix');
-                          setSubscriptionPaymentResult(null);
-                        }}
-                      >
-                        Assinar plano
-                      </Button>
+                      <p className="text-lg font-bold">
+                        {formatCurrency(plan.price)}{' '}
+                        <span className="text-sm font-normal text-muted-foreground">{PERIODO[plan.interval] || ''}</span>
+                      </p>
+                      {resumoPlano(plan) && <p className="text-sm text-muted-foreground">{resumoPlano(plan)}</p>}
+                      {plan.description && <p className="text-sm text-muted-foreground">{plan.description}</p>}
+                      {planosAtivos.has(plan.id) ? (
+                        <p className="mt-2 text-sm font-medium text-primary">Você já tem este plano</p>
+                      ) : (
+                        <Button
+                          size="sm"
+                          className="mt-2 self-start"
+                          onClick={() => {
+                            setSubscribePlanId(plan.id);
+                            setPaymentMethod('pix');
+                            setSubscriptionPaymentResult(null);
+                          }}
+                        >
+                          Assinar
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>
-                {plansCatalog.length === 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    Nenhum plano ativo foi publicado pela empresa para compra online.
-                  </p>
-                )}
-                {subscriptions.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Nenhuma assinatura encontrada.</p>
-                ) : (
-                  subscriptions.map((item) => (
-                    <div key={item.id} className="rounded border p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="font-medium">{item.plan?.name || 'Plano removido'}</p>
-                        <Badge variant="outline">{item.status}</Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        Inicio: {formatDateTime(item.start_at)} • Fim: {formatDateTime(item.end_at || undefined)}
-                      </p>
-                      <p className="text-sm">Valor: {formatCurrency(item.amount)}</p>
-                    </div>
-                  ))
-                )}
-              </CardContent>
-            </Card>
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </div>
@@ -419,8 +529,8 @@ const CustomerDashboard: React.FC = () => {
               disabled={!!subscribingPlanId}
             >
               <option value="pix">PIX</option>
-              <option value="credito">Credito</option>
-              <option value="debito">Debito</option>
+              <option value="credito">Crédito</option>
+              <option value="debito">Débito</option>
             </select>
 
             {subscriptionPaymentResult?.qrCodeImageUrl ? (

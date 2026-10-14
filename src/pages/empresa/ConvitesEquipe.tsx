@@ -115,7 +115,7 @@ export default function ConvitesEquipe() {
       setFormData((prev) => ({ ...prev, avatarUrl: url }));
       toast.success('Foto enviada');
     } catch (error: any) {
-      toast.error(error.message || 'Nao consegui enviar a foto');
+      toast.error(error.message || 'Não consegui enviar a foto');
     } finally {
       setEnviandoFoto(false);
     }
@@ -194,7 +194,7 @@ export default function ConvitesEquipe() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Equipe</h1>
-          <p className="text-muted-foreground">Cadastre, edite e remova funcionarios da sua empresa</p>
+          <p className="text-muted-foreground">Cadastre, edite e remova funcionários da sua empresa</p>
         </div>
         <Dialog
           open={isDialogOpen}
@@ -211,11 +211,11 @@ export default function ConvitesEquipe() {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>{editingMemberId ? 'Editar Membro' : 'Cadastrar Novo Funcionario'}</DialogTitle>
+              <DialogTitle>{editingMemberId ? 'Editar Membro' : 'Cadastrar Novo Funcionário'}</DialogTitle>
               <DialogDescription>
                 {editingMemberId
-                  ? 'Atualize os dados do funcionario.'
-                  : 'O novo usuario sera criado com nivel de acesso Funcionario.'}
+                  ? 'Atualize os dados do funcionário.'
+                  : 'O novo usuário será criado com nivel de acesso Funcionário.'}
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSaveMember} className="space-y-4">
@@ -279,7 +279,7 @@ export default function ConvitesEquipe() {
                     ) : null}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    JPG, PNG ou WEBP, ate 3 MB. Sem foto, valem as iniciais.
+                    JPG, PNG ou WEBP, até 3 MB. Sem foto, valem as iniciais.
                   </p>
                 </div>
               </div>
@@ -306,7 +306,7 @@ export default function ConvitesEquipe() {
               <div className="space-y-2">
                 <Label>{editingMemberId ? 'Nova senha (opcional)' : 'Senha inicial (opcional)'}</Label>
                 <Input
-                  placeholder={editingMemberId ? 'Se vazio, mantem a senha atual' : 'Se vazio, gera senha temporaria'}
+                  placeholder={editingMemberId ? 'Se vazio, mantem a senha atual' : 'Se vazio, gera senha temporária'}
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 />
@@ -315,7 +315,7 @@ export default function ConvitesEquipe() {
               {editingMemberId && (
                 <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
                   <div>
-                    <p className="text-sm font-medium">Funcionario ativo</p>
+                    <p className="text-sm font-medium">Funcionário ativo</p>
                     <p className="text-xs text-muted-foreground">Desative para bloquear o acesso sem excluir</p>
                   </div>
                   <Switch
@@ -326,7 +326,7 @@ export default function ConvitesEquipe() {
               )}
 
               <Button type="submit" className="w-full" disabled={isSaving}>
-                {isSaving ? 'Salvando...' : editingMemberId ? 'Salvar Alteracoes' : 'Cadastrar Funcionario'}
+                {isSaving ? 'Salvando...' : editingMemberId ? 'Salvar Alterações' : 'Cadastrar Funcionário'}
               </Button>
             </form>
           </DialogContent>
@@ -339,7 +339,7 @@ export default function ConvitesEquipe() {
             <UserPlus className="h-5 w-5" />
             Membros da Equipe
           </CardTitle>
-          <CardDescription>Usuarios vinculados a sua empresa</CardDescription>
+          <CardDescription>Usuários vinculados a sua empresa</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -354,10 +354,10 @@ export default function ConvitesEquipe() {
                 <TableRow>
                   <TableHead>Nome</TableHead>
                   <TableHead>Email</TableHead>
-                  <TableHead>Funcao</TableHead>
+                  <TableHead>Função</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Desde</TableHead>
-                  <TableHead className="text-right">Acoes</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -380,7 +380,7 @@ export default function ConvitesEquipe() {
                     <TableCell>{member.email}</TableCell>
                     <TableCell>
                       <Badge variant={member.role === 'DONO_EMPRESA' ? 'default' : 'secondary'}>
-                        {member.role === 'DONO_EMPRESA' ? 'Administrador' : 'Funcionario'}
+                        {member.role === 'DONO_EMPRESA' ? 'Administrador' : 'Funcionário'}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -424,12 +424,12 @@ export default function ConvitesEquipe() {
       <Dialog open={!!credentials} onOpenChange={() => setCredentials(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Acesso do Funcionario</DialogTitle>
+            <DialogTitle>Acesso do Funcionário</DialogTitle>
             <DialogDescription>Envie esses dados para o novo membro.</DialogDescription>
           </DialogHeader>
           <div className="space-y-2 text-sm">
             <p><strong>Email:</strong> {credentials?.email}</p>
-            <p><strong>Senha temporaria:</strong> {credentials?.temporaryPassword}</p>
+            <p><strong>Senha temporária:</strong> {credentials?.temporaryPassword}</p>
           </div>
           <Button variant="outline" className="gap-2" onClick={copyCredentials}>
             <Copy className="h-4 w-4" />

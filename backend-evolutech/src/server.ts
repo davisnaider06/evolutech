@@ -20,6 +20,7 @@ import customerRoutes from './routes/customer.routes';
 import { prisma } from './db';
 import { CompanyService } from './services/company.service';
 import { subscriptionBillingService } from './services/subscription-billing.service';
+import { appointmentNotificationService } from './services/appointment-notification.service';
 import { resolveCorsOrigins, isProduction } from './config/secrets';
 import { securityHeaders, apiRateLimit } from './middlewares/security.middleware';
 
@@ -47,6 +48,17 @@ const SUBSCRIPTION_JOB_MS = Math.max(
 const SUBSCRIPTION_JOB_STARTUP_DELAY_MS = Math.max(
   10000,
   Number(process.env.SUBSCRIPTION_BILLING_JOB_STARTUP_DELAY_MS || 45000)
+);
+
+// Lembretes de agendamento (D-1, 1h, 15min). Roda a cada minuto porque o de
+// 15min nao tolera atraso; cada ciclo e uma consulta indexada nas proximas
+// 24h. Ligado por padrao so em producao: o .env local aponta para o banco
+// real, e um `npm run dev` nao pode mandar lembrete para cliente de verdade.
+const APPOINTMENT_REMINDER_JOB_ENABLED =
+  (process.env.APPOINTMENT_REMINDER_JOB_ENABLED ?? (isProduction ? 'true' : 'false')) === 'true';
+const APPOINTMENT_REMINDER_JOB_MS = Math.max(
+  30000,
+  Number(process.env.APPOINTMENT_REMINDER_JOB_MS || 60000)
 );
 
 // Em producao o servico fica atras de um proxy (Vercel, Render e afins).
@@ -220,6 +232,29 @@ const startServer = async () => {
     setInterval(() => {
       void runSubscriptionJob('interval');
     }, SUBSCRIPTION_JOB_MS).unref();
+  }
+
+  if (APPOINTMENT_REMINDER_JOB_ENABLED) {
+    let reminderJobRunning = false;
+
+    const runReminderJob = async () => {
+      if (reminderJobRunning) return;
+      reminderJobRunning = true;
+      try {
+        const resultado = await appointmentNotificationService.executarLembretes();
+        if (resultado.lembretes || resultado.erros) {
+          console.log(`[lembretes] ${resultado.lembretes} enviados, ${resultado.erros} erros`);
+        }
+      } catch (error) {
+        console.warn('Appointment reminder job failed', error);
+      } finally {
+        reminderJobRunning = false;
+      }
+    };
+
+    setInterval(() => {
+      void runReminderJob();
+    }, APPOINTMENT_REMINDER_JOB_MS).unref();
   }
 };
 

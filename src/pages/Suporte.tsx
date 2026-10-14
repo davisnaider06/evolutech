@@ -184,13 +184,13 @@ export default function Suporte() {
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <Input
-                  placeholder="Titulo do problema"
+                  placeholder="Título do problema"
                   value={formData.title}
                   onChange={(e) => setFormData((old) => ({ ...old, title: e.target.value }))}
                   required
                 />
                 <Textarea
-                  placeholder="Descreva o problema com o maximo de contexto util"
+                  placeholder="Descreva o problema com o máximo de contexto util"
                   value={formData.description}
                   onChange={(e) => setFormData((old) => ({ ...old, description: e.target.value }))}
                   required
@@ -205,7 +205,7 @@ export default function Suporte() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="baixa">Baixa</SelectItem>
-                    <SelectItem value="media">Media</SelectItem>
+                    <SelectItem value="media">Média</SelectItem>
                     <SelectItem value="alta">Alta</SelectItem>
                     <SelectItem value="urgente">Urgente</SelectItem>
                   </SelectContent>

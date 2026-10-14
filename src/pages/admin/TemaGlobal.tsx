@@ -353,7 +353,7 @@ export default function TemaGlobal() {
     if (!file || !selectedCompanyId) return;
 
     if (file.size > 2 * 1024 * 1024) {
-      toast.error('A imagem deve ter no maximo 2MB');
+      toast.error('A imagem deve ter no máximo 2MB');
       return;
     }
 
@@ -412,7 +412,7 @@ export default function TemaGlobal() {
       login_cover_path: prev?.login_cover_path || null,
     }));
 
-    toast.info('Cores resetadas para o padrao. Clique em salvar para aplicar.');
+    toast.info('Cores resetadas para o padrão. Clique em salvar para aplicar.');
   };
 
   const selectedCompany = companies.find((company) => company.id === selectedCompanyId);
@@ -545,7 +545,7 @@ export default function TemaGlobal() {
                           <Upload className="h-4 w-4" />
                           Enviar Logo
                         </Button>
-                        <p className="text-xs text-muted-foreground mt-1">PNG, JPG ate 2MB</p>
+                        <p className="text-xs text-muted-foreground mt-1">PNG, JPG até 2MB</p>
                       </div>
                     </div>
                   </div>
@@ -565,19 +565,19 @@ export default function TemaGlobal() {
                 <TabsContent value="colors" className="space-y-4">
                   <div className="grid gap-4 sm:grid-cols-2">
                     <ColorPicker
-                      label="Cor Primaria"
+                      label="Cor Primária"
                       value={theme?.primary_color || DEFAULT_THEME.primary_color}
                       onChange={(value) => setTheme((prev) => (prev ? { ...prev, primary_color: value } : null))}
                     />
                     <ColorPicker
-                      label="Texto Primario"
+                      label="Texto Primário"
                       value={theme?.primary_foreground || DEFAULT_THEME.primary_foreground}
                       onChange={(value) =>
                         setTheme((prev) => (prev ? { ...prev, primary_foreground: value } : null))
                       }
                     />
                     <ColorPicker
-                      label="Cor Secundaria"
+                      label="Cor Secundária"
                       value={theme?.secondary_color || DEFAULT_THEME.secondary_color}
                       onChange={(value) => setTheme((prev) => (prev ? { ...prev, secondary_color: value } : null))}
                     />
@@ -614,7 +614,7 @@ export default function TemaGlobal() {
                       }
                     />
                     <ColorPicker
-                      label="Primaria Sidebar"
+                      label="Primária Sidebar"
                       value={theme?.sidebar_primary || DEFAULT_THEME.sidebar_primary}
                       onChange={(value) => setTheme((prev) => (prev ? { ...prev, sidebar_primary: value } : null))}
                     />
@@ -648,7 +648,7 @@ export default function TemaGlobal() {
                           }}
                         >
                           <span style={{ color: `hsl(${theme?.primary_foreground || DEFAULT_THEME.primary_foreground})` }}>
-                            Botao Primario
+                            Botão Primário
                           </span>
                         </div>
 
@@ -663,7 +663,7 @@ export default function TemaGlobal() {
                           <span
                             style={{ color: `hsl(${theme?.secondary_foreground || DEFAULT_THEME.secondary_foreground})` }}
                           >
-                            Botao Secundario
+                            Botão Secundário
                           </span>
                         </div>
                       </div>

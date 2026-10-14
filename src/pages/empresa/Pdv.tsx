@@ -108,7 +108,7 @@ const Pdv: React.FC = () => {
       const data = await companyService.listPdvProducts(search);
       setCatalog(data || []);
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao carregar catalogo do PDV');
+      toast.error(error.message || 'Erro ao carregar catálogo do PDV');
     } finally {
       setLoading(false);
     }
@@ -292,7 +292,7 @@ const Pdv: React.FC = () => {
         setGatewayQrText(gateway?.qrCodeText || '');
         setGatewayQrImage(gateway?.qrCodeImageUrl || null);
         setGatewayPaymentUrl(gateway?.paymentUrl || '');
-        toast.success('PIX criado. A confirmacao ocorre automaticamente via gateway.');
+        toast.success('PIX criado. A confirmação ocorre automaticamente via gateway.');
       } else {
         resetGatewayView();
         const loyalty = result?.summary?.loyalty;
@@ -321,22 +321,22 @@ const Pdv: React.FC = () => {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold lg:text-3xl">PDV</h1>
-        <p className="text-muted-foreground">Checkout com produtos e servicos da empresa</p>
+        <p className="text-muted-foreground">Checkout com produtos e serviços da empresa</p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Produtos e servicos</CardTitle>
+            <CardTitle>Produtos e serviços</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <Input
-              placeholder="Buscar por nome, SKU ou descricao..."
+              placeholder="Buscar por nome, SKU ou descrição..."
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
             {loading ? (
-              <div className="py-10 text-center text-muted-foreground">Carregando catalogo...</div>
+              <div className="py-10 text-center text-muted-foreground">Carregando catálogo...</div>
             ) : (
               <div className="grid gap-3 md:grid-cols-2">
                 {catalog.map((item) => (
@@ -349,7 +349,7 @@ const Pdv: React.FC = () => {
                     <p className="font-medium">
                       {item.name}
                       <span className="ml-2 text-xs font-normal text-muted-foreground">
-                        {item.type === 'service' ? 'Servico' : 'Produto'}
+                        {item.type === 'service' ? 'Serviço' : 'Produto'}
                       </span>
                     </p>
                     <p className="text-sm text-muted-foreground">
@@ -424,7 +424,7 @@ const Pdv: React.FC = () => {
             <div className="flex items-center justify-between rounded-lg border p-3">
               <div>
                 <p className="text-sm font-medium">Aplicar fidelidade</p>
-                <p className="text-xs text-muted-foreground">Cashback e 10o servico gratis</p>
+                <p className="text-xs text-muted-foreground">Cashback e 10o serviço grátis</p>
               </div>
               <Switch checked={applyLoyalty} onCheckedChange={setApplyLoyalty} />
             </div>
@@ -436,7 +436,7 @@ const Pdv: React.FC = () => {
                 ) : !checkoutPreview ? (
                   <p className="text-xs text-muted-foreground">Informe cliente e itens para calcular beneficios.</p>
                 ) : !checkoutPreview.customer_found ? (
-                  <p className="text-xs text-muted-foreground">Cliente nao encontrado para fidelidade.</p>
+                  <p className="text-xs text-muted-foreground">Cliente não encontrado para fidelidade.</p>
                 ) : !checkoutPreview.loyalty.loyalty_active ? (
                   <p className="text-xs text-muted-foreground">Fidelidade desativada nesta empresa.</p>
                 ) : (
@@ -462,13 +462,13 @@ const Pdv: React.FC = () => {
                       Assinatura ativa: <span className="font-medium">{checkoutPreview.subscription.plan_name || '-'}</span>
                     </p>
                     <p className="text-xs">
-                      Servicos cobertos: {Number(checkoutPreview.subscription.covered_services || 0)}
+                      Serviços cobertos: {Number(checkoutPreview.subscription.covered_services || 0)}
                     </p>
                     <p className="text-xs">
                       Desconto assinatura: R$ {Number(checkoutPreview.subscription.discount || 0).toFixed(2)}
                     </p>
                     <p className="text-xs">
-                      Saldo de servicos: {checkoutPreview.subscription.remaining_services === null ? 'Ilimitado' : checkoutPreview.subscription.remaining_services}
+                      Saldo de serviços: {checkoutPreview.subscription.remaining_services === null ? 'Ilimitado' : checkoutPreview.subscription.remaining_services}
                     </p>
                   </>
                 )}
@@ -498,13 +498,13 @@ const Pdv: React.FC = () => {
                 <SelectContent>
                   <SelectItem value="dinheiro">Dinheiro</SelectItem>
                   <SelectItem value="pix">PIX</SelectItem>
-                  <SelectItem value="credito">Credito (maquininha)</SelectItem>
-                  <SelectItem value="debito">Debito (maquininha)</SelectItem>
+                  <SelectItem value="credito">Crédito (maquininha)</SelectItem>
+                  <SelectItem value="debito">Débito (maquininha)</SelectItem>
                 </SelectContent>
               </Select>
               {isCardMachineFlow ? (
                 <p className="text-xs text-muted-foreground">
-                  Passe o cartao na maquininha e clique em "Finalizar Venda" para registrar no sistema.
+                  Passe o cartão na maquininha e clique em "Finalizar Venda" para registrar no sistema.
                 </p>
               ) : null}
             </div>
@@ -569,7 +569,7 @@ const Pdv: React.FC = () => {
               </Button>
             )}
             <p className="text-sm text-muted-foreground">
-              O pedido sera confirmado automaticamente quando o gateway enviar a confirmacao do pagamento.
+              O pedido será confirmado automaticamente quando o gateway enviar a confirmação do pagamento.
             </p>
           </CardContent>
         </Card>

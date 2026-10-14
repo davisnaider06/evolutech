@@ -14,6 +14,18 @@
  * Rodar de novo NAO duplica: o script e idempotente. Se voce bagunçar tudo
  * testando, rode --remover e monte de novo.
  *
+ * Variaveis (para montar uma demo que nao seja a Felipe Barber de teste):
+ *   DEMO_EMPRESA, DEMO_SLUG, DEMO_DOMINIO   nome, slug e dominio dos e-mails
+ *   DEMO_SENHA_EQUIPE, DEMO_SENHA_CLIENTE   obrigatorias: senha nenhuma fica
+ *                                           escrita no repositorio (ele e publico)
+ *   DEMO_DOMINIO_CLIENTE                    dominio dos e-mails dos clientes
+ *   DEMO_PERFIL=essencial                   deixa ligados so agenda, clientes,
+ *                                           caixa e o obrigatorio
+ *
+ * TRAVA: a empresa e achada pelo SLUG e so e tocada se todos os donos dela
+ * tiverem e-mail do DEMO_DOMINIO. Antes ela era achada pelo nome — rodado em
+ * producao, apagaria agenda e servicos de um cliente real de mesmo nome.
+ *
  * O cenario foi desenhado para exercitar os requisitos do
  * Levantamento_de_Requisitos.pdf: carteira por barbeiro, mensalista com
  * barbeiro, cliente sumido, bloqueio de agenda, ajuste de comissao por dia
@@ -25,9 +37,47 @@ const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 
-const EMPRESA = 'Felipe Barber';
-const SENHA_PADRAO = 'Barber@2026';   // equipe: dono e barbeiros
-const SENHA_CLIENTE = 'Cliente@2026'; // clientes finais, no portal
+const EMPRESA = process.env.DEMO_EMPRESA || 'Felipe Barber';
+const SLUG = process.env.DEMO_SLUG || 'felipe-barber';
+const DOMINIO = (process.env.DEMO_DOMINIO || 'felipebarber.com').toLowerCase();
+const SENHA_PADRAO = process.env.DEMO_SENHA_EQUIPE;   // equipe: dono e barbeiros
+const SENHA_CLIENTE = process.env.DEMO_SENHA_CLIENTE; // clientes finais, no portal
+const PERFIL_ESSENCIAL = process.env.DEMO_PERFIL === 'essencial';
+const ESSENCIAIS = new Set(['agendamentos', 'clientes', 'pdv', 'caixa']);
+const emailEquipe = (nome) => `${nome}@${DOMINIO}`;
+// Dominio dos e-mails dos clientes. Em producao use um que nao entregue a
+// ninguem (ex.: cliente.evolutech.demo): a regua de mensalidades manda e-mail
+// de verdade para o cliente, e @email.com e um dominio real.
+// Mesma regra de src/utils/telefone.util.ts (chaveTelefone): DDD + 8 digitos,
+// sem 55 e sem o nono digito. E assim que o login acha a conta pelo WhatsApp.
+const chaveTelefone = (bruto) => {
+  let d = String(bruto || '').replace(/\D/g, '');
+  if (d.length >= 12 && d.startsWith('55')) d = d.slice(2);
+  if (d.length === 11 && d[2] === '9') d = d.slice(0, 2) + d.slice(3);
+  return d.length === 10 ? d : null;
+};
+const DOMINIO_CLIENTE = (process.env.DEMO_DOMINIO_CLIENTE || 'email.com').toLowerCase();
+
+/**
+ * Acha a empresa da demo pelo slug e confere que e mesmo da demo: todos os
+ * donos com e-mail do dominio da demo. Qualquer outra coisa aborta.
+ */
+async function buscarEmpresaDemo() {
+  const company = await prisma.company.findUnique({
+    where: { slug: SLUG },
+    include: { userRoles: { where: { role: 'DONO_EMPRESA' }, include: { user: { select: { email: true } } } } },
+  });
+  if (!company) return null;
+  const donos = company.userRoles.map((r) => String(r.user.email || '').toLowerCase());
+  const daDemo = donos.length > 0 && donos.every((email) => email.endsWith(`@${DOMINIO}`));
+  if (!daDemo) {
+    throw new Error(
+      `A empresa com slug "${SLUG}" tem dono fora de @${DOMINIO} (${donos.join(', ') || 'sem dono'}). ` +
+        'Nao parece ser a demo: nada foi alterado.'
+    );
+  }
+  return company;
+}
 
 // ---------------------------------------------------------------
 // Helpers de data. Tudo relativo a hoje, para a demo nunca "vencer".
@@ -71,7 +121,7 @@ async function acordarBanco() {
 // DESMONTAR
 // ---------------------------------------------------------------
 async function remover() {
-  const company = await prisma.company.findFirst({ where: { name: EMPRESA } });
+  const company = await buscarEmpresaDemo();
   if (!company) {
     console.log(`"${EMPRESA}" nao existe. Nada a remover.`);
     return;
@@ -110,7 +160,7 @@ async function remover() {
 // da equipe e os modulos liberados.
 // ---------------------------------------------------------------
 async function zerar() {
-  const company = await prisma.company.findFirst({ where: { name: EMPRESA } });
+  const company = await buscarEmpresaDemo();
   if (!company) {
     console.log(`"${EMPRESA}" nao existe. Nada a zerar.`);
     return;
@@ -171,12 +221,15 @@ async function montar() {
   }
 
   // --- Empresa -------------------------------------------------
-  let company = await prisma.company.findFirst({ where: { name: EMPRESA } });
+  if (!SENHA_PADRAO || !SENHA_CLIENTE) {
+    throw new Error('Defina DEMO_SENHA_EQUIPE e DEMO_SENHA_CLIENTE (o repositorio e publico).');
+  }
+  let company = await buscarEmpresaDemo();
   if (!company) {
     company = await prisma.company.create({
       data: {
         name: EMPRESA,
-        slug: 'felipe-barber',
+        slug: SLUG,
         document: '12.345.678/0001-90',
         plan: 'pro',
         status: 'active',
@@ -195,18 +248,28 @@ async function montar() {
 
   // --- Modulos liberados ---------------------------------------
   // Mesma logica do onboarding oficial: libera tudo o que o sistema base traz.
-  for (const bind of sistemaBase.modulos) {
+  // Com DEMO_PERFIL=essencial, so o obrigatorio e agenda, clientes e caixa
+  // (igual ao perfil "Essencial" da tela Empresas > Modulos).
+  const binds = await prisma.sistemaBaseModulo.findMany({
+    where: { sistemaBaseId: sistemaBase.id },
+    include: { modulo: { select: { codigo: true } } },
+  });
+  let ligados = 0;
+  for (const bind of binds) {
     const allowedRoles =
       Array.isArray(bind.allowedRoles) && bind.allowedRoles.length > 0
         ? bind.allowedRoles
         : ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'];
+    const isActive =
+      !PERFIL_ESSENCIAL || bind.isMandatory || ESSENCIAIS.has(String(bind.modulo.codigo).toLowerCase());
+    if (isActive) ligados += 1;
     await prisma.companyModule.upsert({
       where: { companyId_moduloId: { companyId, moduloId: bind.moduloId } },
-      update: { isActive: true, allowedRoles },
-      create: { companyId, moduloId: bind.moduloId, isActive: true, allowedRoles },
+      update: { isActive, allowedRoles },
+      create: { companyId, moduloId: bind.moduloId, isActive, allowedRoles },
     });
   }
-  console.log(`modulos liberados: ${sistemaBase.modulos.length}`);
+  console.log(`modulos ligados: ${ligados} de ${binds.length}${PERFIL_ESSENCIAL ? ' (perfil essencial)' : ''}`);
 
   // --- Equipe --------------------------------------------------
   const senhaHash = await bcrypt.hash(SENHA_PADRAO, 10);
@@ -232,9 +295,9 @@ async function montar() {
     return user;
   }
 
-  const felipe = await garantirUsuario('felipe@felipebarber.com', 'Felipe Moreira', 'DONO_EMPRESA');
-  const rafael = await garantirUsuario('rafael@felipebarber.com', 'Rafael Souza', 'FUNCIONARIO_EMPRESA');
-  const diego = await garantirUsuario('diego@felipebarber.com', 'Diego Lima', 'FUNCIONARIO_EMPRESA');
+  const felipe = await garantirUsuario(emailEquipe('felipe'), 'Felipe Moreira', 'DONO_EMPRESA');
+  const rafael = await garantirUsuario(emailEquipe('rafael'), 'Rafael Souza', 'FUNCIONARIO_EMPRESA');
+  const diego = await garantirUsuario(emailEquipe('diego'), 'Diego Lima', 'FUNCIONARIO_EMPRESA');
   const barbeiros = [felipe, rafael, diego];
   console.log('equipe: Felipe (dono), Rafael e Diego (barbeiros)');
 
@@ -417,7 +480,7 @@ async function montar() {
     const dados = {
       name: def.name,
       phone: def.phone,
-      email: `${def.name.split(' ')[0].toLowerCase()}@email.com`,
+      email: `${def.name.split(' ')[0].toLowerCase()}@${DOMINIO_CLIENTE}`,
       isActive: !def.inativoHa,
       preferredProfessionalId: def.barbeiro ? def.barbeiro.id : null,
       lastVisitAt: def.diasSemVir === null ? null : diasAtras(def.diasSemVir),
@@ -446,7 +509,7 @@ async function montar() {
     if (existente) {
       await prisma.customerAccount.update({
         where: { id: existente.id },
-        data: { email, passwordHash: senhaClienteHash, isActive: true },
+        data: { email, phone: chaveTelefone(cliente.phone), passwordHash: senhaClienteHash, isActive: true },
       });
     } else {
       await prisma.customerAccount.create({
@@ -454,6 +517,8 @@ async function montar() {
           companyId,
           customerId: cliente.id,
           email,
+          // Cliente de verdade entra pelo WhatsApp; a demo tambem.
+          phone: chaveTelefone(cliente.phone),
           passwordHash: senhaClienteHash,
           isActive: true,
         },
@@ -685,14 +750,14 @@ async function montar() {
   console.log(`  ${EMPRESA} montada`);
   console.log('===============================================');
   console.log(`  Painel:  /login`);
-  console.log(`  Dono:    felipe@felipebarber.com`);
-  console.log(`  Barbeiro: rafael@felipebarber.com`);
-  console.log(`  Barbeiro: diego@felipebarber.com`);
-  console.log(`  Senha (todos): ${SENHA_PADRAO}`);
+  console.log(`  Dono:    ${emailEquipe('felipe')}`);
+  console.log(`  Barbeiro: ${emailEquipe('rafael')}`);
+  console.log(`  Barbeiro: ${emailEquipe('diego')}`);
+  console.log('  Senha (todos): a de DEMO_SENHA_EQUIPE');
   console.log('');
   console.log(`  Portal do cliente: /cliente/${company.slug}/login`);
-  console.log(`  Ex.: joao@email.com  |  thiago@email.com (mensalista)`);
-  console.log(`  Senha (todos os clientes): ${SENHA_CLIENTE}`);
+  console.log(`  Ex.: joao@${DOMINIO_CLIENTE}  |  thiago@${DOMINIO_CLIENTE} (mensalista)`);
+  console.log('  Senha (todos os clientes): a de DEMO_SENHA_CLIENTE');
   console.log('');
   console.log(`  Link publico (sem login): /agendar/${company.slug}`);
   console.log('===============================================');

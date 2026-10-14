@@ -395,7 +395,7 @@ const Produtos: React.FC = () => {
 
   const handleExportProductsExcel = () => {
     if (data.length === 0) {
-      toast.error('Nao ha produtos para exportar');
+      toast.error('Não há produtos para exportar');
       return;
     }
 

@@ -107,6 +107,18 @@ export const loginRateLimit = rateLimit({
   message: 'Muitas tentativas de login. Aguarde alguns minutos e tente de novo.',
 });
 
+/**
+ * "Esqueci a senha" e "criar nova senha". Contador proprio: no do login,
+ * quem errasse o pedido do link algumas vezes ficava 15 minutos sem conseguir
+ * entrar. Mais apertado que o login porque cada pedido dispara um e-mail.
+ */
+export const passwordResetRateLimit = rateLimit({
+  windowMs: 15 * 60_000,
+  max: 6,
+  scope: 'password-reset',
+  message: 'Muitos pedidos de nova senha. Aguarde alguns minutos e tente de novo.',
+});
+
 /** Teto geral da API, bem acima do uso normal: pega abuso, nao usuario. */
 export const apiRateLimit = rateLimit({
   windowMs: Math.max(60_000, Number(process.env.API_RATE_LIMIT_WINDOW_MS || 60_000)),

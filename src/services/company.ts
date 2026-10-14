@@ -36,6 +36,15 @@ export const companyService = {
     entity_id?: string;
     details?: Record<string, unknown>;
   }) => request('/audit', { method: 'POST', body: JSON.stringify(data) }),
+  // Link de "criar nova senha" do portal, para a barbearia mandar ao cliente.
+  createCustomerPasswordLink: async (customerId: string) =>
+    request(`/customers/${customerId}/password-link`, { method: 'POST' }) as Promise<{
+      url: string;
+      customer_name: string;
+      phone: string | null;
+      company_name: string;
+      expires_in_hours: number;
+    }>,
   getTheme: async () => request('/theme'),
   saveTheme: async (data: Record<string, unknown>) =>
     request('/theme', { method: 'PUT', body: JSON.stringify(data) }),
@@ -662,6 +671,21 @@ export const companyService = {
     request(`/gateways/${gatewayId}/activate`, { method: 'POST' }),
   deleteGateway: async (gatewayId: string) =>
     request(`/gateways/${gatewayId}`, { method: 'DELETE' }),
+  /** Vendas gravadas pelo PDV, pela cobranca e pelas mensalidades (Neon). */
+  listOrders: async (params: { page: number; pageSize: number; search?: string; status?: string }) => {
+    const query = new URLSearchParams({
+      page: String(params.page),
+      pageSize: String(params.pageSize),
+      orderBy: 'createdAt',
+      orderDirection: 'desc',
+    });
+    if (params.search) query.set('search', params.search);
+    if (params.status) query.set('status', params.status);
+    return request(`/orders?${query.toString()}`) as Promise<{
+      data: Array<{ id: string; customerName: string | null; total: number | string; status: string; createdAt: string }>;
+      total: number;
+    }>;
+  },
   sendWhatsApp: async (data: {
     phone: string;
     message: string;

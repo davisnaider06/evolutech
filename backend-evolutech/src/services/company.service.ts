@@ -26,8 +26,59 @@ import { getBlockedIntervals, isIntervalBlocked } from '../utils/appointment-blo
 import { interpretarDataHora, limitesDoDia, dataISODaCasa } from '../config/fuso';
 import { chaveTelefone, clientesComTelefone } from '../utils/telefone.util';
 import { invalidateRoleCache } from '../middlewares/auth.middleware';
-import { pushService } from './push.service';
-import { notificationService } from './notification.service';
+import { appointmentNotificationService } from './appointment-notification.service';
+import { CustomerAuthError, CustomerAuthService } from './customer-auth.service';
+
+/**
+ * Colunas que o CRUD generico aceita gravar, por tabela.
+ *
+ * O corpo da requisicao ia inteiro para o Prisma. Como o Prisma aceita
+ * relacao aninhada, um `POST /customers` com `{ subscriptions: { create } }`
+ * criava mensalidade (acao so do dono) e `appointments: { create }` aceitava
+ * outro companyId. Aqui fica so o que e coluna de verdade do modelo — os
+ * campos de relacao (kind "object") nunca passam.
+ */
+const MODELO_POR_TABELA: Record<string, string> = {
+  customers: 'Customer',
+  products: 'Product',
+  appointments: 'Appointment',
+  appointment_services: 'AppointmentService',
+  appointment_availability: 'AppointmentAvailability',
+  orders: 'Order',
+  cash_transactions: 'CashTransaction',
+  courses: 'Course',
+  course_accesses: 'CourseAccess',
+};
+
+const CAMPOS_GRAVAVEIS: Record<string, Set<string>> = Object.fromEntries(
+  Object.entries(MODELO_POR_TABELA).map(([tabela, modelo]) => {
+    const definicao = Prisma.dmmf.datamodel.models.find((item) => item.name === modelo);
+    const campos = (definicao?.fields || [])
+      .filter((campo) => campo.kind === 'scalar' || campo.kind === 'enum')
+      .map((campo) => campo.name);
+    return [tabela, new Set(campos)];
+  })
+);
+
+// Carimbos que so o servidor define. Na edicao nem o companyId muda.
+const CAMPOS_DO_SERVIDOR = ['id', 'createdAt', 'updatedAt', 'createdBy'];
+
+function filtrarCamposGravaveis(tabela: string, payload: Record<string, any>, modo: 'create' | 'update') {
+  const permitidos = CAMPOS_GRAVAVEIS[tabela];
+  if (!permitidos || permitidos.size === 0) {
+    throw new Error(`Tabela sem definicao de campos: ${tabela}`);
+  }
+  // createdBy fica de fora do bloqueio na criacao: quem o preenche e o
+  // proprio servico (caixa), depois de descartar o que veio do cliente.
+  const bloqueados = new Set(
+    modo === 'update' ? [...CAMPOS_DO_SERVIDOR, 'companyId'] : ['id', 'createdAt', 'updatedAt']
+  );
+  const limpo: Record<string, any> = {};
+  for (const [chave, valor] of Object.entries(payload)) {
+    if (permitidos.has(chave) && !bloqueados.has(chave)) limpo[chave] = valor;
+  }
+  return limpo;
+}
 
 class CompanyServiceError extends Error {
   statusCode: number;
@@ -86,25 +137,6 @@ export class CompanyService {
       .replace(/[\u0300-\u036f]/g, '');
   }
 
-  private async findDeniedEmployeeModulePermission(
-    db: typeof prisma,
-    companyId: string,
-    userId: string,
-    moduleIds: string[]
-  ) {
-    if (!moduleIds.length) return null;
-    const rows = await db.$queryRaw<Array<{ moduloId: string }>>(Prisma.sql`
-      SELECT "modulo_id" AS "moduloId"
-      FROM "employee_module_permissions"
-      WHERE "empresa_id" = ${companyId}
-        AND "user_id" = ${userId}
-        AND "is_allowed" = false
-        AND "modulo_id" IN (${Prisma.join(moduleIds)})
-      LIMIT 1
-    `);
-    return rows[0] || null;
-  }
-
   private async listEmployeeModulePermissionRows(
     db: typeof prisma,
     companyId: string,
@@ -129,37 +161,6 @@ export class CompanyService {
       DELETE FROM "employee_module_permissions"
       WHERE "empresa_id" = ${companyId}
         AND "user_id" = ${userId}
-    `);
-  }
-
-  private async upsertEmployeeModulePermission(
-    db: typeof prisma,
-    payload: { companyId: string; userId: string; moduloId: string; isAllowed: boolean }
-  ) {
-    const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
-    await db.$executeRaw(Prisma.sql`
-      INSERT INTO "employee_module_permissions" (
-        "id",
-        "empresa_id",
-        "user_id",
-        "modulo_id",
-        "is_allowed",
-        "created_at",
-        "updated_at"
-      )
-      VALUES (
-        ${id},
-        ${payload.companyId},
-        ${payload.userId},
-        ${payload.moduloId},
-        ${payload.isAllowed},
-        NOW(),
-        NOW()
-      )
-      ON CONFLICT ("empresa_id", "user_id", "modulo_id")
-      DO UPDATE SET
-        "is_allowed" = EXCLUDED."is_allowed",
-        "updated_at" = NOW()
     `);
   }
 
@@ -260,26 +261,6 @@ export class CompanyService {
         `Modulo "${requestedCodes[0] || 'modulo'}" nao permitido para o perfil atual`,
         403
       );
-    }
-  }
-
-  private async enforceEmployeePermissionOverride(
-    user: AuthenticatedUser,
-    companyId: string,
-    matchedModules: any[]
-  ) {
-    if (user.role !== 'FUNCIONARIO_EMPRESA') return;
-    if (!matchedModules.length) return;
-
-    const moduleIds = matchedModules
-      .map((item) => String(item?.modulo?.id || ''))
-      .filter(Boolean);
-    if (!moduleIds.length) return;
-
-    const denied = await this.findDeniedEmployeeModulePermission(prisma, companyId, user.id, moduleIds);
-
-    if (denied) {
-      throw new CompanyServiceError('Seu acesso a este modulo foi desabilitado pelo dono da empresa', 403);
     }
   }
 
@@ -424,6 +405,22 @@ export class CompanyService {
     }
   }
 
+  /**
+   * Lancamento de caixa so muda pela mao do dono.
+   *
+   * O funcionario continua lancando (entrada e saida do dia), mas editar ou
+   * apagar o que ja esta no caixa e o caminho classico para sumir com uma
+   * venda. Antes qualquer um com o modulo Caixa podia.
+   */
+  private ensureCaixaSoDonoAltera(table: string, user: AuthenticatedUser) {
+    if (table === 'cash_transactions' && user.role === 'FUNCIONARIO_EMPRESA') {
+      throw new CompanyServiceError(
+        'Apenas o dono pode editar ou excluir lancamentos do caixa',
+        403
+      );
+    }
+  }
+
   private ensureCompanySupportActor(user: AuthenticatedUser, companyId: string) {
     if (!this.isCompanyUserRole(user.role) || !user.companyId || user.companyId !== companyId) {
       throw new CompanyServiceError('Apenas usuarios da empresa podem abrir chamados de suporte', 403);
@@ -504,39 +501,7 @@ export class CompanyService {
     const cached = this.getCachedModuleAccess(companyId, moduleCodes, user.role, user.id);
     if (cached === true) return;
 
-    const hasModule = await (prisma as any).companyModule.findFirst({
-      where: {
-        companyId,
-        isActive: true,
-        modulo: {
-          status: 'active',
-          codigo: { in: moduleCodes },
-        },
-      },
-      select: {
-        id: true,
-        allowedRoles: true,
-        modulo: {
-          select: {
-            id: true,
-            codigo: true,
-            isPro: true,
-            allowedRoles: true,
-          },
-        },
-      },
-    });
-
-    if (!hasModule) {
-      this.setCachedModuleAccess(companyId, moduleCodes, user.role, false, user.id);
-      throw new CompanyServiceError(
-        `Módulo "${moduleCodes[0]}" não está ativo para esta empresa`,
-        403
-      );
-    }
-    this.enforcePlanModuleAccess(companyPlan, moduleCodes, hasModule ? [hasModule] : []);
-    this.enforceRoleModuleAccess(user.role, moduleCodes, hasModule ? [hasModule] : []);
-    await this.enforceEmployeePermissionOverride(user, companyId, hasModule ? [hasModule] : []);
+    await this.checarAcessoAQualquerModulo(user, companyId, companyPlan, moduleCodes);
     this.setCachedModuleAccess(companyId, moduleCodes, user.role, true, user.id);
   }
 
@@ -755,6 +720,9 @@ export class CompanyService {
       if (user.role === 'FUNCIONARIO_EMPRESA') {
         payload.professionalId = user.id;
         payload.professionalName = user.fullName;
+        // Mesmo motivo da edicao: o preco do agendamento do barbeiro e o do
+        // servico; so o dono da desconto.
+        delete payload.price;
       } else {
         await this.resolveAppointmentProfessional(payload, companyId);
       }
@@ -795,13 +763,13 @@ export class CompanyService {
       payload.deactivatedAt = payload.isActive === false ? new Date() : null;
 
       const created = await model.create({
-        data: payload,
+        data: filtrarCamposGravaveis(table, payload, 'create'),
         include: { preferredProfessional: { select: { id: true, fullName: true } } },
       });
       return this.decorateCustomer(created);
     }
 
-    return model.create({ data: payload });
+    return model.create({ data: filtrarCamposGravaveis(table, payload, 'create') });
   }
 
   async updateRecord(table: string, id: string, user: AuthenticatedUser, data: any) {
@@ -841,6 +809,8 @@ export class CompanyService {
     ) {
       throw new CompanyServiceError('Acesso negado ao agendamento de outro profissional', 403);
     }
+
+    this.ensureCaixaSoDonoAltera(table, user);
 
     await this.validateModuleAccess(table, user, existing.companyId);
 
@@ -909,6 +879,9 @@ export class CompanyService {
     if (table === 'appointments' && user.role === 'FUNCIONARIO_EMPRESA') {
       payload.professionalId = user.id;
       payload.professionalName = user.fullName;
+      // O valor do atendimento vira faturamento e comissao. O barbeiro nao
+      // muda o proprio valor; desconto e cortesia sao decisao do dono.
+      delete payload.price;
     }
     if (table === 'products' && targetType === 'service') {
       return prisma.$transaction(async (tx) => {
@@ -998,7 +971,7 @@ export class CompanyService {
 
       const updated = await model.update({
         where: { id },
-        data: payload,
+        data: filtrarCamposGravaveis(table, payload, 'update'),
         include: { preferredProfessional: { select: { id: true, fullName: true } } },
       });
       return this.decorateCustomer(updated);
@@ -1006,7 +979,7 @@ export class CompanyService {
 
     return model.update({
       where: { id },
-      data: payload,
+      data: filtrarCamposGravaveis(table, payload, 'update'),
     });
   }
 
@@ -1313,6 +1286,8 @@ export class CompanyService {
       throw new CompanyServiceError('Acesso negado ao agendamento de outro profissional', 403);
     }
 
+    this.ensureCaixaSoDonoAltera(table, user);
+
     await this.validateModuleAccess(table, user, existing.companyId);
 
     await model.delete({ where: { id } });
@@ -1358,6 +1333,22 @@ export class CompanyService {
     }
 
     const phone = this.normalizePhone(data?.phone);
+
+    // O numero e um so para todas as empresas. Sem esta trava, qualquer
+    // usuario de empresa disparava mensagem para qualquer telefone — basta
+    // um disparo em massa para o WhatsApp banir o numero e derrubar lembretes
+    // e cobrancas de todos os clientes. Equipe da empresa so fala com quem e
+    // cliente cadastrado dela; admin e jobs internos seguem livres.
+    if (!this.isAdminRole(user.role)) {
+      if (!companyId) throw new CompanyServiceError('Empresa nao identificada', 400);
+      const cliente = await this.encontrarClientePorTelefone(companyId, data?.phone);
+      if (!cliente) {
+        throw new CompanyServiceError(
+          'So e possivel enviar WhatsApp para clientes cadastrados na empresa',
+          403
+        );
+      }
+    }
     const rawDelay = Number(data?.delayMessage ?? 0);
     const delayMessage = Number.isFinite(rawDelay) ? Math.max(0, rawDelay) : 0;
 
@@ -1474,8 +1465,6 @@ export class CompanyService {
     queryParams: { date?: string; company_id?: string; professional_id?: string } = {}
   ) {
     const companyId = this.resolveCompanyId(user, queryParams);
-    await this.ensureAnyModuleAccess(user, companyId, ['appointments', 'agendamentos']);
-
     const dateRaw = String(queryParams.date || '').trim();
     const base = dateRaw ? new Date(`${dateRaw}T00:00:00`) : new Date();
     if (Number.isNaN(base.getTime())) {
@@ -1491,19 +1480,24 @@ export class CompanyService {
     const requested = String(queryParams.professional_id || '').trim();
     const professionalFilter = user.role === 'FUNCIONARIO_EMPRESA' ? user.id : requested;
 
-    const professionals = await prisma.userRole.findMany({
-      where: {
-        companyId,
-        role: { in: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
-        user: { isActive: true },
-        ...(professionalFilter ? { userId: professionalFilter } : {}),
-      },
-      select: {
-        userId: true,
-        role: true,
-        user: { select: { fullName: true, avatarUrl: true } },
-      },
-    });
+    // Checagem de acesso e leitura da equipe juntas: sao so leituras, e nada
+    // sai daqui se a checagem falhar (o Promise.all rejeita antes).
+    const [, professionals] = await Promise.all([
+      this.ensureAnyModuleAccess(user, companyId, ['appointments', 'agendamentos']),
+      prisma.userRole.findMany({
+        where: {
+          companyId,
+          role: { in: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+          user: { isActive: true },
+          ...(professionalFilter ? { userId: professionalFilter } : {}),
+        },
+        select: {
+          userId: true,
+          role: true,
+          user: { select: { fullName: true, avatarUrl: true } },
+        },
+      }),
+    ]);
 
     const professionalIds = professionals.map((item) => item.userId);
     if (professionalIds.length === 0) {
@@ -1516,7 +1510,9 @@ export class CompanyService {
       };
     }
 
-    const [appointments, services] = await Promise.all([
+    // Tudo o que depende so da lista de profissionais sai numa leva: cada
+    // await em fila custava uma ida e volta ao banco.
+    const [appointments, services, casa, bloqueiosPorProfissional] = await Promise.all([
       (prisma as any).appointment.findMany({
         where: {
           companyId,
@@ -1532,6 +1528,20 @@ export class CompanyService {
         where: { companyId },
         select: { id: true, name: true, durationMinutes: true, price: true },
       }),
+      // Uma faixa so, igual para todo mundo: e o horario da casa, configurado
+      // pelo dono em Configuracoes. Barbeiro que nao pode num pedaco do dia
+      // fecha aquele pedaco em Bloquear horario — a excecao do dia, nao um
+      // expediente proprio.
+      resolverHorarioDaCasa(prisma as any, companyId, {
+        inicioMinutos: AGENDA_INICIO_MINUTOS,
+        fimMinutos: AGENDA_FIM_MINUTOS,
+      }),
+      // Bloqueios de todos os barbeiros de uma vez, nao um por vez.
+      Promise.all(
+        professionals.map((professional) =>
+          getBlockedIntervals(companyId, professional.userId, dayStart)
+        )
+      ),
     ]);
 
     const serviceById = new Map<string, any>(
@@ -1545,14 +1555,6 @@ export class CompanyService {
 
     const columns = [];
 
-    // Uma faixa so, igual para todo mundo: e o horario da casa, configurado
-    // pelo dono em Configuracoes. Barbeiro que nao pode num pedaco do dia
-    // fecha aquele pedaco em Bloquear horario — a excecao do dia, nao um
-    // expediente proprio.
-    const casa = await resolverHorarioDaCasa(prisma as any, companyId, {
-      inicioMinutos: AGENDA_INICIO_MINUTOS,
-      fimMinutos: AGENDA_FIM_MINUTOS,
-    });
     const windows = [
       {
         start_minutes: casa.inicioMinutos,
@@ -1562,10 +1564,8 @@ export class CompanyService {
       },
     ];
 
-    for (const professional of professionals) {
-      const blocks = (
-        await getBlockedIntervals(companyId, professional.userId, dayStart)
-      ).map((item) => ({
+    for (const [indice, professional] of professionals.entries()) {
+      const blocks = bloqueiosPorProfissional[indice].map((item) => ({
         start_minutes: minutesFromDayStart(new Date(item.startMs)),
         end_minutes: minutesFromDayStart(new Date(item.endMs)),
         reason: item.reason,
@@ -1921,7 +1921,27 @@ export class CompanyService {
     const cached = this.getCachedModuleAccess(companyId, moduleCodes, user.role, user.id);
     if (cached === true) return;
 
-    const hasModule = await (prisma as any).companyModule.findFirst({
+    await this.checarAcessoAQualquerModulo(user, companyId, companyPlan, moduleCodes);
+    this.setCachedModuleAccess(companyId, moduleCodes, user.role, true, user.id);
+  }
+
+  /**
+   * "Qualquer um destes modulos libera" — avaliado sobre TODOS os que casam.
+   *
+   * Antes era `findFirst` e so o primeiro modulo encontrado contava. Em
+   * Comissoes a lista tem `comissoes_dono` (so dono) e `commissions_staff`
+   * (funcionario): quando o banco devolvia o do dono primeiro, o barbeiro
+   * levava 403 e a tela mostrava "nenhum resultado" — ele nunca via a
+   * propria comissao. Agora libera se algum modulo ativo serve para o
+   * plano, o papel e as permissoes deste usuario.
+   */
+  private async checarAcessoAQualquerModulo(
+    user: AuthenticatedUser,
+    companyId: string,
+    companyPlan: string,
+    moduleCodes: string[]
+  ) {
+    const encontrados: any[] = await (prisma as any).companyModule.findMany({
       where: {
         companyId,
         isActive: true,
@@ -1932,6 +1952,7 @@ export class CompanyService {
       },
       select: {
         id: true,
+        allowedRoles: true,
         modulo: {
           select: {
             id: true,
@@ -1943,14 +1964,44 @@ export class CompanyService {
       },
     });
 
-    if (!hasModule) {
+    if (encontrados.length === 0) {
       this.setCachedModuleAccess(companyId, moduleCodes, user.role, false, user.id);
       throw new CompanyServiceError(`Modulo "${moduleCodes[0]}" nao esta ativo para esta empresa`, 403);
     }
-    this.enforcePlanModuleAccess(companyPlan, moduleCodes, hasModule ? [hasModule] : []);
-    this.enforceRoleModuleAccess(user.role, moduleCodes, hasModule ? [hasModule] : []);
-    await this.enforceEmployeePermissionOverride(user, companyId, hasModule ? [hasModule] : []);
-    this.setCachedModuleAccess(companyId, moduleCodes, user.role, true, user.id);
+
+    const noPlano = this.isProPlan(companyPlan)
+      ? encontrados
+      : encontrados.filter((item) => !item?.modulo?.isPro);
+    if (noPlano.length === 0) {
+      this.enforcePlanModuleAccess(companyPlan, moduleCodes, encontrados);
+    }
+
+    const doPapel = noPlano.filter((item) => {
+      const roles = Array.isArray(item?.allowedRoles) && item.allowedRoles.length > 0
+        ? item.allowedRoles
+        : Array.isArray(item?.modulo?.allowedRoles) && item.modulo.allowedRoles.length > 0
+        ? item.modulo.allowedRoles
+        : this.defaultCompanyAllowedRoles;
+      return roles.includes(user.role);
+    });
+    if (doPapel.length === 0) {
+      this.enforceRoleModuleAccess(user.role, moduleCodes, []);
+    }
+
+    if (user.role === 'FUNCIONARIO_EMPRESA') {
+      const ids = doPapel.map((item) => String(item?.modulo?.id || '')).filter(Boolean);
+      const negados = await (prisma as any).$queryRaw(Prisma.sql`
+        SELECT "modulo_id" AS "moduloId"
+        FROM "employee_module_permissions"
+        WHERE "empresa_id" = ${companyId}
+          AND "user_id" = ${user.id}
+          AND "is_allowed" = false
+          AND "modulo_id" IN (${Prisma.join(ids)})
+      `) as Array<{ moduloId: string }>;
+      if (negados.length >= ids.length) {
+        throw new CompanyServiceError('Seu acesso a este modulo foi desabilitado pelo dono da empresa', 403);
+      }
+    }
   }
 
   private hasOwnerDefaultAccess(user: AuthenticatedUser, moduleCodes: string[]) {
@@ -5039,14 +5090,13 @@ export class CompanyService {
         throw new CompanyServiceError('Forma de pagamento invalida', 400);
       }
 
-      const isPix = paymentMethod === 'pix';
-      const activeGateway = isPix
+      const activeGateway = paymentMethod === 'pix'
         ? await this.paymentService.getCompanyActiveGateway(companyId)
         : null;
-
-      if (isPix && !activeGateway) {
-        throw new CompanyServiceError('Configure um gateway ativo para processar PIX', 400);
-      }
+      // Sem gateway, PIX e o que a barbearia ja faz hoje: o cliente paga na
+      // chave dela e quem atende confere no celular. A venda entra como paga.
+      // Com gateway ativo, segue o fluxo de QR Code e confirmacao automatica.
+      const isPix = paymentMethod === 'pix' && Boolean(activeGateway);
 
       if (total <= 0) {
         throw new CompanyServiceError('Total invalido para checkout', 400);
@@ -6721,6 +6771,28 @@ export class CompanyService {
       updated,
       skipped: items.length - valid.length,
     };
+  }
+
+  /**
+   * Link de "criar nova senha" para o cliente, gerado por quem atende. O
+   * cadastro do cliente pede so WhatsApp, entao o e-mail nem sempre existe:
+   * a barbearia manda este link pela conversa que ja tem com ele.
+   */
+  async gerarLinkDeSenhaDoCliente(
+    user: AuthenticatedUser,
+    customerId: string,
+    queryParams: { company_id?: string; companyId?: string } = {}
+  ) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+    await this.ensureAnyModuleAccess(user, companyId, ['customers', 'clientes']);
+    try {
+      return await new CustomerAuthService().gerarLinkDeSenhaParaCliente(companyId, customerId);
+    } catch (error) {
+      if (error instanceof CustomerAuthError) {
+        throw new CompanyServiceError(error.message, error.statusCode);
+      }
+      throw error;
+    }
   }
 
   async getCustomerHistory(
@@ -8858,46 +8930,48 @@ export class CompanyService {
   ) {
     this.ensureOwner(user);
     const companyId = this.ensureOwnerCompanyId(user);
-    await this.ensureAnyModuleAccess(user, companyId, ['permissions', 'permissoes']);
 
     const memberId = String(payload.member_id || '').trim();
     if (!memberId) throw new CompanyServiceError('member_id obrigatorio', 400);
-
-    const role = await prisma.userRole.findFirst({
-      where: {
-        companyId,
-        userId: memberId,
-        role: 'FUNCIONARIO_EMPRESA',
-      },
-      select: { id: true },
-    });
-    if (!role) {
-      throw new CompanyServiceError('Funcionario nao encontrado para esta empresa', 404);
-    }
 
     const permissions = Array.isArray(payload.permissions) ? payload.permissions : [];
     if (!permissions.length) {
       throw new CompanyServiceError('Envie ao menos uma permissao', 400);
     }
 
-    const companyModules = await (prisma as any).companyModule.findMany({
-      where: {
-        companyId,
-        isActive: true,
-        modulo: { status: 'active' },
-      },
-      select: {
-        moduloId: true,
-        allowedRoles: true,
-        modulo: {
-          select: {
-            id: true,
-            codigo: true,
-            allowedRoles: true,
+    // As tres leituras de antes eram em fila; nao dependem uma da outra.
+    const [, role, companyModules] = await Promise.all([
+      this.ensureAnyModuleAccess(user, companyId, ['permissions', 'permissoes']),
+      prisma.userRole.findFirst({
+        where: {
+          companyId,
+          userId: memberId,
+          role: 'FUNCIONARIO_EMPRESA',
+        },
+        select: { id: true },
+      }),
+      (prisma as any).companyModule.findMany({
+        where: {
+          companyId,
+          isActive: true,
+          modulo: { status: 'active' },
+        },
+        select: {
+          moduloId: true,
+          allowedRoles: true,
+          modulo: {
+            select: {
+              id: true,
+              codigo: true,
+              allowedRoles: true,
+            },
           },
         },
-      },
-    });
+      }),
+    ]);
+    if (!role) {
+      throw new CompanyServiceError('Funcionario nao encontrado para esta empresa', 404);
+    }
 
     const moduleByCode = new Map<string, string>();
     const moduleById = new Set<string>();
@@ -8929,17 +9003,30 @@ export class CompanyService {
       };
     });
 
-    await prisma.$transaction(async (tx) => {
-      for (const entry of normalized) {
-        await this.upsertEmployeeModulePermission(tx as any, {
-          companyId,
-          userId: memberId,
-          moduloId: entry.moduloId,
-          isAllowed: entry.isAllowed,
-        });
-      }
-
-      await tx.auditLog.create({
+    // Um INSERT so para todas as linhas. Antes era um upsert por modulo
+    // dentro de uma transacao interativa: aplicar o perfil "Barbeiro" (uns 15
+    // modulos) levava ~12s, uma ida e volta ao banco por linha.
+    // Mesmo modulo duas vezes no pedido derrubaria o INSERT unico ("ON
+    // CONFLICT nao afeta a mesma linha duas vezes"): fica a ultima escolha.
+    const porModulo = new Map(normalized.map((entry) => [entry.moduloId, entry]));
+    const linhas = [...porModulo.values()].map(
+      (entry) => Prisma.sql`(
+        ${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`},
+        ${companyId}, ${memberId}, ${entry.moduloId}, ${entry.isAllowed}, NOW(), NOW()
+      )`
+    );
+    await prisma.$transaction([
+      prisma.$executeRaw(Prisma.sql`
+        INSERT INTO "employee_module_permissions" (
+          "id", "empresa_id", "user_id", "modulo_id", "is_allowed", "created_at", "updated_at"
+        )
+        VALUES ${Prisma.join(linhas)}
+        ON CONFLICT ("empresa_id", "user_id", "modulo_id")
+        DO UPDATE SET
+          "is_allowed" = EXCLUDED."is_allowed",
+          "updated_at" = NOW()
+      `),
+      prisma.auditLog.create({
         data: {
           userId: user.id,
           companyId,
@@ -8950,11 +9037,13 @@ export class CompanyService {
             changes: normalized.length,
           },
         },
-      });
-    });
+      }),
+    ]);
 
     this.moduleAccessCache.clear();
-    return this.listTeamMemberModulePermissions(user);
+    // A tela ja atualiza o proprio estado; recarregar as permissoes da equipe
+    // inteira so para devolver era mais um punhado de consultas.
+    return { ok: true, member_id: memberId, changes: normalized.length };
   }
 
   async diagnoseTeamMemberModuleAccess(user: AuthenticatedUser, memberId: string) {
@@ -9343,6 +9432,10 @@ export class CompanyService {
       companyId?: string;
     }
   ) {
+    // Logo, nome e cores sao a marca da barbearia: o funcionario so le.
+    if (user.role === 'FUNCIONARIO_EMPRESA') {
+      throw new CompanyServiceError('Apenas o dono pode alterar a identidade visual da empresa', 403);
+    }
     const companyId = this.resolveCompanyId(user, data || {});
     const payload = {
       companyDisplayName: data.company_display_name ?? null,
@@ -9382,6 +9475,21 @@ export class CompanyService {
     });
   }
 
+  /**
+   * Nome do profissional como aparece no link publico.
+   *
+   * Convite aceito sem nome deixa o e-mail no fullName, e o link publico
+   * mostrava "fulano88@gmail.com" para qualquer visitante. Aqui o e-mail vira
+   * so a parte antes do @, sem numeros — reconhecivel e sem expor o endereco.
+   */
+  private nomePublicoProfissional(fullName?: string | null) {
+    const nome = String(fullName || '').trim();
+    if (!nome.includes('@')) return nome || 'Profissional';
+    const usuario = nome.split('@')[0].replace(/[\d._-]+/g, ' ').trim();
+    if (!usuario) return 'Profissional';
+    return usuario.charAt(0).toUpperCase() + usuario.slice(1);
+  }
+
   async getPublicBookingOptions(slug: string) {
     const company = await this.getPublicBookingCompany(slug);
 
@@ -9414,7 +9522,7 @@ export class CompanyService {
       company,
       professionals: professionals.map((item: any) => ({
         id: item.userId,
-        name: item.user.fullName,
+        name: this.nomePublicoProfissional(item.user.fullName),
         avatar_url: item.user.avatarUrl || null,
       })),
       services: services.map((item: any) => ({
@@ -9576,9 +9684,11 @@ export class CompanyService {
         },
       },
       orderBy: { scheduledAt: 'asc' },
+      // Sem nome do cliente: a rota e publica, e qualquer um com o link via
+      // quem ia cortar o cabelo, com quem e quando (LGPD). Para saber o que
+      // esta ocupado bastam servico, profissional e horario.
       select: {
         id: true,
-        customerName: true,
         serviceName: true,
         professionalName: true,
         professionalId: true,
@@ -9591,9 +9701,8 @@ export class CompanyService {
       company,
       appointments: appointments.map((item: any) => ({
         id: item.id,
-        customer_name: item.customerName,
         service_name: item.serviceName,
-        professional_name: item.professionalName,
+        professional_name: this.nomePublicoProfissional(item.professionalName),
         professional_id: item.professionalId,
         scheduled_at: item.scheduledAt,
         status: item.status,
@@ -9817,14 +9926,7 @@ export class CompanyService {
     // e-mail ou push fora do ar nao pode transformar uma marcacao boa em erro
     // para o cliente. Antes disto ninguem era avisado — o dono so descobria
     // abrindo a agenda.
-    this.avisarNovoAgendamento(company.id, company.name, {
-      ...created,
-      // O aviso leva o telefone: e por ele que a equipe confirma, e e o que
-      // separa dois clientes de mesmo nome na bandeja de notificacao.
-      customerPhone,
-    }).catch((error) => {
-      console.warn('[agendamento] falha ao avisar a equipe:', error?.message);
-    });
+    void appointmentNotificationService.avisarCriacao(created.id, 'link publico');
 
     return {
       id: created.id,
@@ -9837,67 +9939,6 @@ export class CompanyService {
       scheduled_at: created.scheduledAt,
       status: created.status,
     };
-  }
-
-  /**
-   * Avisa dono e barbeiro que entrou agendamento novo.
-   *
-   * Dois canais com alcances diferentes: push chega na hora mas so em quem
-   * ligou as notificacoes (e, no iPhone, so em quem instalou na tela de
-   * inicio); e-mail chega sempre. Por isso os dois, e nao um ou outro.
-   */
-  private async avisarNovoAgendamento(companyId: string, companyName: string, appointment: any) {
-    const professionalId = appointment.professionalId || null;
-    const quando = new Date(appointment.scheduledAt).toLocaleString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
-    await pushService.enviarParaEquipe(
-      companyId,
-      {
-        title: 'Novo agendamento',
-        body: `${appointment.customerName} - ${appointment.serviceName} - ${quando}`,
-        url: '/empresa/agendamentos',
-        // Sem tag fixa: dois agendamentos diferentes sao dois avisos, e um
-        // nao pode substituir o outro na bandeja.
-        tag: `agendamento-${appointment.id}`,
-      },
-      professionalId ? [professionalId] : []
-    );
-
-    const destinatarios = await prisma.userRole.findMany({
-      where: {
-        companyId,
-        OR: [{ role: 'DONO_EMPRESA' }, ...(professionalId ? [{ userId: professionalId }] : [])],
-      },
-      select: { user: { select: { email: true } } },
-    });
-
-    const emails = Array.from(
-      new Set(
-        destinatarios
-          .map((item) => String(item.user?.email || '').trim())
-          .filter((email) => email.includes('@'))
-      )
-    );
-
-    await Promise.all(
-      emails.map((email) =>
-        notificationService.novoAgendamento({
-          to: email,
-          companyName,
-          customerName: appointment.customerName,
-          customerPhone: appointment.customerPhone || null,
-          serviceName: appointment.serviceName || 'Servico',
-          professionalName: appointment.professionalName || 'A definir',
-          scheduledAt: new Date(appointment.scheduledAt),
-          origem: 'link publico',
-        })
-      )
-    );
   }
 
   /**

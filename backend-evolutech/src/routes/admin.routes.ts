@@ -36,6 +36,10 @@ router.put('/sistemas-base/:sistemaId/modulos', controller.replaceSistemaBaseMod
 router.get('/tenants', controller.listTenants.bind(controller));
 router.patch('/tenants/:tenantId', controller.updateTenant.bind(controller));
 router.delete('/tenants/:tenantId', controller.deleteTenant.bind(controller));
+// Ligar e desligar modulo de uma empresa so (ex.: deixar so agenda, equipe e
+// caixa para quem se perde com menu cheio).
+router.get('/tenants/:tenantId/modulos', controller.listTenantModulos.bind(controller));
+router.put('/tenants/:tenantId/modulos', controller.updateTenantModulos.bind(controller));
 router.get('/tenants/:tenantId/theme', controller.getTenantTheme.bind(controller));
 router.put('/tenants/:tenantId/theme', controller.upsertTenantTheme.bind(controller));
 

@@ -7,7 +7,7 @@
  * de um barbeiro para outro.
  */
 import { Response } from 'express';
-import { AuthedRequest } from '../types';
+import { AuthedCustomerRequest, AuthedRequest } from '../types';
 import { pushService } from '../services/push.service';
 
 export class PushController {
@@ -57,6 +57,64 @@ export class PushController {
       title: 'Notificacoes ligadas',
       body: 'E assim que os avisos da barbearia vao chegar neste aparelho.',
       url: '/empresa/app',
+      tag: 'teste',
+    });
+
+    return res.json(resultado);
+  }
+}
+
+/**
+ * Mesmas rotas para o cliente do portal. A inscricao pertence a conta do
+ * token (customer_accounts), e o cliente so consegue remover a propria.
+ */
+export class CustomerPushController {
+  async getPublicKey(_req: AuthedCustomerRequest, res: Response) {
+    const chave = pushService.chavePublica;
+    if (!chave) {
+      return res.status(503).json({ error: 'Push nao configurado neste ambiente' });
+    }
+    return res.json({ public_key: chave });
+  }
+
+  async subscribe(req: AuthedCustomerRequest, res: Response) {
+    try {
+      const customer = req.customer;
+      if (!customer) return res.status(401).json({ error: 'Nao autenticado' });
+
+      await pushService.salvarInscricao({
+        customerAccountId: customer.accountId,
+        companyId: customer.companyId,
+        subscription: req.body?.subscription || req.body || {},
+        userAgent: req.headers['user-agent'] || null,
+      });
+
+      return res.status(201).json({ subscribed: true });
+    } catch (error: any) {
+      return res.status(400).json({ error: String(error?.message || 'Inscricao invalida') });
+    }
+  }
+
+  async unsubscribe(req: AuthedCustomerRequest, res: Response) {
+    try {
+      const customer = req.customer;
+      if (!customer) return res.status(401).json({ error: 'Nao autenticado' });
+      const endpoint = String(req.body?.endpoint || '').trim();
+      const result = await pushService.removerInscricao(endpoint, { customerAccountId: customer.accountId });
+      return res.json({ unsubscribed: true, ...result });
+    } catch (error: any) {
+      return res.status(400).json({ error: String(error?.message || 'Endpoint invalido') });
+    }
+  }
+
+  async sendTest(req: AuthedCustomerRequest, res: Response) {
+    const customer = req.customer;
+    if (!customer) return res.status(401).json({ error: 'Nao autenticado' });
+
+    const resultado = await pushService.enviarParaClientes([customer.accountId], {
+      title: 'Notificacoes ligadas',
+      body: 'Voce vai receber aqui a confirmacao e os lembretes dos seus horarios.',
+      url: '/cliente/dashboard',
       tag: 'teste',
     });
 

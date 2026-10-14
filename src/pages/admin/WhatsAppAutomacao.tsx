@@ -201,7 +201,7 @@ const WhatsAppAutomacao: React.FC = () => {
           {!isSuperAdmin && (
             <Alert>
               <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Permissao insuficiente</AlertTitle>
+              <AlertTitle>Permissão insuficiente</AlertTitle>
               <AlertDescription>
                 Este teste foi pensado para o perfil SUPER_ADMIN_EVOLUTECH.
               </AlertDescription>

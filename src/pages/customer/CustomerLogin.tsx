@@ -98,46 +98,48 @@ const CustomerLogin: React.FC = () => {
               />
             </div>
           ) : null}
-          <CardTitle>Portal do Cliente</CardTitle>
-          <CardDescription>Entre para acompanhar seus agendamentos e beneficios.</CardDescription>
+          {/* Com a empresa no link, o cliente ve o nome da barbearia dele no
+              titulo — e nao um seletor de "Empresa" que ele nao precisa mexer. */}
+          <CardTitle>{hasSlugFromRoute && selectedCompany ? selectedCompany.name : 'Portal do Cliente'}</CardTitle>
+          <CardDescription>Entre para acompanhar seus agendamentos e benefícios.</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit}>
-            <div className="space-y-2">
-              <Label htmlFor="company_slug">Empresa</Label>
-              <select
-                id="company_slug"
-                value={form.company_slug}
-                onChange={(event) => setForm((old) => ({ ...old, company_slug: event.target.value }))}
-                required
-                disabled={loadingCompanies || hasSlugFromRoute}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                <option value="">
-                  {loadingCompanies ? 'Carregando empresas...' : 'Selecione sua empresa'}
-                </option>
-                {companies.map((company) => (
-                  <option key={company.id} value={company.slug}>
-                    {company.name}
+            {!hasSlugFromRoute && (
+              <div className="space-y-2">
+                <Label htmlFor="company_slug">Barbearia</Label>
+                <select
+                  id="company_slug"
+                  value={form.company_slug}
+                  onChange={(event) => setForm((old) => ({ ...old, company_slug: event.target.value }))}
+                  required
+                  disabled={loadingCompanies}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">
+                    {loadingCompanies ? 'Carregando...' : 'Selecione onde você é cliente'}
                   </option>
-                ))}
-              </select>
-              {hasSlugFromRoute && (
-                <p className="text-xs text-muted-foreground">Empresa identificada automaticamente pelo link.</p>
-              )}
-            </div>
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.slug}>
+                      {company.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="space-y-2">
-              <Label htmlFor="identifier">Email ou telefone</Label>
+              <Label htmlFor="identifier">WhatsApp ou e-mail</Label>
               <Input
                 id="identifier"
                 type="text"
-                placeholder="cliente@email.com ou (11) 91234-5678"
+                autoComplete="username"
+                placeholder="(11) 91234-5678 ou voce@email.com"
                 value={form.identifier}
                 onChange={(event) => setForm((old) => ({ ...old, identifier: event.target.value }))}
                 required
               />
               <p className="text-xs text-muted-foreground">
-                Use o mesmo email ou telefone que voce informou no cadastro.
+                O mesmo que você informou no cadastro.
               </p>
             </div>
             <div className="space-y-2">
@@ -145,10 +147,25 @@ const CustomerLogin: React.FC = () => {
               <Input
                 id="password"
                 type="password"
+                autoComplete="current-password"
                 value={form.password}
                 onChange={(event) => setForm((old) => ({ ...old, password: event.target.value }))}
                 required
               />
+              {/* O link sai por e-mail; quem cadastrou so WhatsApp pede o link
+                  a barbearia, que o gera na tela de Clientes. */}
+              {form.company_slug ? (
+                <Link
+                  to={`/cliente/${form.company_slug}/esqueci-senha`}
+                  className="inline-block text-xs text-primary hover:underline"
+                >
+                  Esqueci minha senha
+                </Link>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Esqueceu a senha? Escolha a barbearia acima para recuperar.
+                </p>
+              )}
             </div>
             <Button className="w-full" type="submit" disabled={loading}>
               {loading ? 'Entrando...' : 'Entrar'}
@@ -173,12 +190,12 @@ const CustomerLogin: React.FC = () => {
                 to="/login"
                 onClick={() => lembrarTipoAcesso('equipe')}
               >
-                Sou da equipe (dono ou funcionario)
+                Sou da equipe (dono ou funcionário)
               </Link>
             </p>
             <p className="mt-2">
               <Link className="hover:underline" to="/entrar" onClick={esquecerTipoAcesso}>
-                Ver as opcoes de acesso novamente
+                Ver as opções de acesso novamente
               </Link>
             </p>
           </div>
