@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Lock, Mail, ArrowRight, Loader2, User } from 'lucide-react';
 import { API_URL } from '@/config/api';
-import { rotaLoginCliente } from '@/services/customer-portal';
+import { rotaEntradaCliente } from '@/services/customer-portal';
 import { esquecerTipoAcesso, lembrarTipoAcesso } from '@/lib/tipo-acesso';
 
 const Login: React.FC = () => {
@@ -205,7 +205,7 @@ const Login: React.FC = () => {
             </div>
 
             <Link
-              to={rotaLoginCliente()}
+              to={rotaEntradaCliente()}
               onClick={() => lembrarTipoAcesso('cliente')}
               className="group mt-4 flex w-full items-center gap-4 rounded-xl border border-input bg-background/50 p-4 text-left transition-colors hover:border-primary hover:bg-primary/5"
             >

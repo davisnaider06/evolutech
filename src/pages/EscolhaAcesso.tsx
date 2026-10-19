@@ -14,7 +14,7 @@ import { Logo } from '@/components/Logo';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { ArrowRight, Building2, CalendarCheck, Loader2, User } from 'lucide-react';
-import { rotaLoginCliente } from '@/services/customer-portal';
+import { rotaEntradaCliente } from '@/services/customer-portal';
 import { API_URL } from '@/config/api';
 import { lembrarTipoAcesso, TipoAcesso } from '@/lib/tipo-acesso';
 
@@ -56,7 +56,7 @@ const EscolhaAcesso: React.FC = () => {
 
   const escolher = (tipo: TipoAcesso) => {
     if (lembrar) lembrarTipoAcesso(tipo);
-    navigate(tipo === 'cliente' ? rotaLoginCliente() : '/login', { replace: true });
+    navigate(tipo === 'cliente' ? rotaEntradaCliente() : '/login', { replace: true });
   };
 
   return (

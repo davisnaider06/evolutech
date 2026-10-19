@@ -26,7 +26,7 @@ import {
 import { formatarData, formatarDataHora, hojeNaBarbearia } from '@/lib/horario';
 import { AtivarNotificacoes } from '@/components/notificacoes/AtivarNotificacoes';
 import EscolhaProfissional from '@/components/agenda/EscolhaProfissional';
-import { esquecerAgendamentoPendente, lerAgendamentoPendente } from '@/lib/agendamento-pendente';
+import { lerAgendamentoPendente } from '@/lib/agendamento-pendente';
 
 /**
  * Hora da barbearia, sempre.
@@ -133,38 +133,13 @@ const CustomerDashboard: React.FC = () => {
   };
 
   useEffect(() => {
-    // Veio do link publico com o horario ja escolhido: marca agora, sem
-    // fazer o cliente repetir servico, barbeiro e hora depois de entrar.
-    // So da barbearia em que ele entrou: ids de outra empresa nao valem aqui.
-    const pendente = company?.slug ? lerAgendamentoPendente(company.slug) : null;
-    if (!pendente) {
-      loadData();
+    // Horario escolhido no link e ainda nao confirmado: o cliente confirma
+    // na tela de resumo, nao aqui.
+    if (company?.slug && lerAgendamentoPendente(company.slug)) {
+      navigate(`/agendar/${company.slug}/confirmar`, { replace: true });
       return;
     }
-    // Apaga antes de chamar a API: o efeito roda duas vezes em dev e um
-    // segundo envio duplicaria o horario.
-    esquecerAgendamentoPendente();
-    (async () => {
-      try {
-        await customerPortalService.createAppointment({
-          service_id: pendente.service_id,
-          professional_id: pendente.professional_id,
-          scheduled_at: pendente.scheduled_at,
-        });
-        toast.success(`Horário marcado: ${formatDateTime(pendente.scheduled_at)}`);
-      } catch (error: any) {
-        // Alguem pegou o horario no meio do cadastro, ou ha bloqueio de
-        // mensalidade. Deixa servico, barbeiro e dia prontos para trocar so a hora.
-        toast.error(error.message || 'Não foi possível marcar o horário escolhido. Escolha outro.');
-        setAppointmentForm({
-          service_id: pendente.service_id,
-          professional_id: pendente.professional_id,
-          date: pendente.date,
-          scheduled_at: '',
-        });
-      }
-      await loadData();
-    })();
+    loadData();
   }, []);
 
   useEffect(() => {
