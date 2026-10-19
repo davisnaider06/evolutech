@@ -39,7 +39,8 @@ export const lerAgendamentoPendente = (slug?: string | null): AgendamentoPendent
       localStorage.removeItem(CHAVE);
       return null;
     }
-    if (slug && dados.slug !== String(slug).trim().toLowerCase()) return null;
+    // Sempre por barbearia: ids de servico de uma empresa nao valem em outra.
+    if (!slug || dados.slug !== String(slug).trim().toLowerCase()) return null;
     return dados;
   } catch (_error) {
     return null;

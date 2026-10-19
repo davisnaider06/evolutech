@@ -69,7 +69,13 @@ const CustomerLogin: React.FC = () => {
       const result = await customerAuthService.login(form);
       login(result.token, result.customer, result.company);
       toast.success(`Bem-vindo(a), ${result.customer.name}`);
-      navigate('/cliente/dashboard', { replace: true });
+      // Veio do link de agendamento: falta so confirmar o horario escolhido.
+      navigate(
+        lerAgendamentoPendente(result.company?.slug)
+          ? `/agendar/${result.company.slug}/confirmar`
+          : '/cliente/dashboard',
+        { replace: true }
+      );
     } catch (error: any) {
       toast.error(error.message || 'Falha ao autenticar');
     } finally {
@@ -86,7 +92,12 @@ const CustomerLogin: React.FC = () => {
     sessao.isAuthenticated &&
     (!hasSlugFromRoute || sessao.company?.slug === String(slug).trim().toLowerCase())
   ) {
-    return <Navigate to="/cliente/dashboard" replace />;
+    return (
+      <Navigate
+        to={pendente && sessao.company?.slug ? `/agendar/${sessao.company.slug}/confirmar` : '/cliente/dashboard'}
+        replace
+      />
+    );
   }
 
   return (

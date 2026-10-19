@@ -47,6 +47,16 @@ export const rotaLoginCliente = () => {
   return slug ? `/cliente/${slug}/login` : '/cliente/login';
 };
 
+/**
+ * Porta de entrada do cliente: o agendamento da barbearia dele, com a conta
+ * so no fim. Sem barbearia conhecida no aparelho, cai no login, que deixa
+ * escolher a empresa.
+ */
+export const rotaEntradaCliente = () => {
+  const slug = empresaDoCliente();
+  return slug ? `/agendar/${slug}` : '/cliente/login';
+};
+
 const customerRequest = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const token = localStorage.getItem(CUSTOMER_TOKEN_KEY);
   const response = await fetch(`${API_URL}${path}`, {

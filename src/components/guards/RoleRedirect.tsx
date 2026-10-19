@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
 import { Loader2 } from 'lucide-react';
-import { rotaLoginCliente } from '@/services/customer-portal';
+import { rotaEntradaCliente } from '@/services/customer-portal';
 import { tipoAcessoLembrado } from '@/lib/tipo-acesso';
 
 export const RoleRedirect: React.FC = () => {
@@ -36,7 +36,7 @@ export const RoleRedirect: React.FC = () => {
     // tentar a senha dele no formulario do dono.
     const tipo = tipoAcessoLembrado();
     if (tipo === 'cliente') {
-      navigate(rotaLoginCliente(), { replace: true });
+      navigate(rotaEntradaCliente(), { replace: true });
       return;
     }
     if (tipo === 'equipe') {

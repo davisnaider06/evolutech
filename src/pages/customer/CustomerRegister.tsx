@@ -86,7 +86,13 @@ const CustomerRegister: React.FC = () => {
       });
       login(result.token, result.customer, result.company);
       toast.success('Cadastro concluído!');
-      navigate('/cliente/dashboard', { replace: true });
+      // Veio do link de agendamento: falta so confirmar o horario escolhido.
+      navigate(
+        lerAgendamentoPendente(result.company?.slug)
+          ? `/agendar/${result.company.slug}/confirmar`
+          : '/cliente/dashboard',
+        { replace: true }
+      );
     } catch (error: any) {
       toast.error(error.message || 'Falha ao cadastrar');
     } finally {

@@ -8,7 +8,8 @@ import { CalendarCheck, LogIn, UserPlus } from 'lucide-react';
 import { appointmentsService } from '@/services/appointments';
 import { formatarDataHora, hojeNaBarbearia } from '@/lib/horario';
 import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
-import { guardarAgendamentoPendente } from '@/lib/agendamento-pendente';
+import { lembrarEmpresaDoCliente } from '@/services/customer-portal';
+import { guardarAgendamentoPendente, lerAgendamentoPendente } from '@/lib/agendamento-pendente';
 import EscolhaProfissional, { ProfissionalOpcao } from '@/components/agenda/EscolhaProfissional';
 
 interface AppointmentInput {
@@ -71,8 +72,21 @@ const AgendamentoCliente: React.FC = () => {
         setLoadingOptions(true);
         const options = await appointmentsService.getPublicBookingOptions(slug);
         setCompanyName(options.company?.name || '');
+        // Quem abriu pelo link volta para esta barbearia ao tocar em "Sou cliente".
+        lembrarEmpresaDoCliente(slug.trim().toLowerCase());
         setServices(options.services || []);
         setProfessionals(options.professionals || []);
+        // Voltou da confirmacao para trocar o horario (ou o horario foi pego
+        // por outro): servico, barbeiro e dia ja vem escolhidos.
+        const pendente = lerAgendamentoPendente(slug);
+        if (pendente) {
+          setFormData({
+            service_id: pendente.service_id,
+            professional_id: pendente.professional_id,
+            scheduled_at: '',
+          });
+          setSelectedDate(pendente.date);
+        }
       } catch (err: any) {
         setError(err.message || 'Link de agendamento inválido');
       } finally {
@@ -127,8 +141,8 @@ const AgendamentoCliente: React.FC = () => {
   const selectedProfessional = professionals.find((item) => item.id === formData.professional_id);
 
   // A conta so e pedida aqui, no fim: o cliente ja viu servico, barbeiro e
-  // horario livre. O horario fica guardado e o portal marca assim que ele
-  // entrar ou terminar o cadastro. Quem ja esta logado vai direto.
+  // horario livre. O horario fica guardado e, depois de entrar ou terminar o
+  // cadastro, ele so confirma o resumo. Quem ja esta logado vai direto.
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.scheduled_at) return;
@@ -142,7 +156,7 @@ const AgendamentoCliente: React.FC = () => {
       professional_name: selectedProfessional?.name,
     });
     if (sessaoCliente.isAuthenticated && sessaoCliente.company?.slug === slugNormalizado) {
-      navigate('/cliente/dashboard');
+      navigate(`/agendar/${slugNormalizado}/confirmar`);
       return;
     }
     setPedindoConta(true);
@@ -316,6 +330,12 @@ const AgendamentoCliente: React.FC = () => {
               </Button>
               <p className="text-sm text-muted-foreground text-center">
                 Você entra ou cria sua conta no próximo passo.
+              </p>
+              {/* Quem so quer ver ou cancelar um horario ja marcado. */}
+              <p className="text-xs text-muted-foreground text-center">
+                <Link className="underline" to={`/cliente/${slugNormalizado}/login`}>
+                  Ver meus horários marcados
+                </Link>
               </p>
             </div>
           </CardFooter>

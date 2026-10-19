@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 
 import { AuthProvider } from "@/contexts/AuthContext"; 
 import { CustomerAuthProvider } from "@/contexts/CustomerAuthContext";
@@ -59,6 +59,7 @@ import Produtos from "./pages/empresa/Produtos";
 import Agendamentos from "./pages/empresa/Agendamentos";
 import ServicosAgendamento from "./pages/empresa/ServicosAgendamento";
 import AgendamentoCliente from "./pages/empresa/AgedamentoCliente";
+import ConfirmarAgendamento from "./pages/customer/ConfirmarAgendamento";
 import Pedidos from "./pages/empresa/Pedidos";
 import Pdv from "./pages/empresa/Pdv";
 import Caixa from "./pages/empresa/Caixa";
@@ -69,6 +70,12 @@ import Comissoes from "./pages/empresa/Comissoes";
 import Fidelidade from "./pages/empresa/Fidelidade";
 import Assinaturas from "./pages/empresa/Assinaturas";
 import Cursos from "./pages/empresa/Cursos";
+
+/** /cliente/:slug abre a escolha do horario, nao o login. */
+const PortaDoCliente = () => {
+  const { slug = '' } = useParams<{ slug: string }>();
+  return <Navigate to={`/agendar/${slug}`} replace />;
+};
 
 const queryClient = new QueryClient();
 
@@ -94,6 +101,9 @@ const App = () => (
                 <Route path="/aceitar-convite" element={<AcceptInvite />} />
                 <Route path="/chat/:slug" element={<ChatbotPublic />} />
                 <Route path="/agendar/:slug" element={<AgendamentoCliente />} />
+                <Route path="/agendar/:slug/confirmar" element={<ConfirmarAgendamento />} />
+                {/* A porta do cliente e o agendamento: conta so no fim. */}
+                <Route path="/cliente/:slug" element={<PortaDoCliente />} />
                 <Route path="/cliente/login" element={<CustomerLogin />} />
                 <Route path="/cliente/cadastro" element={<CustomerRegister />} />
                 <Route path="/cliente/:slug/login" element={<CustomerLogin />} />

@@ -17,7 +17,7 @@ import {
   paraCampoDataHora,
   doCampoDataHora,
 } from '@/lib/horario';
-import { Calendar, Clock, Copy, Scissors } from 'lucide-react';
+import { Calendar, Clock, Scissors } from 'lucide-react';
 import { toast } from 'sonner';
 import { appointmentsService } from '@/services/appointments';
 import { useAuth } from '@/contexts/AuthContext';
@@ -25,6 +25,7 @@ import { companyService } from '@/services/company';
 import { AgendaBoard } from '@/components/agenda/AgendaBoard';
 import { ReceberAtendimentoDialog, AtendimentoParaReceber } from '@/components/agenda/ReceberAtendimentoDialog';
 import { useCompanyModules } from '@/hooks/useCompanyModules';
+import LinkDosClientes from '@/components/agenda/LinkDosClientes';
 
 interface Appointment {
   id: string;
@@ -390,19 +391,6 @@ const Agendamentos: React.FC = () => {
     return escolhido ? escolhido.price.toFixed(2) : '0.00';
   })();
 
-  const publicLink = bookingSlug
-    ? `${window.location.origin}/agendar/${bookingSlug}`
-    : '';
-
-  const copyPublicLink = async () => {
-    if (!publicLink) {
-      toast.error('Não foi possível gerar o link de agendamento');
-      return;
-    }
-    await navigator.clipboard.writeText(publicLink);
-    toast.success('Link de agendamento copiado');
-  };
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -497,15 +485,7 @@ const Agendamentos: React.FC = () => {
       </div>
       )}
 
-      <div className="rounded-lg border p-4 bg-card flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-sm text-muted-foreground break-all">
-          Link de agendamento: <strong>{publicLink || 'indisponível'}</strong>
-        </div>
-        <Button type="button" variant="outline" onClick={copyPublicLink} className="gap-2">
-          <Copy className="h-4 w-4" />
-          Copiar link
-        </Button>
-      </div>
+      <LinkDosClientes slug={bookingSlug} nomeEmpresa={company?.name} />
 
       {viewMode === 'list' && (
       <>
