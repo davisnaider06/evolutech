@@ -130,7 +130,7 @@ export interface CustomerBookingOption {
 
 export interface CustomerBookingOptionsResponse {
   services: Array<CustomerBookingOption & { duration_minutes: number; price: number }>;
-  professionals: CustomerBookingOption[];
+  professionals: Array<CustomerBookingOption & { avatar_url?: string | null }>;
 }
 
 export interface CustomerPlanCatalogItem {

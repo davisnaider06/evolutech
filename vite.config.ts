@@ -41,7 +41,7 @@ export default defineConfig(() => ({
         description: "Plataforma SaaS whitelabel da Evolutech",
         start_url: "/",
         display: "standalone",
-        background_color: "#020617",
+        background_color: "#f8fafc",
         theme_color: "#2563eb",
         lang: "pt-BR",
         icons: [

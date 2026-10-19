@@ -505,7 +505,7 @@ export class CustomerPortalService {
         },
         select: {
           userId: true,
-          user: { select: { fullName: true } },
+          user: { select: { fullName: true, avatarUrl: true } },
         },
         orderBy: { user: { fullName: 'asc' } },
       }),
@@ -521,6 +521,7 @@ export class CustomerPortalService {
       professionals: professionals.map((item: any) => ({
         id: item.userId,
         name: item.user.fullName,
+        avatar_url: item.user.avatarUrl || null,
       })),
     };
   }

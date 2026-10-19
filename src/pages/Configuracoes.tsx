@@ -7,7 +7,10 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { API_URL } from '@/config/api';
 import { companyService } from '@/services/company';
-import { Shield, Save, RefreshCw, Bell, User, Clock } from 'lucide-react';
+import { Shield, Save, RefreshCw, Bell, User, Clock, Camera, Loader2, X } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { uploadImagem } from '@/lib/uploadImagem';
+import { iniciais, corDoProfissional } from '@/lib/profissional';
 
 const Configuracoes: React.FC = () => {
   const { user, refreshUser } = useAuth();
@@ -17,6 +20,7 @@ const Configuracoes: React.FC = () => {
   // nome sem depender do dono. Antes estes dois campos eram so leitura.
   const [perfil, setPerfil] = useState({ name: '', email: '' });
   const [savingPerfil, setSavingPerfil] = useState(false);
+  const [enviandoFoto, setEnviandoFoto] = useState(false);
   const [form, setForm] = useState({
     current_password: '',
     new_password: '',
@@ -115,6 +119,51 @@ const Configuracoes: React.FC = () => {
       toast.error(error.message || 'Erro ao salvar o perfil');
     } finally {
       setSavingPerfil(false);
+    }
+  };
+
+  // A foto e salva na hora, sem o "Salvar perfil": e ela que aparece para o
+  // cliente escolher o barbeiro no agendamento.
+  const salvarFoto = async (url: string | null) => {
+    const token = localStorage.getItem('evolutech_token');
+    const response = await fetch(`${API_URL}/auth/me`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ avatar_url: url }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || 'Não foi possível salvar a foto');
+    }
+    await refreshUser();
+  };
+
+  const handleEscolherFoto = async (arquivo: File | undefined) => {
+    if (!arquivo) return;
+    setEnviandoFoto(true);
+    try {
+      const { url } = await uploadImagem(arquivo, 'professional_photo');
+      await salvarFoto(url);
+      toast.success('Foto atualizada');
+    } catch (error: any) {
+      toast.error(error.message || 'Não consegui enviar a foto');
+    } finally {
+      setEnviandoFoto(false);
+    }
+  };
+
+  const handleRemoverFoto = async () => {
+    setEnviandoFoto(true);
+    try {
+      await salvarFoto(null);
+      toast.success('Foto removida');
+    } catch (error: any) {
+      toast.error(error.message || 'Não consegui remover a foto');
+    } finally {
+      setEnviandoFoto(false);
     }
   };
 
@@ -233,6 +282,60 @@ const Configuracoes: React.FC = () => {
           Como seu nome aparece no sistema e para os clientes, e o e-mail que você usa
           para entrar.
         </p>
+
+        {/* Foto so faz sentido para quem atende: e o card que o cliente ve
+            ao escolher o barbeiro. */}
+        {(user?.role === 'DONO_EMPRESA' || user?.role === 'FUNCIONARIO_EMPRESA') && (
+          <div className="mb-6 flex items-center gap-4">
+            <Avatar className="h-20 w-20">
+              <AvatarImage src={user?.avatar || undefined} alt={user?.name} className="object-cover" />
+              <AvatarFallback style={corDoProfissional(user?.id || 'eu')} className="text-lg font-semibold">
+                {iniciais(user?.name || '')}
+              </AvatarFallback>
+            </Avatar>
+            <div className="space-y-2">
+              <input
+                id="foto-perfil"
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  handleEscolherFoto(e.target.files?.[0]);
+                  e.target.value = '';
+                }}
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  disabled={enviandoFoto}
+                  onClick={() => document.getElementById('foto-perfil')?.click()}
+                >
+                  {enviandoFoto ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                  {enviandoFoto ? 'Enviando...' : user?.avatar ? 'Trocar foto' : 'Adicionar foto'}
+                </Button>
+                {user?.avatar ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1 text-muted-foreground"
+                    disabled={enviandoFoto}
+                    onClick={handleRemoverFoto}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Remover
+                  </Button>
+                ) : null}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Aparece para o cliente na hora de escolher o profissional. JPG, PNG ou WEBP, até 3 MB.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">

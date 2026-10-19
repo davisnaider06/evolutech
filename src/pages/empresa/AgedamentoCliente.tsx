@@ -1,21 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
-import { CalendarCheck, CheckCircle2 } from 'lucide-react';
+import { CalendarCheck, LogIn, UserPlus } from 'lucide-react';
 import { appointmentsService } from '@/services/appointments';
 import { formatarDataHora, hojeNaBarbearia } from '@/lib/horario';
+import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
+import { guardarAgendamentoPendente } from '@/lib/agendamento-pendente';
+import EscolhaProfissional, { ProfissionalOpcao } from '@/components/agenda/EscolhaProfissional';
 
 interface AppointmentInput {
-  customer_name: string;
-  customer_phone: string;
   service_id: string;
   professional_id: string;
   scheduled_at: string;
-  notes: string;
 }
 
 interface BookingOption {
@@ -47,24 +46,23 @@ interface SlotItem {
 
 const AgendamentoCliente: React.FC = () => {
   const { slug = '' } = useParams<{ slug: string }>();
-  const [submitted, setSubmitted] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const sessaoCliente = useCustomerAuth();
+  // Agendamento montado, falta so a conta: mostra entrar / cadastrar.
+  const [pedindoConta, setPedindoConta] = useState(false);
   const [loadingOptions, setLoadingOptions] = useState(false);
   const [companyName, setCompanyName] = useState('');
   const [error, setError] = useState('');
   const [services, setServices] = useState<BookingOption[]>([]);
-  const [professionals, setProfessionals] = useState<BookingOption[]>([]);
+  const [professionals, setProfessionals] = useState<ProfissionalOpcao[]>([]);
   const [slots, setSlots] = useState<SlotItem[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
 
   const [formData, setFormData] = useState<AppointmentInput>({
-    customer_name: '',
-    customer_phone: '',
     service_id: '',
     professional_id: '',
     scheduled_at: '',
-    notes: '',
   });
 
   useEffect(() => {
@@ -124,19 +122,30 @@ const AgendamentoCliente: React.FC = () => {
     loadSlots();
   }, [slug, selectedDate, formData.service_id, formData.professional_id]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
+  const slugNormalizado = slug.trim().toLowerCase();
+  const selectedService = services.find((item) => item.id === formData.service_id);
+  const selectedProfessional = professionals.find((item) => item.id === formData.professional_id);
 
-    try {
-      await appointmentsService.createPublicAppointment(slug, formData);
-      setSubmitted(true);
-    } catch (err: any) {
-      setError(err.message || 'Erro ao realizar agendamento. Tente novamente.');
-    } finally {
-      setLoading(false);
+  // A conta so e pedida aqui, no fim: o cliente ja viu servico, barbeiro e
+  // horario livre. O horario fica guardado e o portal marca assim que ele
+  // entrar ou terminar o cadastro. Quem ja esta logado vai direto.
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.scheduled_at) return;
+    guardarAgendamentoPendente({
+      slug: slugNormalizado,
+      service_id: formData.service_id,
+      professional_id: formData.professional_id,
+      date: selectedDate,
+      scheduled_at: formData.scheduled_at,
+      service_name: selectedService?.name,
+      professional_name: selectedProfessional?.name,
+    });
+    if (sessaoCliente.isAuthenticated && sessaoCliente.company?.slug === slugNormalizado) {
+      navigate('/cliente/dashboard');
+      return;
     }
+    setPedindoConta(true);
   };
 
   const etapaHorarioPronta = Boolean(formData.service_id && formData.professional_id && selectedDate);
@@ -146,38 +155,42 @@ const AgendamentoCliente: React.FC = () => {
     ? 'Carregando horários...'
     : 'Nenhum horário livre nesse dia. Tente outra data ou outro profissional.';
 
-  if (submitted) {
-    const selectedService = services.find((item) => item.id === formData.service_id)?.name || 'serviço';
-    const selectedProfessional = professionals.find((item) => item.id === formData.professional_id)?.name || 'profissional';
-
+  if (pedindoConta) {
     return (
-      <div className="flex items-center justify-center min-h-screen p-4">
+      <div className="flex items-center justify-center min-h-screen bg-muted p-3">
         <Card className="w-full max-w-md text-center">
           <CardHeader>
-            <div className="flex justify-center mb-4">
-              <CheckCircle2 className="h-16 w-16 text-green-500" />
-            </div>
-            <CardTitle>Agendamento solicitado!</CardTitle>
-            {/* Dia e hora em destaque: antes a confirmacao nao dizia quando
-                era, e o cliente fechava a pagina sem saber. */}
+            <CardTitle>Falta só entrar na sua conta</CardTitle>
+            {/* O resumo fica a vista: o cliente ve que nada se perdeu. */}
             <p className="text-2xl font-bold">{formatarDataHora(formData.scheduled_at)}</p>
             <CardDescription>
-              {formData.customer_name}, seu pedido de <strong>{selectedService}</strong> com{' '}
-              <strong>{selectedProfessional}</strong> foi enviado para {companyName || 'a barbearia'}.
-              A barbearia vai confirmar o seu horário.
+              <strong>{selectedService?.name || 'Serviço'}</strong> com{' '}
+              <strong>{selectedProfessional?.name || 'profissional'}</strong>
+              {companyName ? ` na ${companyName}` : ''}. Entre ou crie sua conta para confirmar.
+              O horário fica guardado enquanto isso.
             </CardDescription>
           </CardHeader>
           <CardFooter>
             <div className="w-full space-y-3">
-              <Button className="w-full" onClick={() => window.location.reload()}>
-                Fazer novo agendamento
-              </Button>
-              <p className="text-sm text-muted-foreground">
-                Quer acompanhar seus horários?{' '}
-                <Link className="text-primary underline" to={`/cliente/${slug}/cadastro`}>
-                  Crie sua conta
+              <Button asChild className="w-full h-11 gap-2">
+                <Link to={`/cliente/${slugNormalizado}/cadastro`}>
+                  <UserPlus className="h-4 w-4" />
+                  Criar minha conta
                 </Link>
-              </p>
+              </Button>
+              <Button asChild variant="outline" className="w-full h-11 gap-2">
+                <Link to={`/cliente/${slugNormalizado}/login`}>
+                  <LogIn className="h-4 w-4" />
+                  Já tenho conta
+                </Link>
+              </Button>
+              <button
+                type="button"
+                className="text-sm text-muted-foreground underline"
+                onClick={() => setPedindoConta(false)}
+              >
+                Voltar e trocar o horário
+              </button>
             </div>
           </CardFooter>
         </Card>
@@ -186,10 +199,10 @@ const AgendamentoCliente: React.FC = () => {
   }
 
   // Ordem pensada para o celular: primeiro o que o cliente quer (servico,
-  // barbeiro, dia e hora), por ultimo quem ele e. Pedir nome e telefone antes
-  // de mostrar qualquer horario faz o cliente desistir antes de ver valor.
+  // barbeiro, dia e hora), e so no fim a conta. Pedir cadastro antes de
+  // mostrar qualquer horario faz o cliente desistir antes de ver valor.
   return (
-    <div className="flex items-center justify-center min-h-screen bg-[#020b1f] p-3">
+    <div className="flex items-center justify-center min-h-screen bg-muted p-3">
       <Card className="w-full max-w-md shadow-lg border-border">
         <CardHeader className="space-y-1 bg-primary text-primary-foreground rounded-t-lg">
           <div className="flex items-center gap-2">
@@ -229,22 +242,13 @@ const AgendamentoCliente: React.FC = () => {
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="professional">2. Profissional</Label>
-              <select
-                id="professional"
-                required
-                value={formData.professional_id}
-                onChange={(e) => setFormData({ ...formData, professional_id: e.target.value })}
-                disabled={loadingOptions || professionals.length === 0}
-                className="h-11 rounded-md border border-input bg-background px-3 text-sm"
-              >
-                <option value="">{loadingOptions ? 'Carregando profissionais...' : 'Escolha o profissional'}</option>
-                {professionals.map((professional) => (
-                  <option key={professional.id} value={professional.id}>
-                    {professional.name}
-                  </option>
-                ))}
-              </select>
+              <Label>2. Profissional</Label>
+              <EscolhaProfissional
+                profissionais={professionals}
+                valor={formData.professional_id}
+                onChange={(id) => setFormData({ ...formData, professional_id: id })}
+                carregando={loadingOptions}
+              />
             </div>
 
             <div className="grid gap-2">
@@ -291,43 +295,6 @@ const AgendamentoCliente: React.FC = () => {
               )}
             </div>
 
-            <hr className="my-2 border-border" />
-
-            <div className="grid gap-2">
-              <Label htmlFor="name">Seu nome</Label>
-              <Input
-                id="name"
-                placeholder="Ex: João Silva"
-                required
-                autoComplete="name"
-                value={formData.customer_name}
-                onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="phone">WhatsApp</Label>
-              <Input
-                id="phone"
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel"
-                placeholder="(00) 00000-0000"
-                required
-                value={formData.customer_phone}
-                onChange={(e) => setFormData({ ...formData, customer_phone: e.target.value })}
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="notes">Observações (opcional)</Label>
-              <Textarea
-                id="notes"
-                placeholder="Alguma observação sobre o atendimento?"
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              />
-            </div>
           </CardContent>
 
           <CardFooter>
@@ -338,7 +305,6 @@ const AgendamentoCliente: React.FC = () => {
                 type="submit"
                 className="w-full h-11"
                 disabled={
-                  loading ||
                   loadingOptions ||
                   loadingSlots ||
                   services.length === 0 ||
@@ -346,13 +312,10 @@ const AgendamentoCliente: React.FC = () => {
                   !formData.scheduled_at
                 }
               >
-                {loading ? 'Enviando...' : 'Confirmar agendamento'}
+                Confirmar agendamento
               </Button>
               <p className="text-sm text-muted-foreground text-center">
-                Já é cliente?{' '}
-                <Link className="text-primary underline" to={`/cliente/${slug}/login`}>
-                  Entre na sua conta
-                </Link>
+                Você entra ou cria sua conta no próximo passo.
               </p>
             </div>
           </CardFooter>

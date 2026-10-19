@@ -308,6 +308,7 @@ export class AuthService {
         id: true,
         fullName: true,
         email: true,
+        avatarUrl: true,
         roles: {
           select: {
             role: true,
@@ -349,6 +350,7 @@ export class AuthService {
       id: user.id,
       full_name: user.fullName,
       email: user.email,
+      avatar_url: user.avatarUrl || null,
       role: activeRole?.role,
       company_id: companyId,
       company_name: activeRole?.company?.name,
@@ -382,12 +384,24 @@ export class AuthService {
    * O e-mail e a credencial de login, entao trocar aqui troca o login. O token
    * atual continua valendo porque o middleware resolve o usuario pelo id.
    */
-  async updateMyProfile(userId: string, data: { name?: string; email?: string }) {
+  async updateMyProfile(
+    userId: string,
+    data: { name?: string; email?: string; avatar_url?: string | null }
+  ) {
     const nome = String(data.name ?? '').trim();
     const emailBruto = String(data.email ?? '').trim().toLowerCase();
+    // Foto propria: o barbeiro troca sem depender do dono. `null` ou vazio
+    // remove e volta para as iniciais.
+    const trocaFoto = data.avatar_url !== undefined;
+    const foto = String(data.avatar_url ?? '').trim() || null;
 
-    if (!nome && !emailBruto) {
-      throw new Error('Informe ao menos um campo: name ou email');
+    if (!nome && !emailBruto && !trocaFoto) {
+      throw new Error('Informe ao menos um campo: name, email ou avatar_url');
+    }
+    // So aceita imagem servida pela propria API (upload em /company/media):
+    // URL externa aqui viraria rastreador na tela publica de agendamento.
+    if (foto && !/\/public\/media\/[\w-]+$/.test(foto)) {
+      throw new Error('Foto invalida: envie a imagem pelo upload do sistema');
     }
     if (data.name !== undefined && nome.length < 2) {
       throw new Error('O nome deve ter pelo menos 2 caracteres');
@@ -418,8 +432,9 @@ export class AuthService {
       data: {
         ...(nome ? { fullName: nome } : {}),
         ...(emailBruto ? { email: emailBruto } : {}),
+        ...(trocaFoto ? { avatarUrl: foto } : {}),
       },
-      select: { id: true, fullName: true, email: true },
+      select: { id: true, fullName: true, email: true, avatarUrl: true },
     });
 
     this.invalidateMeCache(userId);
@@ -428,6 +443,7 @@ export class AuthService {
       id: atualizado.id,
       name: atualizado.fullName,
       email: atualizado.email,
+      avatar_url: atualizado.avatarUrl || null,
       email_changed: atualizado.email !== atual.email,
     };
   }

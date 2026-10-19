@@ -9,6 +9,8 @@ import { customerAuthService, empresaDoCliente } from '@/services/customer-porta
 import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
 import { CustomerPortalCompanyOption } from '@/types/customer-portal';
 import { esquecerTipoAcesso, lembrarTipoAcesso } from '@/lib/tipo-acesso';
+import { lerAgendamentoPendente } from '@/lib/agendamento-pendente';
+import { formatarDataHora } from '@/lib/horario';
 
 const CustomerLogin: React.FC = () => {
   const { slug } = useParams<{ slug?: string }>();
@@ -27,6 +29,8 @@ const CustomerLogin: React.FC = () => {
   const sessao = useCustomerAuth();
   const { login } = sessao;
   const hasSlugFromRoute = useMemo(() => Boolean((slug || '').trim()), [slug]);
+  // Horario escolhido no link publico, esperando o login para ser marcado.
+  const pendente = useMemo(() => (slug ? lerAgendamentoPendente(slug) : null), [slug]);
   const selectedCompany = useMemo(
     () => companies.find((item) => item.slug === form.company_slug) || null,
     [companies, form.company_slug]
@@ -101,7 +105,11 @@ const CustomerLogin: React.FC = () => {
           {/* Com a empresa no link, o cliente ve o nome da barbearia dele no
               titulo — e nao um seletor de "Empresa" que ele nao precisa mexer. */}
           <CardTitle>{hasSlugFromRoute && selectedCompany ? selectedCompany.name : 'Portal do Cliente'}</CardTitle>
-          <CardDescription>Entre para acompanhar seus agendamentos e benefícios.</CardDescription>
+          <CardDescription>
+            {pendente
+              ? `Entre para confirmar seu horário de ${formatarDataHora(pendente.scheduled_at)}.`
+              : 'Entre para acompanhar seus agendamentos e benefícios.'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit}>

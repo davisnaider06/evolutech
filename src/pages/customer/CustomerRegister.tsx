@@ -8,6 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { customerAuthService } from '@/services/customer-portal';
 import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
 import { CustomerPortalCompanyOption } from '@/types/customer-portal';
+import { lerAgendamentoPendente } from '@/lib/agendamento-pendente';
+import { formatarDataHora } from '@/lib/horario';
 
 const CustomerRegister: React.FC = () => {
   const { slug } = useParams<{ slug?: string }>();
@@ -25,6 +27,8 @@ const CustomerRegister: React.FC = () => {
   const { login } = useCustomerAuth();
   const navigate = useNavigate();
   const hasSlugFromRoute = useMemo(() => Boolean((slug || '').trim()), [slug]);
+  // Horario escolhido no link publico, esperando o cadastro para ser marcado.
+  const pendente = useMemo(() => (slug ? lerAgendamentoPendente(slug) : null), [slug]);
   const selectedCompany = useMemo(
     () => companies.find((item) => item.slug === form.company_slug) || null,
     [companies, form.company_slug]
@@ -106,7 +110,11 @@ const CustomerRegister: React.FC = () => {
           <CardTitle>
             {hasSlugFromRoute && selectedCompany ? `Crie sua conta na ${selectedCompany.name}` : 'Criar conta'}
           </CardTitle>
-          <CardDescription>Agende pelo celular e acompanhe seus horários e benefícios.</CardDescription>
+          <CardDescription>
+            {pendente
+              ? `Crie sua conta para confirmar seu horário de ${formatarDataHora(pendente.scheduled_at)}.`
+              : 'Agende pelo celular e acompanhe seus horários e benefícios.'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>

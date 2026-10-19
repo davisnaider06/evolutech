@@ -91,7 +91,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           tenantId: data.user.tenantId,
           tenantName: data.user.tenantName,
           tenantSlug: data.user.tenantSlug,
-          avatar: null,
+          avatar: data.user.avatar_url || null,
           createdAt: new Date(data.user.created_at || Date.now()),
         },
         isAuthenticated: true,
