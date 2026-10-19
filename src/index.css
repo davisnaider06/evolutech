@@ -5,55 +5,57 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 @layer base {
+  /* Tema padrao claro. A barbearia que personalizou as cores em Tema
+     continua com as dela: estas so valem para quem nunca mexeu. */
   :root {
-    --background: 222 47% 6%;
-    --foreground: 210 40% 98%;
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
 
-    --card: 222 47% 8%;
-    --card-foreground: 210 40% 98%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
 
-    --popover: 222 47% 8%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
 
-    --primary: 217 91% 60%;
-    --primary-foreground: 222 47% 6%;
+    --primary: 217 91% 50%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 214 32% 91%;
+    --secondary-foreground: 222 47% 11%;
 
-    --muted: 217 33% 12%;
-    --muted-foreground: 215 20% 55%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 40%;
 
-    --accent: 187 85% 53%;
-    --accent-foreground: 222 47% 6%;
+    --accent: 187 85% 40%;
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 84% 55%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 217 33% 17%;
-    --input: 217 33% 17%;
-    --ring: 217 91% 60%;
+    --border: 214 32% 88%;
+    --input: 214 32% 85%;
+    --ring: 217 91% 50%;
 
     --radius: 0.75rem;
 
     /* Custom tokens */
-    --gradient-primary: linear-gradient(135deg, hsl(217 91% 60%) 0%, hsl(187 85% 53%) 100%);
-    --gradient-dark: linear-gradient(180deg, hsl(222 47% 8%) 0%, hsl(222 47% 4%) 100%);
-    --gradient-card: linear-gradient(135deg, hsl(222 47% 10%) 0%, hsl(222 47% 7%) 100%);
-    --gradient-glow: radial-gradient(ellipse at center, hsl(217 91% 60% / 0.15) 0%, transparent 70%);
+    --gradient-primary: linear-gradient(135deg, hsl(217 91% 50%) 0%, hsl(187 85% 40%) 100%);
+    --gradient-dark: linear-gradient(180deg, hsl(210 40% 98%) 0%, hsl(214 32% 93%) 100%);
+    --gradient-card: linear-gradient(135deg, hsl(0 0% 100%) 0%, hsl(210 40% 97%) 100%);
+    --gradient-glow: radial-gradient(ellipse at center, hsl(217 91% 50% / 0.10) 0%, transparent 70%);
     
-    --shadow-glow: 0 0 60px -15px hsl(217 91% 60% / 0.4);
-    --shadow-card: 0 4px 24px -4px hsl(222 47% 2% / 0.5);
-    --shadow-elevated: 0 8px 32px -8px hsl(222 47% 2% / 0.7);
+    --shadow-glow: 0 0 60px -15px hsl(217 91% 50% / 0.3);
+    --shadow-card: 0 4px 24px -4px hsl(222 47% 11% / 0.08);
+    --shadow-elevated: 0 8px 32px -8px hsl(222 47% 11% / 0.14);
 
-    --sidebar-background: 222 47% 7%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 217 91% 60%;
-    --sidebar-primary-foreground: 222 47% 6%;
-    --sidebar-accent: 217 33% 17%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 217 33% 17%;
-    --sidebar-ring: 217 91% 60%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-primary: 217 91% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 214 32% 93%;
+    --sidebar-accent-foreground: 222 47% 11%;
+    --sidebar-border: 214 32% 88%;
+    --sidebar-ring: 217 91% 50%;
 
     /* Role colors */
     --super-admin: 280 85% 60%;

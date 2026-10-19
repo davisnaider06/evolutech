@@ -54,6 +54,7 @@ export class AuthController {
           id: user.id,
           name: user.full_name,
           email: user.email,
+          avatar_url: user.avatar_url,
           role: user.role,
           tenantId: user.company_id,
           tenantName: user.company_name,
@@ -97,7 +98,7 @@ export class AuthController {
       if (
         lower.includes('informe ao menos') ||
         lower.includes('pelo menos') ||
-        lower.includes('invalido')
+        lower.includes('invalid')
       ) {
         return res.status(400).json({ error: message });
       }
