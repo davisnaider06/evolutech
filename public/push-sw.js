@@ -9,7 +9,7 @@
 self.addEventListener('push', (event) => {
   // Push sem corpo acontece (alguns servicos mandam ping vazio). Melhor um
   // aviso generico do que uma excecao dentro do service worker.
-  let dados = { title: 'Evolutech', body: 'Voce tem uma novidade.', url: '/', tag: 'evolutech' };
+  let dados = { title: 'iBarber', body: 'Voce tem uma novidade.', url: '/app', tag: 'evolutech' };
   try {
     if (event.data) dados = Object.assign(dados, event.data.json());
   } catch (_erro) {

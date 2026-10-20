@@ -75,7 +75,7 @@ export class NotificationService {
   }
 
   private get fromEmail() {
-    return String(process.env.SUPPORT_FROM_EMAIL || 'Evolutech <onboarding@resend.dev>').trim();
+    return String(process.env.SUPPORT_FROM_EMAIL || 'iBarber <onboarding@resend.dev>').trim();
   }
 
   private async enviar(params: {

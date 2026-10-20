@@ -21,7 +21,7 @@ import RedefinirSenha from "./pages/RedefinirSenha";
 import EscolhaAcesso from "./pages/EscolhaAcesso";
 import AcceptInvite from "./pages/AcceptInvite";
 import NotFound from "./pages/NotFound";
-import LandingVendas from "./pages/LandingVendas";
+import Landing from "./pages/Landing";
 import CustomerLogin from "./pages/customer/CustomerLogin";
 import CustomerRegister from "./pages/customer/CustomerRegister";
 import CustomerDashboard from "./pages/customer/CustomerDashboard";
@@ -70,6 +70,7 @@ import Comissoes from "./pages/empresa/Comissoes";
 import Fidelidade from "./pages/empresa/Fidelidade";
 import Assinaturas from "./pages/empresa/Assinaturas";
 import Cursos from "./pages/empresa/Cursos";
+import Avaliacoes from "./pages/empresa/Avaliacoes";
 
 /** /cliente/:slug abre a escolha do horario, nao o login. */
 const PortaDoCliente = () => {
@@ -90,8 +91,10 @@ const App = () => (
             <BrowserRouter>
               <Routes>
                 {/* Public Routes */}
-                <Route path="/" element={<Index />} />
-                <Route path="/vendas" element={<LandingVendas />} />
+                {/* "/" e a vitrine do iBarber; o app (redireciona por perfil) e /app. */}
+                <Route path="/" element={<Landing />} />
+                <Route path="/app" element={<Index />} />
+                <Route path="/vendas" element={<Navigate to="/" replace />} />
                 {/* Escolha de porta antes do login: cliente ou equipe */}
                 <Route path="/entrar" element={<EscolhaAcesso />} />
                 <Route path="/login/*" element={<Login />} />
@@ -253,6 +256,15 @@ const App = () => (
                     element={
                       <ModuleGuard moduleCode="appointments">
                         <ServicosAgendamento />
+                      </ModuleGuard>
+                    }
+                  />
+                  {/* Avaliacoes: o backend entrega ranking ao dono e so a propria nota ao barbeiro. */}
+                  <Route
+                    path="/empresa/avaliacoes"
+                    element={
+                      <ModuleGuard moduleCode="appointments">
+                        <Avaliacoes />
                       </ModuleGuard>
                     }
                   />

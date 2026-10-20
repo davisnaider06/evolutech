@@ -496,6 +496,7 @@ model Appointment {
   customer         Customer?                 @relation(fields: [customerId], references: [id])
   company          Company                   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   notifications    AppointmentNotification[]
+  review           AppointmentReview?
 
   @@index([companyId, customerId, scheduledAt])
   @@index([companyId, professionalId, scheduledAt], map: "idx_appointments_company_prof_time")
@@ -521,6 +522,23 @@ model AppointmentNotification {
   @@unique([appointmentId, stage, scheduledAt], map: "appointment_notifications_appt_stage_time_key")
   @@index([companyId])
   @@map("appointment_notifications")
+}
+
+// Nota do cliente para o atendimento. Anonimato e regra de leitura: o barbeiro
+// so recebe nota e comentario (review.service.ts).
+model AppointmentReview {
+  id             String      @id @default(uuid())
+  companyId      String      @map("empresa_id")
+  appointmentId  String      @unique @map("appointment_id")
+  professionalId String?     @map("professional_id")
+  customerId     String?     @map("customer_id")
+  rating         Int
+  comment        String?
+  createdAt      DateTime    @default(now()) @map("created_at")
+  appointment    Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, professionalId, createdAt], map: "appointment_reviews_empresa_prof_created_idx")
+  @@map("appointment_reviews")
 }
 
 model CustomerAccount {

@@ -43,9 +43,9 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({
     // Redireciona para a home correta do usuário para evitar ficar preso
     const redirectPath = getRedirectPath();
     
-    // Proteção contra loop: Se o redirectPath for a própria página atual, manda pra raiz
+    // Proteção contra loop: Se o redirectPath for a própria página atual, manda pra entrada do app
     if (redirectPath === location.pathname) {
-        return <Navigate to="/" replace />;
+        return <Navigate to="/app" replace />;
     }
     
     return <Navigate to={redirectPath} replace />;

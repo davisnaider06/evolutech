@@ -4,12 +4,14 @@ import { DashboardController } from '../controllers/dashboard.controller';
 import { authenticateToken } from '../middlewares/auth.middleware';
 import { MediaController } from '../controllers/media.controller';
 import { PushController } from '../controllers/push.controller';
+import { ReviewController } from '../controllers/review.controller';
 
 const router = Router();
 const companyController = new CompanyController();
 const dashboardController = new DashboardController();
 const mediaController = new MediaController();
 const pushController = new PushController();
+const reviewController = new ReviewController();
 const COMPANY_PERF_DEBUG = process.env.COMPANY_PERF_DEBUG === 'true';
 const COMPANY_SLOW_MS = Number(process.env.COMPANY_SLOW_MS || 300);
 
@@ -45,6 +47,8 @@ router.get('/commissions/export', companyController.exportCommissionsExcel.bind(
 router.get('/commissions/payouts', companyController.listCommissionPayouts.bind(companyController));
 router.put('/commissions/payouts', companyController.upsertCommissionPayout.bind(companyController));
 router.get('/dashboard/metrics', dashboardController.getMetrics.bind(dashboardController));
+// Dono recebe o ranking; barbeiro so a propria nota (o service decide pelo perfil).
+router.get('/reviews/summary', reviewController.resumo.bind(reviewController));
 router.get('/appointments/availability', companyController.listAppointmentAvailability.bind(companyController));
 router.put('/appointments/availability/:professionalId', companyController.saveAppointmentAvailability.bind(companyController));
 router.get('/appointments/board', companyController.getAgendaBoard.bind(companyController));

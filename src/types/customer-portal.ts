@@ -59,6 +59,10 @@ export interface CustomerAppointment {
   scheduled_at: string;
   status: string;
   created_at: string;
+  /** Nota que o cliente ja deu para este atendimento. */
+  review?: { rating: number; comment: string | null } | null;
+  /** Concluido, com barbeiro, sem nota e dentro do prazo. */
+  can_review?: boolean;
 }
 
 export interface CustomerSubscription {
@@ -130,7 +134,9 @@ export interface CustomerBookingOption {
 
 export interface CustomerBookingOptionsResponse {
   services: Array<CustomerBookingOption & { duration_minutes: number; price: number }>;
-  professionals: Array<CustomerBookingOption & { avatar_url?: string | null }>;
+  professionals: Array<
+    CustomerBookingOption & { avatar_url?: string | null; rating?: { media: number; total: number } | null }
+  >;
 }
 
 export interface CustomerPlanCatalogItem {

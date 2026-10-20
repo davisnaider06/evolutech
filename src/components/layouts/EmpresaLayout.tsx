@@ -34,6 +34,7 @@ import {
   ListTodo,
   Store,
   Percent,
+  Star,
   TrendingUp,
   ShieldCheck,
 } from 'lucide-react';
@@ -79,6 +80,7 @@ const navItems: NavItem[] = [
   // (commit cb129f4) se outra barbearia precisar.
   { icon: Scissors, label: 'Serviços', path: '/empresa/servicos', moduleCode: 'appointments', group: 'atendimento' },
   { icon: Gift, label: 'Fidelidade', path: '/empresa/fidelidade', moduleCode: 'loyalty', ownerOnly: true, group: 'atendimento' },
+  { icon: Star, label: 'Avaliações', path: '/empresa/avaliacoes', moduleCode: 'appointments', group: 'atendimento' },
   { icon: Repeat, label: 'Assinaturas', path: '/empresa/assinaturas', moduleCode: 'subscriptions', group: 'atendimento' },
   // So para o funcionario: o dono ja ve as pendencias no topo do Painel, e
   // menu curto e o que pede o dono que se perde com muita opcao.

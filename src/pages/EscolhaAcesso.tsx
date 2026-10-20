@@ -144,7 +144,7 @@ const EscolhaAcesso: React.FC = () => {
         </div>
 
         <p className="mt-6 text-center text-sm text-muted-foreground">
-          © {new Date().getFullYear()} Evolutech Digital. Todos os direitos reservados.
+          © {new Date().getFullYear()} iBarber. Todos os direitos reservados.
         </p>
       </div>
     </div>

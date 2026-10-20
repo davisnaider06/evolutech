@@ -112,7 +112,7 @@ app.use((error: any, _req: express.Request, res: express.Response, next: express
 
 // Rota Raiz
 app.get('/', (req, res) => {
-  res.json({ status: 'Backend Evolutech Modular 🚀' });
+  res.json({ status: 'Backend iBarber 🚀' });
 });
 
 app.get('/api/health', async (_req, res) => {

@@ -6,6 +6,7 @@ import { resolverHorarioDaCasa } from '../utils/business-hours.util';
 import { getBlockedIntervals, isIntervalBlocked } from '../utils/appointment-blocks.util';
 import { interpretarDataHora, limitesDoDia } from '../config/fuso';
 import { appointmentNotificationService } from './appointment-notification.service';
+import { podeAvaliar, reviewService } from './review.service';
 
 class CustomerPortalError extends Error {
   statusCode: number;
@@ -274,6 +275,7 @@ export class CustomerPortalService {
         scheduledAt: true,
         status: true,
         createdAt: true,
+        review: { select: { rating: true, comment: true } },
       },
     });
 
@@ -288,6 +290,8 @@ export class CustomerPortalService {
       scheduled_at: item.scheduledAt,
       status: this.normalizeAppointmentStatus(item.status),
       created_at: item.createdAt,
+      review: item.review || null,
+      can_review: podeAvaliar(item),
     }));
   }
 
@@ -491,7 +495,7 @@ export class CustomerPortalService {
 
   async getBookingOptions(auth: AuthenticatedCustomer) {
     const context = await this.getCustomerContext(auth);
-    const [services, professionals] = await Promise.all([
+    const [services, professionals, notas] = await Promise.all([
       (prisma as any).appointmentService.findMany({
         where: { companyId: context.companyId, isActive: true },
         select: { id: true, name: true, durationMinutes: true, price: true },
@@ -509,6 +513,7 @@ export class CustomerPortalService {
         },
         orderBy: { user: { fullName: 'asc' } },
       }),
+      reviewService.notasPublicas(context.companyId),
     ]);
 
     return {
@@ -522,6 +527,7 @@ export class CustomerPortalService {
         id: item.userId,
         name: item.user.fullName,
         avatar_url: item.user.avatarUrl || null,
+        rating: notas.get(item.userId) || null,
       })),
     };
   }

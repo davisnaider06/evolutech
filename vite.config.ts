@@ -36,10 +36,11 @@ export default defineConfig(() => ({
         ],
       },
       manifest: {
-        name: "Evolutech Digital",
-        short_name: "Evolutech",
-        description: "Plataforma SaaS whitelabel da Evolutech",
-        start_url: "/",
+        name: "iBarber",
+        short_name: "iBarber",
+        description: "Sistema para barbearias: agenda, caixa, comissões e avaliações",
+        // "/" e a landing; o app instalado abre direto no redirecionamento por perfil.
+        start_url: "/app",
         display: "standalone",
         background_color: "#f8fafc",
         theme_color: "#2563eb",

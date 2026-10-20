@@ -179,7 +179,7 @@ export default function Suporte() {
               <DialogHeader>
                 <DialogTitle>Abrir Ticket de Suporte</DialogTitle>
                 <DialogDescription>
-                  Descreva o problema para que o admin da Evolutech acompanhe e responda dentro do sistema.
+                  Descreva o problema para que o time do iBarber acompanhe e responda dentro do sistema.
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">

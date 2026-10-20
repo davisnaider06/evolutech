@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -27,6 +28,8 @@ import { formatarData, formatarDataHora, hojeNaBarbearia } from '@/lib/horario';
 import { AtivarNotificacoes } from '@/components/notificacoes/AtivarNotificacoes';
 import EscolhaProfissional from '@/components/agenda/EscolhaProfissional';
 import { lerAgendamentoPendente } from '@/lib/agendamento-pendente';
+import AvaliarAtendimento from '@/components/avaliacao/AvaliarAtendimento';
+import { Estrelas } from '@/components/avaliacao/Estrelas';
 
 /**
  * Hora da barbearia, sempre.
@@ -108,6 +111,8 @@ const CustomerDashboard: React.FC = () => {
     useState<CustomerPaymentGatewayResult | null>(null);
   const { customer, company, logout } = useCustomerAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [avaliando, setAvaliando] = useState<CustomerAppointment | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -141,6 +146,16 @@ const CustomerDashboard: React.FC = () => {
     }
     loadData();
   }, []);
+
+  // O push "Como foi o seu atendimento?" abre o portal com ?avaliar=<id>.
+  useEffect(() => {
+    const id = searchParams.get('avaliar');
+    if (!id || loading) return;
+    const alvo = appointments.find((item) => item.id === id);
+    if (alvo?.can_review) setAvaliando(alvo);
+    searchParams.delete('avaliar');
+    setSearchParams(searchParams, { replace: true });
+  }, [loading, appointments]);
 
   useEffect(() => {
     const loadSlots = async () => {
@@ -255,6 +270,9 @@ const CustomerDashboard: React.FC = () => {
   );
   const agendaDisponivel = Boolean(bookingOptions?.services?.length && bookingOptions?.professionals?.length);
 
+  // O mais recente primeiro: e o corte que o cliente ainda lembra.
+  const paraAvaliar = appointments.find((item) => item.can_review);
+
   const linhaAgendamento = (item: CustomerAppointment) => {
     const status = statusAgendamento(item.status);
     return (
@@ -264,10 +282,18 @@ const CustomerDashboard: React.FC = () => {
           <p className="text-sm text-muted-foreground">
             {formatDateTime(item.scheduled_at)} · {item.professional_name || 'Profissional'}
           </p>
+          {item.review ? <Estrelas nota={item.review.rating} className="mt-1" /> : null}
         </div>
-        <Badge variant="outline" className={`shrink-0 ${status.classe}`}>
-          {status.texto}
-        </Badge>
+        {item.can_review ? (
+          <Button size="sm" variant="outline" className="shrink-0" onClick={() => setAvaliando(item)}>
+            <Star className="mr-1 h-3.5 w-3.5" />
+            Avaliar
+          </Button>
+        ) : (
+          <Badge variant="outline" className={`shrink-0 ${status.classe}`}>
+            {status.texto}
+          </Badge>
+        )}
       </div>
     );
   };
@@ -325,6 +351,32 @@ const CustomerDashboard: React.FC = () => {
             )}
           </CardContent>
         </Card>
+
+        {paraAvaliar ? (
+          <Card className="border-amber-300 bg-amber-50/60 dark:bg-amber-950/20">
+            <CardContent className="flex items-center justify-between gap-3 p-4">
+              <div className="min-w-0">
+                <p className="font-semibold">Como foi seu último atendimento?</p>
+                <p className="text-sm text-muted-foreground">
+                  {paraAvaliar.service_name || 'Serviço'} com {paraAvaliar.professional_name || 'o profissional'}.
+                  Anônimo para o barbeiro.
+                </p>
+              </div>
+              <Button size="sm" className="shrink-0" onClick={() => setAvaliando(paraAvaliar)}>
+                Avaliar
+              </Button>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        <AvaliarAtendimento
+          atendimento={avaliando}
+          onClose={() => setAvaliando(null)}
+          onAvaliado={() => {
+            setAvaliando(null);
+            loadData();
+          }}
+        />
 
         <AtivarNotificacoes
           api={customerPortalService}

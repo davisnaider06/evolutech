@@ -132,7 +132,7 @@ const GatewaysPagamento: React.FC = () => {
           Gateways de Pagamento
         </h1>
         <p className="text-muted-foreground">
-          Controle dos gateways das empresas pelo painel Evolutech.
+          Controle dos gateways das empresas pelo painel iBarber.
         </p>
       </div>
 

@@ -104,6 +104,8 @@ export const companyService = {
     return request(`/commissions/overview${suffix}`);
   },
   listCommissionProfiles: async () => request('/commissions/profiles'),
+  // Dono recebe o ranking; barbeiro so a propria nota.
+  reviewsSummary: async () => request('/reviews/summary'),
   upsertCommissionProfile: async (
     professionalId: string,
     data: {

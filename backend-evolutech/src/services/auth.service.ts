@@ -523,7 +523,7 @@ export class AuthService {
       const token = gerarTokenDeRedefinicao('equipe', user.id, user.passwordHash, '1h');
       await notificationService.redefinicaoDeSenha({
         to: email,
-        companyName: user.roles[0]?.company?.name || 'Evolutech',
+        companyName: user.roles[0]?.company?.name || 'iBarber',
         nome: String(user.fullName || '').split(' ')[0] || 'tudo bem',
         link: `${enderecoDoApp()}/redefinir-senha?token=${encodeURIComponent(token)}`,
         validade: '1 hora',

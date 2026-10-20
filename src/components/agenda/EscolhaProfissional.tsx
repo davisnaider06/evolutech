@@ -2,11 +2,14 @@ import React from 'react';
 import { Check } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { corDoProfissional, iniciais } from '@/lib/profissional';
+import { NotaCurta, type NotaProfissional } from '@/components/avaliacao/Estrelas';
 
 export interface ProfissionalOpcao {
   id: string;
   name: string;
   avatar_url?: string | null;
+  /** So vem quando o barbeiro ja tem avaliacoes suficientes. */
+  rating?: NotaProfissional | null;
 }
 
 interface Props {
@@ -62,6 +65,7 @@ const EscolhaProfissional: React.FC<Props> = ({ profissionais, valor, onChange, 
               </AvatarFallback>
             </Avatar>
             <span className="line-clamp-2 text-xs font-medium leading-tight">{profissional.name}</span>
+            <NotaCurta rating={profissional.rating} />
           </button>
         );
       })}

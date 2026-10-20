@@ -50,14 +50,14 @@ interface Company {
 const ROLES_OPTIONS: { value: UserRole; label: string; description: string; requiresCompany: boolean }[] = [
   {
     value: 'SUPER_ADMIN_EVOLUTECH',
-    label: 'Super Admin Evolutech',
+    label: 'Super Admin iBarber',
     description: 'Acesso total à plataforma',
     requiresCompany: false,
   },
   {
     value: 'ADMIN_EVOLUTECH',
-    label: 'Admin Evolutech',
-    description: 'Administrador da Evolutech',
+    label: 'Admin iBarber',
+    description: 'Administrador do iBarber',
     requiresCompany: false,
   },
   {
@@ -432,7 +432,7 @@ const GerenciarUsuarios: React.FC = () => {
               <p className="text-2xl font-bold">
                 {users.filter((u) => u.roles.some((r) => ['SUPER_ADMIN_EVOLUTECH', 'ADMIN_EVOLUTECH'].includes(r.role))).length}
               </p>
-              <p className="text-sm text-muted-foreground">Evolutech</p>
+              <p className="text-sm text-muted-foreground">iBarber</p>
             </div>
           </CardContent>
         </Card>

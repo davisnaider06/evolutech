@@ -88,7 +88,7 @@ const AdminDashboard: React.FC = () => {
         </h1>
         <p className="text-muted-foreground">
           {isSuperAdmin 
-            ? 'Visão geral completa da plataforma Evolutech' 
+            ? 'Visão geral completa da plataforma iBarber' 
             : 'Gerencie operações e suporte aos clientes'}
         </p>
       </div>

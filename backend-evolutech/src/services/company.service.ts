@@ -28,6 +28,8 @@ import { chaveTelefone, clientesComTelefone } from '../utils/telefone.util';
 import { invalidateRoleCache } from '../middlewares/auth.middleware';
 import { appointmentNotificationService } from './appointment-notification.service';
 import { CustomerAuthError, CustomerAuthService } from './customer-auth.service';
+import { reviewService } from './review.service';
+import { pushService } from './push.service';
 
 /**
  * Colunas que o CRUD generico aceita gravar, por tabela.
@@ -949,6 +951,13 @@ export class CompanyService {
               : {}),
           },
         });
+
+        // Pede a avaliacao so na primeira vez que vira concluido.
+        if (String((existing as any).status || '').toLowerCase() !== 'concluido' && professionalId) {
+          this.pedirAvaliacao(existing.companyId, appointment.customerId, id).catch((error) =>
+            console.warn('[reviews] falha ao pedir avaliacao:', error?.message || error),
+          );
+        }
       }
     }
 
@@ -2033,7 +2042,7 @@ export class CompanyService {
   }) {
     const apiKey = String(process.env.RESEND_API_KEY || '').trim();
     const toEmail = String(process.env.SUPPORT_NOTIFICATION_EMAIL || '').trim();
-    const fromEmail = String(process.env.SUPPORT_FROM_EMAIL || 'Evolutech <onboarding@resend.dev>').trim();
+    const fromEmail = String(process.env.SUPPORT_FROM_EMAIL || 'iBarber <onboarding@resend.dev>').trim();
 
     if (!apiKey || !toEmail) {
       console.info('[support-email] skipped: missing RESEND_API_KEY or SUPPORT_NOTIFICATION_EMAIL');
@@ -9492,10 +9501,25 @@ export class CompanyService {
     return usuario.charAt(0).toUpperCase() + usuario.slice(1);
   }
 
+  /** Push para o cliente avaliar o corte que acabou de ser concluido. */
+  private async pedirAvaliacao(companyId: string, customerId: string, appointmentId: string) {
+    const conta = await (prisma as any).customerAccount.findFirst({
+      where: { companyId, customerId, isActive: true },
+      select: { id: true },
+    });
+    if (!conta) return;
+    await pushService.enviarParaClientes([conta.id], {
+      title: 'Como foi o seu atendimento?',
+      body: 'Dê uma nota de 1 a 5. O barbeiro não fica sabendo que foi você.',
+      url: `/cliente/dashboard?avaliar=${appointmentId}`,
+      tag: `avaliar-${appointmentId}`,
+    });
+  }
+
   async getPublicBookingOptions(slug: string) {
     const company = await this.getPublicBookingCompany(slug);
 
-    const [professionals, services] = await Promise.all([
+    const [professionals, services, notas] = await Promise.all([
       prisma.userRole.findMany({
         where: {
           companyId: company.id,
@@ -9518,6 +9542,7 @@ export class CompanyService {
         },
         orderBy: { name: 'asc' },
       }),
+      reviewService.notasPublicas(company.id),
     ]);
 
     return {
@@ -9526,6 +9551,7 @@ export class CompanyService {
         id: item.userId,
         name: this.nomePublicoProfissional(item.user.fullName),
         avatar_url: item.user.avatarUrl || null,
+        rating: notas.get(item.userId) || null,
       })),
       services: services.map((item: any) => ({
         id: item.id,

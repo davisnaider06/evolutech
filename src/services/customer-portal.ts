@@ -154,6 +154,11 @@ export const customerPortalService = {
       `/customer/appointments/${encodeURIComponent(appointmentId)}/cancel`,
       { method: 'PATCH' }
     ),
+  reviewAppointment: (appointmentId: string, payload: { rating: number; comment?: string }) =>
+    customerRequest<{ id: string; rating: number; comment: string | null; created_at: string }>(
+      `/customer/appointments/${encodeURIComponent(appointmentId)}/review`,
+      { method: 'POST', body: JSON.stringify(payload) }
+    ),
   plans: () => customerRequest<CustomerPlanCatalogItem[]>('/customer/plans'),
   subscribePlan: (planId: string, payload: { payment_method: 'pix' | 'credito' | 'debito' | 'cartao' }) =>
     customerRequest<CustomerSubscriptionPurchaseResult>(

@@ -64,7 +64,7 @@ const WhatsAppAutomacao: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [testPhone, setTestPhone] = useState('');
-  const [testMessage, setTestMessage] = useState('Teste Evolutech: mensagem enviada com sucesso.');
+  const [testMessage, setTestMessage] = useState('Teste iBarber: mensagem enviada com sucesso.');
   const [testDelay, setTestDelay] = useState('0');
   const [sendingTest, setSendingTest] = useState(false);
   const [lastTestResponse, setLastTestResponse] = useState<any | null>(null);
@@ -182,7 +182,7 @@ const WhatsAppAutomacao: React.FC = () => {
             <li>API externa estiver configurada</li>
             <li>Webhooks estiverem estáveis</li>
             <li>Plano da empresa permitir</li>
-            <li>Admin Evolutech liberar manualmente</li>
+            <li>Admin iBarber liberar manualmente</li>
           </ul>
         </AlertDescription>
       </Alert>
