@@ -1,20 +1,24 @@
 /**
- * Monta (ou desmonta) a barbearia de demonstracao "Felipe Barber".
+ * Monta (ou desmonta) a barbearia de demonstracao do iBarber.
+ *
+ * Tudo generico de proposito: "Barbearia Demo", dono "Admin" e barbeiros
+ * "Barber 1", "Barber 2" e "Barber 3". E a conta que se mostra para quem
+ * esta conhecendo o sistema — nada de nome de cliente real.
  *
  * A ideia e ter um cenario de lego: tudo o que este script cria pode ser
  * editado, adicionado ou apagado normalmente pela interface do sistema.
  * Nada aqui e magico — sao os mesmos registros que a tela criaria.
  *
  * Uso:
- *   node prisma/demo-felipe-barber.js              monta (ou atualiza) a empresa
- *   node prisma/demo-felipe-barber.js --zerar      apaga os dados de demonstracao,
+ *   node prisma/demo-barbearia.js              monta (ou atualiza) a empresa
+ *   node prisma/demo-barbearia.js --zerar      apaga os dados de demonstracao,
  *                                                  mantendo empresa, equipe e modulos
- *   node prisma/demo-felipe-barber.js --remover    apaga a empresa e seus usuarios
+ *   node prisma/demo-barbearia.js --remover    apaga a empresa e seus usuarios
  *
  * Rodar de novo NAO duplica: o script e idempotente. Se voce bagunçar tudo
  * testando, rode --remover e monte de novo.
  *
- * Variaveis (para montar uma demo que nao seja a Felipe Barber de teste):
+ * Variaveis (para montar outra demo):
  *   DEMO_EMPRESA, DEMO_SLUG, DEMO_DOMINIO   nome, slug e dominio dos e-mails
  *   DEMO_SENHA_EQUIPE, DEMO_SENHA_CLIENTE   obrigatorias: senha nenhuma fica
  *                                           escrita no repositorio (ele e publico)
@@ -37,16 +41,16 @@ const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 
-const EMPRESA = process.env.DEMO_EMPRESA || 'Felipe Barber';
-const SLUG = process.env.DEMO_SLUG || 'felipe-barber';
-const DOMINIO = (process.env.DEMO_DOMINIO || 'felipebarber.com').toLowerCase();
+const EMPRESA = process.env.DEMO_EMPRESA || 'Barbearia Demo';
+const SLUG = process.env.DEMO_SLUG || 'barbearia-demo';
+const DOMINIO = (process.env.DEMO_DOMINIO || 'ibarber.demo').toLowerCase();
 const SENHA_PADRAO = process.env.DEMO_SENHA_EQUIPE;   // equipe: dono e barbeiros
 const SENHA_CLIENTE = process.env.DEMO_SENHA_CLIENTE; // clientes finais, no portal
 const PERFIL_ESSENCIAL = process.env.DEMO_PERFIL === 'essencial';
 const ESSENCIAIS = new Set(['agendamentos', 'clientes', 'pdv', 'caixa']);
 const emailEquipe = (nome) => `${nome}@${DOMINIO}`;
 // Dominio dos e-mails dos clientes. Em producao use um que nao entregue a
-// ninguem (ex.: cliente.evolutech.demo): a regua de mensalidades manda e-mail
+// ninguem (ex.: cliente.ibarber.demo): a regua de mensalidades manda e-mail
 // de verdade para o cliente, e @email.com e um dominio real.
 // Mesma regra de src/utils/telefone.util.ts (chaveTelefone): DDD + 8 digitos,
 // sem 55 e sem o nono digito. E assim que o login acha a conta pelo WhatsApp.
@@ -56,7 +60,7 @@ const chaveTelefone = (bruto) => {
   if (d.length === 11 && d[2] === '9') d = d.slice(0, 2) + d.slice(3);
   return d.length === 10 ? d : null;
 };
-const DOMINIO_CLIENTE = (process.env.DEMO_DOMINIO_CLIENTE || 'email.com').toLowerCase();
+const DOMINIO_CLIENTE = (process.env.DEMO_DOMINIO_CLIENTE || 'cliente.ibarber.demo').toLowerCase();
 
 /**
  * Acha a empresa da demo pelo slug e confere que e mesmo da demo: todos os
@@ -295,11 +299,12 @@ async function montar() {
     return user;
   }
 
-  const felipe = await garantirUsuario(emailEquipe('felipe'), 'Felipe Moreira', 'DONO_EMPRESA');
-  const rafael = await garantirUsuario(emailEquipe('rafael'), 'Rafael Souza', 'FUNCIONARIO_EMPRESA');
-  const diego = await garantirUsuario(emailEquipe('diego'), 'Diego Lima', 'FUNCIONARIO_EMPRESA');
-  const barbeiros = [felipe, rafael, diego];
-  console.log('equipe: Felipe (dono), Rafael e Diego (barbeiros)');
+  const admin = await garantirUsuario(emailEquipe('admin'), 'Admin', 'DONO_EMPRESA');
+  const barber1 = await garantirUsuario(emailEquipe('barber1'), 'Barber 1', 'FUNCIONARIO_EMPRESA');
+  const barber2 = await garantirUsuario(emailEquipe('barber2'), 'Barber 2', 'FUNCIONARIO_EMPRESA');
+  const barber3 = await garantirUsuario(emailEquipe('barber3'), 'Barber 3', 'FUNCIONARIO_EMPRESA');
+  const barbeiros = [barber1, barber2, barber3];
+  console.log('equipe: Admin (dono), Barber 1, Barber 2 e Barber 3');
 
   // --- Servicos ------------------------------------------------
   // Duracoes multiplas de 30 para a grade fechar certinho.
@@ -366,21 +371,21 @@ async function montar() {
         startTime: '12:00',
         endTime: '13:00',
         isActive: true,
-        createdByUserId: felipe.id,
+        createdByUserId: admin.id,
       });
     }
   }
-  // Bloqueio pontual: Diego no medico depois de amanha, a tarde.
+  // Bloqueio pontual: Barber 2 no medico depois de amanha, a tarde.
   const diaMedico = proximoDiaUtil(2);
   blocos.push({
     companyId,
-    professionalId: diego.id,
+    professionalId: barber2.id,
     startAt: emHoras(diaMedico, 14, 0),
     endAt: emHoras(diaMedico, 16, 0),
     reason: 'Medico',
     isRecurring: false,
     isActive: true,
-    createdByUserId: felipe.id,
+    createdByUserId: admin.id,
   });
   await prisma.appointmentBlock.createMany({ data: blocos });
   console.log(`bloqueios: ${blocos.length} (almoco recorrente + 1 folga pontual)`);
@@ -420,9 +425,9 @@ async function montar() {
 
   // --- Comissoes -----------------------------------------------
   const comissoes = [
-    { professional: felipe, servico: 100, produto: 20, fixo: 0 },
-    { professional: rafael, servico: 45, produto: 12, fixo: 0 },
-    { professional: diego, servico: 40, produto: 10, fixo: 300 },
+    { professional: barber3, servico: 50, produto: 15, fixo: 0 },
+    { professional: barber1, servico: 45, produto: 12, fixo: 0 },
+    { professional: barber2, servico: 40, produto: 10, fixo: 300 },
   ];
   for (const c of comissoes) {
     await prisma.commissionProfile.upsert({
@@ -448,28 +453,28 @@ async function montar() {
   // --- Clientes ------------------------------------------------
   // diasSemVir null = nunca foi atendido (aparece como "Nunca veio").
   const clientesDef = [
-    { name: 'Joao Pedro Alves', phone: '(51) 99101-2233', barbeiro: rafael, diasSemVir: 0 },
-    { name: 'Marcos Vinicius Rocha', phone: '(51) 99102-3344', barbeiro: rafael, diasSemVir: 7 },
-    { name: 'Lucas Ferreira', phone: '(51) 99103-4455', barbeiro: rafael, diasSemVir: 21 },
-    { name: 'Bruno Cardoso', phone: '(51) 99104-5566', barbeiro: rafael, diasSemVir: 68 },
-    { name: 'Anderson Melo', phone: '(51) 99105-6677', barbeiro: rafael, diasSemVir: 115 },
-    { name: 'Thiago Nunes', phone: '(51) 99106-7788', barbeiro: diego, diasSemVir: 3 },
-    { name: 'Rodrigo Batista', phone: '(51) 99107-8899', barbeiro: diego, diasSemVir: 14 },
-    { name: 'Felipe Ramos', phone: '(51) 99108-9900', barbeiro: diego, diasSemVir: 42 },
-    { name: 'Gustavo Pereira', phone: '(51) 99109-0011', barbeiro: diego, diasSemVir: 95 },
-    { name: 'Carlos Eduardo Dias', phone: '(51) 99110-1122', barbeiro: felipe, diasSemVir: 2 },
-    { name: 'Rafael Antunes', phone: '(51) 99111-2233', barbeiro: felipe, diasSemVir: 30 },
-    { name: 'Vitor Hugo Campos', phone: '(51) 99112-3344', barbeiro: felipe, diasSemVir: 180 },
+    { name: 'Joao Pedro Alves', phone: '(51) 99101-2233', barbeiro: barber1, diasSemVir: 0 },
+    { name: 'Marcos Vinicius Rocha', phone: '(51) 99102-3344', barbeiro: barber1, diasSemVir: 7 },
+    { name: 'Lucas Ferreira', phone: '(51) 99103-4455', barbeiro: barber1, diasSemVir: 21 },
+    { name: 'Bruno Cardoso', phone: '(51) 99104-5566', barbeiro: barber1, diasSemVir: 68 },
+    { name: 'Anderson Melo', phone: '(51) 99105-6677', barbeiro: barber1, diasSemVir: 115 },
+    { name: 'Thiago Nunes', phone: '(51) 99106-7788', barbeiro: barber2, diasSemVir: 3 },
+    { name: 'Rodrigo Batista', phone: '(51) 99107-8899', barbeiro: barber2, diasSemVir: 14 },
+    { name: 'Eduardo Ramos', phone: '(51) 99108-9900', barbeiro: barber2, diasSemVir: 42 },
+    { name: 'Gustavo Pereira', phone: '(51) 99109-0011', barbeiro: barber2, diasSemVir: 95 },
+    { name: 'Carlos Eduardo Dias', phone: '(51) 99110-1122', barbeiro: barber3, diasSemVir: 2 },
+    { name: 'Ricardo Antunes', phone: '(51) 99111-2233', barbeiro: barber3, diasSemVir: 30 },
+    { name: 'Vitor Hugo Campos', phone: '(51) 99112-3344', barbeiro: barber3, diasSemVir: 180 },
     // Sem barbeiro definido: aparecem como "Sem barbeiro" e servem para
     // testar a atribuicao manual na ficha do cliente.
     { name: 'Leonardo Prado', phone: '(51) 99113-4455', barbeiro: null, diasSemVir: 9 },
     { name: 'Matheus Ribeiro', phone: '(51) 99114-5566', barbeiro: null, diasSemVir: null },
-    { name: 'Diego Fonseca', phone: '(51) 99115-6677', barbeiro: null, diasSemVir: null },
+    { name: 'Daniel Fonseca', phone: '(51) 99115-6677', barbeiro: null, diasSemVir: null },
     // Cliente desativado ha 40 dias: testa o "desativado ha X dias".
     {
       name: 'Paulo Henrique Souza',
       phone: '(51) 99116-7788',
-      barbeiro: rafael,
+      barbeiro: barber1,
       diasSemVir: 150,
       inativoHa: 40,
     },
@@ -548,11 +553,11 @@ async function montar() {
   // --- Mensalistas ---------------------------------------------
   // Cada mensalidade nasce vinculada ao barbeiro do cliente.
   const mensalistasDef = [
-    { cliente: 'Joao Pedro Alves', plano: 'Mensal 4 Cortes', barbeiro: rafael, restantes: 2 },
-    { cliente: 'Marcos Vinicius Rocha', plano: 'Mensal 2 Cortes', barbeiro: rafael, restantes: 1 },
-    { cliente: 'Thiago Nunes', plano: 'Barba Ilimitada', barbeiro: diego, restantes: null },
-    { cliente: 'Carlos Eduardo Dias', plano: 'Trimestral Completo', barbeiro: felipe, restantes: 9 },
-    { cliente: 'Rodrigo Batista', plano: 'Mensal 2 Cortes', barbeiro: diego, restantes: 2 },
+    { cliente: 'Joao Pedro Alves', plano: 'Mensal 4 Cortes', barbeiro: barber1, restantes: 2 },
+    { cliente: 'Marcos Vinicius Rocha', plano: 'Mensal 2 Cortes', barbeiro: barber1, restantes: 1 },
+    { cliente: 'Thiago Nunes', plano: 'Barba Ilimitada', barbeiro: barber2, restantes: null },
+    { cliente: 'Carlos Eduardo Dias', plano: 'Trimestral Completo', barbeiro: barber3, restantes: 9 },
+    { cliente: 'Rodrigo Batista', plano: 'Mensal 2 Cortes', barbeiro: barber2, restantes: 2 },
   ];
   await prisma.customerSubscription.deleteMany({ where: { companyId } });
   for (const def of mensalistasDef) {
@@ -597,37 +602,37 @@ async function montar() {
 
   // Hoje: dia cheio, para a agenda em grade ficar bonita na demonstracao.
   const dHoje = hoje();
-  addAgendamento(dHoje, 9, 0, rafael, 'Joao Pedro Alves', 'Corte Masculino', 'concluido');
-  addAgendamento(dHoje, 9, 30, rafael, 'Marcos Vinicius Rocha', 'Corte + Barba', 'concluido');
-  addAgendamento(dHoje, 10, 30, rafael, 'Lucas Ferreira', 'Corte Masculino', 'confirmado');
-  addAgendamento(dHoje, 11, 0, rafael, 'Leonardo Prado', 'Barba', 'confirmado');
-  addAgendamento(dHoje, 14, 0, rafael, 'Bruno Cardoso', 'Corte Masculino', 'pendente');
-  addAgendamento(dHoje, 15, 30, rafael, 'Anderson Melo', 'Corte + Barba', 'pendente');
+  addAgendamento(dHoje, 9, 0, barber1, 'Joao Pedro Alves', 'Corte Masculino', 'concluido');
+  addAgendamento(dHoje, 9, 30, barber1, 'Marcos Vinicius Rocha', 'Corte + Barba', 'concluido');
+  addAgendamento(dHoje, 10, 30, barber1, 'Lucas Ferreira', 'Corte Masculino', 'confirmado');
+  addAgendamento(dHoje, 11, 0, barber1, 'Leonardo Prado', 'Barba', 'confirmado');
+  addAgendamento(dHoje, 14, 0, barber1, 'Bruno Cardoso', 'Corte Masculino', 'pendente');
+  addAgendamento(dHoje, 15, 30, barber1, 'Anderson Melo', 'Corte + Barba', 'pendente');
 
-  addAgendamento(dHoje, 9, 0, diego, 'Thiago Nunes', 'Barba', 'concluido');
-  addAgendamento(dHoje, 10, 0, diego, 'Rodrigo Batista', 'Corte Masculino', 'confirmado');
-  addAgendamento(dHoje, 13, 0, diego, 'Felipe Ramos', 'Platinado', 'confirmado');
-  addAgendamento(dHoje, 16, 0, diego, 'Gustavo Pereira', 'Corte Masculino', 'pendente');
+  addAgendamento(dHoje, 9, 0, barber2, 'Thiago Nunes', 'Barba', 'concluido');
+  addAgendamento(dHoje, 10, 0, barber2, 'Rodrigo Batista', 'Corte Masculino', 'confirmado');
+  addAgendamento(dHoje, 13, 0, barber2, 'Eduardo Ramos', 'Platinado', 'confirmado');
+  addAgendamento(dHoje, 16, 0, barber2, 'Gustavo Pereira', 'Corte Masculino', 'pendente');
 
-  addAgendamento(dHoje, 9, 30, felipe, 'Carlos Eduardo Dias', 'Corte + Barba', 'concluido');
-  addAgendamento(dHoje, 14, 0, felipe, 'Rafael Antunes', 'Sobrancelha', 'confirmado');
-  addAgendamento(dHoje, 15, 0, felipe, 'Matheus Ribeiro', 'Corte Masculino', 'pendente');
+  addAgendamento(dHoje, 9, 30, barber3, 'Carlos Eduardo Dias', 'Corte + Barba', 'concluido');
+  addAgendamento(dHoje, 14, 0, barber3, 'Ricardo Antunes', 'Sobrancelha', 'confirmado');
+  addAgendamento(dHoje, 15, 0, barber3, 'Matheus Ribeiro', 'Corte Masculino', 'pendente');
 
   // Amanha: agenda mais leve, mostra que da para navegar entre os dias.
   const dAmanha = proximoDiaUtil(1);
-  addAgendamento(dAmanha, 10, 0, rafael, 'Joao Pedro Alves', 'Barba', 'confirmado');
-  addAgendamento(dAmanha, 11, 0, diego, 'Thiago Nunes', 'Corte Masculino', 'pendente');
-  addAgendamento(dAmanha, 16, 0, felipe, 'Vitor Hugo Campos', 'Corte + Barba', 'pendente');
+  addAgendamento(dAmanha, 10, 0, barber1, 'Joao Pedro Alves', 'Barba', 'confirmado');
+  addAgendamento(dAmanha, 11, 0, barber2, 'Thiago Nunes', 'Corte Masculino', 'pendente');
+  addAgendamento(dAmanha, 16, 0, barber3, 'Vitor Hugo Campos', 'Corte + Barba', 'pendente');
 
-  // Depois de amanha: Diego tem o bloqueio do medico das 14h as 16h.
-  addAgendamento(diaMedico, 9, 30, diego, 'Rodrigo Batista', 'Barba', 'confirmado');
-  addAgendamento(diaMedico, 17, 0, rafael, 'Lucas Ferreira', 'Corte Masculino', 'pendente');
+  // Depois de amanha: Barber 2 tem o bloqueio do medico das 14h as 16h.
+  addAgendamento(diaMedico, 9, 30, barber2, 'Rodrigo Batista', 'Barba', 'confirmado');
+  addAgendamento(diaMedico, 17, 0, barber1, 'Lucas Ferreira', 'Corte Masculino', 'pendente');
 
   // Historico do mes: alimenta a comissao e o relatorio.
   for (let i = 1; i <= 12; i += 1) {
     const dia = diasAtras(i * 2);
     if (dia.getDay() === 0) continue;
-    const barbeiro = [rafael, diego, felipe][i % 3];
+    const barbeiro = [barber1, barber2, barber3][i % 3];
     const nomes = Object.keys(clientes);
     const clienteNome = nomes[i % nomes.length];
     const servicoNome = ['Corte Masculino', 'Barba', 'Corte + Barba'][i % 3];
@@ -637,13 +642,49 @@ async function montar() {
   await prisma.appointment.createMany({ data: agendamentos });
   console.log(`agendamentos: ${agendamentos.length} (hoje cheio + futuros + historico)`);
 
+  // --- Avaliacoes ----------------------------------------------
+  // Uma por atendimento concluido, para o ranking e as estrelas do link
+  // publico aparecerem na demonstracao. Notas diferentes por barbeiro para o
+  // ranking ter ordem. (Apagar os agendamentos acima ja levou as antigas.)
+  const concluidos = await prisma.appointment.findMany({
+    where: { companyId, status: 'concluido' },
+    select: { id: true, professionalId: true, customerId: true, scheduledAt: true },
+    orderBy: { scheduledAt: 'asc' },
+  });
+  const notasPorBarbeiro = {
+    [barber1.id]: [5, 5, 4, 5, 5],
+    [barber2.id]: [5, 4, 4, 5, 4],
+    [barber3.id]: [4, 5, 3, 4, 5],
+  };
+  const comentarios = [
+    'Corte ficou perfeito, voltei pela terceira vez.',
+    null,
+    'Atendimento pontual e caprichado.',
+    null,
+    'Barba impecável, recomendo.',
+  ];
+  const avaliacoes = concluidos.map((a, i) => {
+    const notas = notasPorBarbeiro[a.professionalId] || [5];
+    return {
+      companyId,
+      appointmentId: a.id,
+      professionalId: a.professionalId,
+      customerId: a.customerId,
+      rating: notas[i % notas.length],
+      comment: comentarios[i % comentarios.length],
+      createdAt: new Date(a.scheduledAt.getTime() + 2 * 60 * 60 * 1000),
+    };
+  });
+  await prisma.appointmentReview.createMany({ data: avaliacoes });
+  console.log(`avaliacoes: ${avaliacoes.length}`);
+
   // --- Historico de atendimento (ficha do cliente) --------------
   await prisma.customerServiceHistoryEntry.deleteMany({ where: { companyId } });
   const historico = [];
   for (const def of clientesDef) {
     if (def.diasSemVir === null) continue;
     const cliente = clientes[def.name];
-    const barbeiro = def.barbeiro || rafael;
+    const barbeiro = def.barbeiro || barber1;
     const servico = servicos['Corte Masculino'];
     const dataServico = diasAtras(def.diasSemVir);
     const retornoEm = 21;
@@ -661,7 +702,7 @@ async function montar() {
       amount: 45,
       returnInDays: retornoEm,
       returnDueAt: vencimento,
-      createdByUserId: felipe.id,
+      createdByUserId: admin.id,
     });
   }
   await prisma.customerServiceHistoryEntry.createMany({ data: historico });
@@ -671,10 +712,10 @@ async function montar() {
   const mesRef = new Date(hoje().getFullYear(), hoje().getMonth(), 1);
   await prisma.commissionAdjustment.deleteMany({ where: { companyId } });
   const ajustes = [
-    { barbeiro: rafael, dia: 3, valor: 80, motivo: 'Bonus por meta de produtos' },
-    { barbeiro: rafael, dia: 11, valor: -35, motivo: 'Quebra de material' },
-    { barbeiro: diego, dia: 5, valor: 50, motivo: 'Atendimento em domingo de evento' },
-    { barbeiro: diego, dia: 18, valor: -20, motivo: 'Atraso recorrente' },
+    { barbeiro: barber1, dia: 3, valor: 80, motivo: 'Bonus por meta de produtos' },
+    { barbeiro: barber1, dia: 11, valor: -35, motivo: 'Quebra de material' },
+    { barbeiro: barber2, dia: 5, valor: 50, motivo: 'Atendimento em domingo de evento' },
+    { barbeiro: barber2, dia: 18, valor: -20, motivo: 'Atraso recorrente' },
   ];
   for (const a of ajustes) {
     const refDate = new Date(Date.UTC(mesRef.getFullYear(), mesRef.getMonth(), a.dia));
@@ -688,7 +729,7 @@ async function montar() {
         refDate,
         amount: a.valor,
         reason: a.motivo,
-        createdByUserId: felipe.id,
+        createdByUserId: admin.id,
       },
     });
   }
@@ -726,7 +767,7 @@ async function montar() {
   await prisma.auditLog.deleteMany({ where: { companyId, action: 'PDV_CHECKOUT' } });
   await prisma.auditLog.createMany({
     data: pedidos.map((p, i) => ({
-      userId: felipe.id,
+      userId: admin.id,
       companyId,
       action: 'PDV_CHECKOUT',
       resource: 'orders',
@@ -755,7 +796,7 @@ async function montar() {
       amount: c.amount,
       paymentMethod: c.paymentMethod,
       transactionDate: diasAtras(c.dias),
-      createdBy: felipe.id,
+      createdBy: admin.id,
     })),
   });
   console.log(`caixa: ${caixa.length} lancamentos`);
@@ -765,9 +806,8 @@ async function montar() {
   console.log(`  ${EMPRESA} montada`);
   console.log('===============================================');
   console.log(`  Painel:  /login`);
-  console.log(`  Dono:    ${emailEquipe('felipe')}`);
-  console.log(`  Barbeiro: ${emailEquipe('rafael')}`);
-  console.log(`  Barbeiro: ${emailEquipe('diego')}`);
+  console.log(`  Dono:     ${emailEquipe('admin')}`);
+  console.log(`  Barbeiros: ${emailEquipe('barber1')}, ${emailEquipe('barber2')}, ${emailEquipe('barber3')}`);
   console.log('  Senha (todos): a de DEMO_SENHA_EQUIPE');
   console.log('');
   console.log(`  Portal do cliente: /cliente/${company.slug}/login`);
