@@ -7,6 +7,7 @@ import { getBlockedIntervals, isIntervalBlocked } from '../utils/appointment-blo
 import { interpretarDataHora, limitesDoDia } from '../config/fuso';
 import { appointmentNotificationService } from './appointment-notification.service';
 import { podeAvaliar, reviewService } from './review.service';
+import { decidirBarbeiro, ehQualquerBarbeiro, horariosDeQualquerBarbeiro } from '../utils/escolha-barbeiro.util';
 
 class CustomerPortalError extends Error {
   statusCode: number;
@@ -538,7 +539,7 @@ export class CustomerPortalService {
   ) {
     const context = await this.getCustomerContext(auth);
     const serviceId = String(payload.service_id || '').trim();
-    const professionalId = String(payload.professional_id || '').trim();
+    let professionalId = String(payload.professional_id || '').trim();
     const scheduledAtRaw = String(payload.scheduled_at || '').trim();
     if (!serviceId || !professionalId || !scheduledAtRaw) {
       throw new CustomerPortalError('Campos obrigatorios: service_id, professional_id, scheduled_at', 400);
@@ -569,6 +570,17 @@ export class CustomerPortalService {
     );
     if (bloqueioPlano) {
       throw new CustomerPortalError(bloqueioPlano.message, 409);
+    }
+
+    // "Qualquer barbeiro": mesma decisao do link publico (utils/escolha-barbeiro).
+    if (ehQualquerBarbeiro(professionalId)) {
+      const escolhido = await decidirBarbeiro(context.companyId, scheduledAt, (id, dataISO) =>
+        this.listAvailableSlots(auth, { date: dataISO, service_id: serviceId, professional_id: id }).then(
+          (r) => r.slots
+        )
+      );
+      if (!escolhido) throw new CustomerPortalError('Esse horario acabou de ser ocupado, escolha outro', 409);
+      professionalId = escolhido;
     }
 
     const [service, professional] = await Promise.all([
@@ -731,6 +743,15 @@ export class CustomerPortalService {
         slots: [] as Array<{ time: string; scheduled_at: string }>,
         plan_block: bloqueioPlano,
       };
+    }
+
+    if (ehQualquerBarbeiro(professionalId)) {
+      const slots = await horariosDeQualquerBarbeiro(context.companyId, dateRaw, (id, dataISO) =>
+        this.listAvailableSlots(auth, { date: dataISO, service_id: serviceId, professional_id: id }).then(
+          (r) => r.slots
+        )
+      );
+      return { slots };
     }
 
     const service = await (prisma as any).appointmentService.findFirst({

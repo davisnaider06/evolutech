@@ -195,12 +195,12 @@ const CustomerDashboard: React.FC = () => {
     }
     setCreatingAppointment(true);
     try {
-      await customerPortalService.createAppointment({
+      const criado = await customerPortalService.createAppointment({
         service_id: appointmentForm.service_id,
         professional_id: appointmentForm.professional_id,
         scheduled_at: appointmentForm.scheduled_at,
       });
-      toast.success('Horário marcado!');
+      toast.success(criado.professional_name ? `Horário marcado com ${criado.professional_name}!` : 'Horário marcado!');
       setAppointmentForm({ service_id: '', professional_id: '', date: '', scheduled_at: '' });
       setAvailableSlots([]);
       await loadData();
@@ -426,6 +426,7 @@ const CustomerDashboard: React.FC = () => {
                       onChange={(id) =>
                         setAppointmentForm((old) => ({ ...old, professional_id: id, scheduled_at: '' }))
                       }
+                      permitirQualquer
                     />
                     <input
                       aria-label="Dia"

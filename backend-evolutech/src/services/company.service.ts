@@ -29,6 +29,7 @@ import { invalidateRoleCache } from '../middlewares/auth.middleware';
 import { appointmentNotificationService } from './appointment-notification.service';
 import { CustomerAuthError, CustomerAuthService } from './customer-auth.service';
 import { reviewService } from './review.service';
+import { decidirBarbeiro, ehQualquerBarbeiro, horariosDeQualquerBarbeiro } from '../utils/escolha-barbeiro.util';
 import { pushService } from './push.service';
 
 /**
@@ -9575,6 +9576,16 @@ export class CompanyService {
       throw new CompanyServiceError('Parametros obrigatorios: date, service_id, professional_id', 400);
     }
 
+    // "Qualquer barbeiro": horario livre de pelo menos um da equipe.
+    if (ehQualquerBarbeiro(professionalId)) {
+      const slots = await horariosDeQualquerBarbeiro(company.id, dateRaw, (id, dataISO) =>
+        this.listPublicAvailableSlots(slug, { date: dataISO, service_id: serviceId, professional_id: id }).then(
+          (r) => r.slots
+        )
+      );
+      return { company, slots };
+    }
+
     const [year, month, day] = dateRaw.split('-').map((v) => Number(v));
     const date = new Date(year, (month || 1) - 1, day || 1, 0, 0, 0, 0);
     if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day) || Number.isNaN(date.getTime())) {
@@ -9753,7 +9764,7 @@ export class CompanyService {
     const customerName = String(payload.customer_name || '').trim();
     const customerPhone = String(payload.customer_phone || '').trim();
     const serviceId = String(payload.service_id || '').trim();
-    const professionalId = String(payload.professional_id || '').trim();
+    let professionalId = String(payload.professional_id || '').trim();
     const scheduledAtRaw = String(payload.scheduled_at || '').trim();
     const notes = String(payload.notes || '').trim();
 
@@ -9783,6 +9794,21 @@ export class CompanyService {
     const bloqueioMensalidade = await this.getSubscriptionBlock(company.id, conhecido?.id);
     if (bloqueioMensalidade) {
       throw new CompanyServiceError(bloqueioMensalidade.message, 402);
+    }
+
+    // "Qualquer barbeiro": o sistema decide quem atende (livre no horario e
+    // com menos atendimentos no dia). Dai em diante segue o fluxo normal,
+    // que confere de novo bloqueio e conflito para o escolhido.
+    if (ehQualquerBarbeiro(professionalId)) {
+      const quando = interpretarDataHora(scheduledAtRaw);
+      if (!quando) throw new CompanyServiceError('Data/hora de agendamento invalida', 400);
+      const escolhido = await decidirBarbeiro(company.id, quando, (id, dataISO) =>
+        this.listPublicAvailableSlots(slug, { date: dataISO, service_id: serviceId, professional_id: id }).then(
+          (r) => r.slots
+        )
+      );
+      if (!escolhido) throw new CompanyServiceError('Esse horario acabou de ser ocupado, escolha outro', 409);
+      professionalId = escolhido;
     }
 
     const [service, professional] = await Promise.all([

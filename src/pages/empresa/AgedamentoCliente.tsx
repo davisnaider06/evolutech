@@ -10,7 +10,11 @@ import { formatarDataHora, hojeNaBarbearia } from '@/lib/horario';
 import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
 import { lembrarEmpresaDoCliente } from '@/services/customer-portal';
 import { guardarAgendamentoPendente, lerAgendamentoPendente } from '@/lib/agendamento-pendente';
-import EscolhaProfissional, { ProfissionalOpcao } from '@/components/agenda/EscolhaProfissional';
+import EscolhaProfissional, {
+  ProfissionalOpcao,
+  QUALQUER_BARBEIRO,
+  ROTULO_QUALQUER_BARBEIRO,
+} from '@/components/agenda/EscolhaProfissional';
 
 interface AppointmentInput {
   service_id: string;
@@ -153,7 +157,8 @@ const AgendamentoCliente: React.FC = () => {
       date: selectedDate,
       scheduled_at: formData.scheduled_at,
       service_name: selectedService?.name,
-      professional_name: selectedProfessional?.name,
+      professional_name:
+        formData.professional_id === QUALQUER_BARBEIRO ? ROTULO_QUALQUER_BARBEIRO : selectedProfessional?.name,
     });
     if (sessaoCliente.isAuthenticated && sessaoCliente.company?.slug === slugNormalizado) {
       navigate(`/agendar/${slugNormalizado}/confirmar`);
@@ -262,6 +267,7 @@ const AgendamentoCliente: React.FC = () => {
                 valor={formData.professional_id}
                 onChange={(id) => setFormData({ ...formData, professional_id: id })}
                 carregando={loadingOptions}
+                permitirQualquer
               />
             </div>
 

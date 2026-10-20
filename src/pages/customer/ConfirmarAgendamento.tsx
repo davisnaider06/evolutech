@@ -24,6 +24,7 @@ const ConfirmarAgendamento: React.FC = () => {
   const [enviando, setEnviando] = useState(false);
   const [confirmado, setConfirmado] = useState(false);
   const [erro, setErro] = useState('');
+  const [barbeiroEscolhido, setBarbeiroEscolhido] = useState('');
 
   if (sessao.isLoading) {
     return (
@@ -41,11 +42,13 @@ const ConfirmarAgendamento: React.FC = () => {
     setEnviando(true);
     setErro('');
     try {
-      await customerPortalService.createAppointment({
+      const criado = await customerPortalService.createAppointment({
         service_id: pendente.service_id,
         professional_id: pendente.professional_id,
         scheduled_at: pendente.scheduled_at,
       });
+      // Com "qualquer barbeiro" e o backend que escolhe: mostra quem ficou.
+      if (criado.professional_name) setBarbeiroEscolhido(criado.professional_name);
       esquecerAgendamentoPendente();
       setConfirmado(true);
     } catch (error: any) {
@@ -72,7 +75,7 @@ const ConfirmarAgendamento: React.FC = () => {
           <p className="text-2xl font-bold">{formatarDataHora(pendente.scheduled_at)}</p>
           <CardDescription>
             <strong>{pendente.service_name || 'Serviço'}</strong> com{' '}
-            <strong>{pendente.professional_name || 'profissional'}</strong>
+            <strong>{barbeiroEscolhido || pendente.professional_name || 'profissional'}</strong>
             {sessao.company?.name ? ` na ${sessao.company.name}` : ''}.
           </CardDescription>
           {erro && (
