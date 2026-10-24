@@ -49,6 +49,8 @@ const SENHA_CLIENTE = process.env.DEMO_SENHA_CLIENTE; // clientes finais, no por
 const PERFIL_ESSENCIAL = process.env.DEMO_PERFIL === 'essencial';
 const ESSENCIAIS = new Set(['agendamentos', 'clientes', 'pdv', 'caixa']);
 const emailEquipe = (nome) => `${nome}@${DOMINIO}`;
+// E-mail do dono da demo. Padrao: admin@DOMINIO; DEMO_EMAIL_DONO troca so o dono.
+const EMAIL_DONO = (process.env.DEMO_EMAIL_DONO || emailEquipe('admin')).toLowerCase();
 // Dominio dos e-mails dos clientes. Em producao use um que nao entregue a
 // ninguem (ex.: cliente.ibarber.demo): a regua de mensalidades manda e-mail
 // de verdade para o cliente, e @email.com e um dominio real.
@@ -73,7 +75,7 @@ async function buscarEmpresaDemo() {
   });
   if (!company) return null;
   const donos = company.userRoles.map((r) => String(r.user.email || '').toLowerCase());
-  const daDemo = donos.length > 0 && donos.every((email) => email.endsWith(`@${DOMINIO}`));
+  const daDemo = donos.length > 0 && donos.every((email) => email.endsWith(`@${DOMINIO}`) || email === EMAIL_DONO);
   if (!daDemo) {
     throw new Error(
       `A empresa com slug "${SLUG}" tem dono fora de @${DOMINIO} (${donos.join(', ') || 'sem dono'}). ` +
@@ -299,7 +301,7 @@ async function montar() {
     return user;
   }
 
-  const admin = await garantirUsuario(emailEquipe('admin'), 'Admin', 'DONO_EMPRESA');
+  const admin = await garantirUsuario(EMAIL_DONO, 'Admin', 'DONO_EMPRESA');
   const barber1 = await garantirUsuario(emailEquipe('barber1'), 'Barber 1', 'FUNCIONARIO_EMPRESA');
   const barber2 = await garantirUsuario(emailEquipe('barber2'), 'Barber 2', 'FUNCIONARIO_EMPRESA');
   const barber3 = await garantirUsuario(emailEquipe('barber3'), 'Barber 3', 'FUNCIONARIO_EMPRESA');
@@ -806,7 +808,7 @@ async function montar() {
   console.log(`  ${EMPRESA} montada`);
   console.log('===============================================');
   console.log(`  Painel:  /login`);
-  console.log(`  Dono:     ${emailEquipe('admin')}`);
+  console.log(`  Dono:     ${EMAIL_DONO}`);
   console.log(`  Barbeiros: ${emailEquipe('barber1')}, ${emailEquipe('barber2')}, ${emailEquipe('barber3')}`);
   console.log('  Senha (todos): a de DEMO_SENHA_EQUIPE');
   console.log('');
