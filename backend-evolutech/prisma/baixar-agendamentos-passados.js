@@ -28,6 +28,9 @@ const PROD = args.includes('--prod');
 const opcao = (nome) => (args.find((a) => a.startsWith(`--${nome}=`)) || '').split('=')[1];
 const DIAS = Number(opcao('dias') ?? 1);
 const SLUG = opcao('empresa');
+// Horario sempre no fuso da barbearia (o banco guarda UTC).
+const TZ = process.env.TZ_BARBEARIA || 'America/Sao_Paulo';
+const emBrasilia = (d) => new Intl.DateTimeFormat('sv-SE', { timeZone: TZ, dateStyle: 'short', timeStyle: 'short' }).format(d);
 const PENDENTES = ['scheduled', 'pendente', 'pending', 'confirmado', 'confirmed'];
 
 const url = process.env.DIRECT_URL || process.env.DATABASE_URL || '';
@@ -71,9 +74,9 @@ async function main() {
     orderBy: { scheduledAt: 'asc' },
   });
 
-  console.log(`\nAntes de ${limite.toISOString().slice(0, 10)}, sem baixa: ${lista.length}`);
+  console.log(`\nAntes de ${emBrasilia(limite)} (Brasilia), sem baixa: ${lista.length}`);
   for (const a of lista) {
-    const dia = a.scheduledAt.toISOString().slice(0, 16).replace('T', ' ');
+    const dia = emBrasilia(a.scheduledAt);
     console.log(`  ${dia}  ${a.company.name}  ${a.status.padEnd(10)}  ${a.serviceName} / ${a.professionalName || a.barber_name || 'sem barbeiro'} / ${a.customerName || 'sem cadastro'}`);
   }
 
