@@ -1,4 +1,5 @@
 import { prisma } from '../db';
+import { nomePublicoProfissional } from '../utils/nome-publico.util';
 import { AuthenticatedUser } from '../types';
 import { TABLE_CONFIG } from '../config/tableConfig';
 import {
@@ -9454,26 +9455,26 @@ export class CompanyService {
       logoPath: data.logo_path ?? null,
       faviconPath: data.favicon_path ?? null,
       loginCoverPath: data.login_cover_path ?? null,
-      primaryColor: data.primary_color ?? '217 91% 50%',
+      primaryColor: data.primary_color ?? '43 60% 40%',
       primaryForeground: data.primary_foreground ?? '0 0% 100%',
-      secondaryColor: data.secondary_color ?? '214 32% 91%',
-      secondaryForeground: data.secondary_foreground ?? '222 47% 11%',
-      accentColor: data.accent_color ?? '187 85% 40%',
+      secondaryColor: data.secondary_color ?? '40 20% 94%',
+      secondaryForeground: data.secondary_foreground ?? '0 0% 12%',
+      accentColor: data.accent_color ?? '30 35% 26%',
       accentForeground: data.accent_foreground ?? '0 0% 100%',
-      backgroundColor: data.background_color ?? '210 40% 98%',
-      foregroundColor: data.foreground_color ?? '222 47% 11%',
+      backgroundColor: data.background_color ?? '0 0% 98%',
+      foregroundColor: data.foreground_color ?? '0 0% 10%',
       cardColor: data.card_color ?? '0 0% 100%',
-      cardForeground: data.card_foreground ?? '222 47% 11%',
-      mutedColor: data.muted_color ?? '210 40% 96%',
-      mutedForeground: data.muted_foreground ?? '215 16% 40%',
-      borderColor: data.border_color ?? '214 32% 88%',
-      destructiveColor: data.destructive_color ?? '0 84% 55%',
+      cardForeground: data.card_foreground ?? '0 0% 10%',
+      mutedColor: data.muted_color ?? '40 12% 95%',
+      mutedForeground: data.muted_foreground ?? '0 0% 40%',
+      borderColor: data.border_color ?? '40 10% 89%',
+      destructiveColor: data.destructive_color ?? '0 72% 50%',
       sidebarBackground: data.sidebar_background ?? '0 0% 100%',
-      sidebarForeground: data.sidebar_foreground ?? '222 47% 11%',
-      sidebarPrimary: data.sidebar_primary ?? '217 91% 50%',
-      sidebarAccent: data.sidebar_accent ?? '214 32% 93%',
-      borderRadius: data.border_radius ?? '0.75rem',
-      fontFamily: data.font_family ?? 'Inter',
+      sidebarForeground: data.sidebar_foreground ?? '0 0% 10%',
+      sidebarPrimary: data.sidebar_primary ?? '43 60% 40%',
+      sidebarAccent: data.sidebar_accent ?? '40 20% 94%',
+      borderRadius: data.border_radius ?? '0.875rem',
+      fontFamily: data.font_family ?? 'Poppins',
       darkModeEnabled: data.dark_mode_enabled ?? false,
     };
 
@@ -9485,21 +9486,6 @@ export class CompanyService {
       },
       update: payload,
     });
-  }
-
-  /**
-   * Nome do profissional como aparece no link publico.
-   *
-   * Convite aceito sem nome deixa o e-mail no fullName, e o link publico
-   * mostrava "fulano88@gmail.com" para qualquer visitante. Aqui o e-mail vira
-   * so a parte antes do @, sem numeros — reconhecivel e sem expor o endereco.
-   */
-  private nomePublicoProfissional(fullName?: string | null) {
-    const nome = String(fullName || '').trim();
-    if (!nome.includes('@')) return nome || 'Profissional';
-    const usuario = nome.split('@')[0].replace(/[\d._-]+/g, ' ').trim();
-    if (!usuario) return 'Profissional';
-    return usuario.charAt(0).toUpperCase() + usuario.slice(1);
   }
 
   /** Push para o cliente avaliar o corte que acabou de ser concluido. */
@@ -9550,7 +9536,7 @@ export class CompanyService {
       company,
       professionals: professionals.map((item: any) => ({
         id: item.userId,
-        name: this.nomePublicoProfissional(item.user.fullName),
+        name: nomePublicoProfissional(item.user.fullName),
         avatar_url: item.user.avatarUrl || null,
         rating: notas.get(item.userId) || null,
       })),
@@ -9741,7 +9727,7 @@ export class CompanyService {
       appointments: appointments.map((item: any) => ({
         id: item.id,
         service_name: item.serviceName,
-        professional_name: this.nomePublicoProfissional(item.professionalName),
+        professional_name: nomePublicoProfissional(item.professionalName),
         professional_id: item.professionalId,
         scheduled_at: item.scheduledAt,
         status: item.status,
@@ -10022,7 +10008,18 @@ export class CompanyService {
     const soMinhaAgenda = user.role === 'FUNCIONARIO_EMPRESA' ? { professionalId: user.id } : {};
     const ativos = { notIn: ['cancelado', 'cancelled', 'no_show', 'no-show'] };
 
-    const [hoje, aConfirmar, novos, proximo] = await Promise.all([
+    // Atendimento que ja passou e ficou como pendente/confirmado: sem a baixa
+    // o push de avaliacao nao sai e comissao e "ultima visita" ficam erradas.
+    // Meia hora de folga para nao cobrar baixa de quem ainda esta na cadeira.
+    const passouDaHora = new Date(agora.getTime() - 30 * 60 * 1000);
+    const semBaixaWhere = {
+      companyId,
+      ...soMinhaAgenda,
+      scheduledAt: { lt: passouDaHora },
+      status: { in: ['pendente', 'confirmado', 'scheduled'] },
+    };
+
+    const [hoje, aConfirmar, novos, proximo, semBaixaTotal, semBaixa] = await Promise.all([
       (prisma as any).appointment.count({
         where: {
           companyId,
@@ -10073,7 +10070,32 @@ export class CompanyService {
         },
         orderBy: { scheduledAt: 'asc' },
       }),
+      (prisma as any).appointment.count({ where: semBaixaWhere }),
+      (prisma as any).appointment.findMany({
+        where: semBaixaWhere,
+        select: {
+          id: true,
+          customerName: true,
+          serviceId: true,
+          serviceName: true,
+          professionalName: true,
+          scheduledAt: true,
+          price: true,
+        },
+        // O mais recente primeiro: e o que a pessoa ainda lembra se veio.
+        orderBy: { scheduledAt: 'desc' },
+        take: 8,
+      }),
     ]);
+
+    const idsServicos = [...new Set(semBaixa.map((item: any) => item.serviceId).filter(Boolean))];
+    const precos = idsServicos.length
+      ? await (prisma as any).appointmentService.findMany({
+          where: { companyId, id: { in: idsServicos } },
+          select: { id: true, price: true },
+        })
+      : [];
+    const precoDoServico = new Map(precos.map((item: any) => [item.id, Number(item.price || 0)]));
 
     // Mensalidade e assunto do dono: o barbeiro nao cobra ninguem.
     let mensalidadesEmAberto = 0;
@@ -10088,13 +10110,24 @@ export class CompanyService {
       agendamentos_a_confirmar: aConfirmar,
       agendamentos_novos: novos.length,
       mensalidades_em_aberto: mensalidadesEmAberto,
+      agendamentos_sem_baixa: semBaixaTotal,
     };
 
     return {
       ...itens,
       // O badge do menu: uma soma so do que pede acao, sem contar a agenda
       // do dia, que e informacao e nao pendencia.
-      total: itens.agendamentos_a_confirmar + itens.mensalidades_em_aberto,
+      total: itens.agendamentos_a_confirmar + itens.mensalidades_em_aberto + itens.agendamentos_sem_baixa,
+      sem_baixa: semBaixa.map((item: any) => ({
+        id: item.id,
+        customer_name: item.customerName,
+        service_id: item.serviceId,
+        service_name: item.serviceName,
+        professional_name: item.professionalName,
+        scheduled_at: item.scheduledAt,
+        price: item.price == null ? null : Number(item.price),
+        service_price: precoDoServico.get(item.serviceId) || 0,
+      })),
       novos: novos.map((item: any) => ({
         id: item.id,
         customer_name: item.customerName,

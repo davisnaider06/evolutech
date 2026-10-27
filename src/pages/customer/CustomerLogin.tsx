@@ -1,10 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Eye, EyeOff } from 'lucide-react';
+import { LogoMarca } from '@/components/Logo';
+import {
+  TelaComFoto,
+  TituloFoto,
+  botaoFoto,
+  campoFoto,
+  linkFoto,
+  rotuloFoto,
+} from '@/components/telas/TelaComFoto';
 import { customerAuthService, empresaDoCliente } from '@/services/customer-portal';
 import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
 import { CustomerPortalCompanyOption } from '@/types/customer-portal';
@@ -25,6 +31,7 @@ const CustomerLogin: React.FC = () => {
   const [companies, setCompanies] = useState<CustomerPortalCompanyOption[]>([]);
   const [loadingCompanies, setLoadingCompanies] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [verSenha, setVerSenha] = useState(false);
   const navigate = useNavigate();
   const sessao = useCustomerAuth();
   const { login } = sessao;
@@ -100,127 +107,134 @@ const CustomerLogin: React.FC = () => {
     );
   }
 
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          {selectedCompany?.logo_url ? (
-            <div className="mb-2">
-              <img
-                src={selectedCompany.logo_url}
-                alt={selectedCompany.name}
-                className="h-12 w-auto max-w-[180px] object-contain"
-              />
-            </div>
-          ) : null}
-          {/* Com a empresa no link, o cliente ve o nome da barbearia dele no
-              titulo — e nao um seletor de "Empresa" que ele nao precisa mexer. */}
-          <CardTitle>{hasSlugFromRoute && selectedCompany ? selectedCompany.name : 'Portal do Cliente'}</CardTitle>
-          <CardDescription>
-            {pendente
-              ? `Entre para confirmar seu horário de ${formatarDataHora(pendente.scheduled_at)}.`
-              : 'Entre para acompanhar seus agendamentos e benefícios.'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            {!hasSlugFromRoute && (
-              <div className="space-y-2">
-                <Label htmlFor="company_slug">Barbearia</Label>
-                <select
-                  id="company_slug"
-                  value={form.company_slug}
-                  onChange={(event) => setForm((old) => ({ ...old, company_slug: event.target.value }))}
-                  required
-                  disabled={loadingCompanies}
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                >
-                  <option value="">
-                    {loadingCompanies ? 'Carregando...' : 'Selecione onde você é cliente'}
-                  </option>
-                  {companies.map((company) => (
-                    <option key={company.id} value={company.slug}>
-                      {company.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="identifier">WhatsApp ou e-mail</Label>
-              <Input
-                id="identifier"
-                type="text"
-                autoComplete="username"
-                placeholder="(11) 91234-5678 ou voce@email.com"
-                value={form.identifier}
-                onChange={(event) => setForm((old) => ({ ...old, identifier: event.target.value }))}
-                required
-              />
-              <p className="text-xs text-muted-foreground">
-                O mesmo que você informou no cadastro.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Senha</Label>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                value={form.password}
-                onChange={(event) => setForm((old) => ({ ...old, password: event.target.value }))}
-                required
-              />
-              {/* O link sai por e-mail; quem cadastrou so WhatsApp pede o link
-                  a barbearia, que o gera na tela de Clientes. */}
-              {form.company_slug ? (
-                <Link
-                  to={`/cliente/${form.company_slug}/esqueci-senha`}
-                  className="inline-block text-xs text-primary hover:underline"
-                >
-                  Esqueci minha senha
-                </Link>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Esqueceu a senha? Escolha a barbearia acima para recuperar.
-                </p>
-              )}
-            </div>
-            <Button className="w-full" type="submit" disabled={loading}>
-              {loading ? 'Entrando...' : 'Entrar'}
-            </Button>
-          </form>
-          <p className="mt-4 text-sm text-muted-foreground">
-            <Link
-              className="text-primary underline"
-              to={hasSlugFromRoute ? `/cliente/${form.company_slug}/cadastro` : '/cliente/cadastro'}
-            >
-              Cliente novo? Cadastre-se aqui!
-            </Link>
-          </p>
+  const nomeBarbearia = selectedCompany?.name || '';
 
-          {/* Caminho de volta, espelhando o da tela da equipe: quem caiu aqui
-              sendo dono ou funcionario sai por este link, e o clique grava a
-              escolha para nao errar de novo. */}
-          <div className="mt-6 border-t pt-4 text-xs text-muted-foreground">
-            <p>
-              <Link
-                className="hover:underline"
-                to="/login"
-                onClick={() => lembrarTipoAcesso('equipe')}
-              >
-                Sou da equipe (dono ou funcionário)
-              </Link>
-            </p>
-            <p className="mt-2">
-              <Link className="hover:underline" to="/entrar" onClick={esquecerTipoAcesso}>
-                Ver as opções de acesso novamente
-              </Link>
-            </p>
+  return (
+    <TelaComFoto
+      topo={
+        selectedCompany?.logo_url ? (
+          <img
+            src={selectedCompany.logo_url}
+            alt={selectedCompany.name}
+            className="h-10 w-auto max-w-[160px] rounded-md object-contain"
+          />
+        ) : (
+          <span className="flex items-center gap-2 text-sm font-semibold">
+            <LogoMarca className="h-7 w-7" />
+            iBarber
+          </span>
+        )
+      }
+    >
+      {/* Com a empresa no link, o cliente ve o nome da barbearia dele no
+          titulo — e nao um seletor de "Empresa" que ele nao precisa mexer. */}
+      <TituloFoto
+        linha={hasSlugFromRoute && nomeBarbearia ? 'Entrar na' : 'Entrar na sua'}
+        destaque={hasSlugFromRoute && nomeBarbearia ? nomeBarbearia : 'Barbearia'}
+        descricao={
+          pendente
+            ? `Seu horário de ${formatarDataHora(pendente.scheduled_at)} está guardado. Entre para confirmar.`
+            : 'Veja seus horários, avalie o atendimento e marque o próximo corte.'
+        }
+      />
+
+      <form className="mt-7 space-y-4" onSubmit={handleSubmit}>
+        {!hasSlugFromRoute && (
+          <div>
+            <label htmlFor="company_slug" className={rotuloFoto}>Barbearia</label>
+            <select
+              id="company_slug"
+              value={form.company_slug}
+              onChange={(event) => setForm((old) => ({ ...old, company_slug: event.target.value }))}
+              required
+              disabled={loadingCompanies}
+              className={`${campoFoto} appearance-none [&>option]:text-neutral-900`}
+            >
+              <option value="">
+                {loadingCompanies ? 'Carregando...' : 'Onde você é cliente?'}
+              </option>
+              {companies.map((company) => (
+                <option key={company.id} value={company.slug}>
+                  {company.name}
+                </option>
+              ))}
+            </select>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        )}
+        <div>
+          <label htmlFor="identifier" className={rotuloFoto}>WhatsApp ou e-mail</label>
+          <input
+            id="identifier"
+            type="text"
+            autoComplete="username"
+            placeholder="(11) 91234-5678"
+            className={campoFoto}
+            value={form.identifier}
+            onChange={(event) => setForm((old) => ({ ...old, identifier: event.target.value }))}
+            required
+          />
+        </div>
+        <div>
+          <label htmlFor="password" className={rotuloFoto}>Senha</label>
+          <div className="relative">
+            <input
+              id="password"
+              type={verSenha ? 'text' : 'password'}
+              autoComplete="current-password"
+              placeholder="Sua senha"
+              className={`${campoFoto} pr-12`}
+              value={form.password}
+              onChange={(event) => setForm((old) => ({ ...old, password: event.target.value }))}
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setVerSenha((atual) => !atual)}
+              aria-label={verSenha ? 'Esconder senha' : 'Mostrar senha'}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-white/60 hover:text-white"
+            >
+              {verSenha ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+            </button>
+          </div>
+          {/* O link sai por e-mail; quem cadastrou so WhatsApp pede o link
+              a barbearia, que o gera na tela de Clientes. */}
+          {form.company_slug ? (
+            <Link
+              to={`/cliente/${form.company_slug}/esqueci-senha`}
+              className="mt-2 inline-block pl-4 text-xs text-white/70 hover:underline"
+            >
+              Esqueci minha senha
+            </Link>
+          ) : null}
+        </div>
+        <button className={`${botaoFoto} mt-2`} type="submit" disabled={loading}>
+          {loading ? 'Entrando...' : 'Entrar'}
+        </button>
+      </form>
+
+      <p className="mt-5 text-center text-sm text-white/80">
+        Primeira vez?{' '}
+        <Link
+          className={linkFoto}
+          to={hasSlugFromRoute ? `/cliente/${form.company_slug}/cadastro` : '/cliente/cadastro'}
+        >
+          Criar conta
+        </Link>
+      </p>
+
+      {/* Caminho de volta, espelhando o da tela da equipe: quem caiu aqui
+          sendo dono ou funcionario sai por este link, e o clique grava a
+          escolha para nao errar de novo. */}
+      <p className="mt-3 text-center text-xs text-white/50">
+        <Link className="hover:underline" to="/login" onClick={() => lembrarTipoAcesso('equipe')}>
+          Sou da equipe
+        </Link>
+        {' · '}
+        <Link className="hover:underline" to="/entrar" onClick={esquecerTipoAcesso}>
+          Outras opções de acesso
+        </Link>
+      </p>
+    </TelaComFoto>
   );
 };
 

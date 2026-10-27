@@ -17,6 +17,7 @@ import {
   Link2,
 } from 'lucide-react';
 import { PainelPendencias } from '@/components/notificacoes/PainelPendencias';
+import { AtendimentosSemBaixa } from '@/components/agenda/AtendimentosSemBaixa';
 import LinkDosClientes from '@/components/agenda/LinkDosClientes';
 import { useCompanyModules } from '@/hooks/useCompanyModules';
 import { toast } from 'sonner';
@@ -168,6 +169,8 @@ const EmpresaDashboard: React.FC = () => {
           aberto, agenda de hoje) vem antes dos numeros. Antes este painel so
           existia em "Minhas tarefas" e o dono nao via. */}
       <PainelPendencias />
+
+      {hasModuleForCurrentRole('appointments') && <AtendimentosSemBaixa mostrarBarbeiro />}
 
       {/* O link do cliente fica a vista do dono: e o que ele divulga para
           a agenda encher. Antes so aparecia escondido em Agendamentos. */}

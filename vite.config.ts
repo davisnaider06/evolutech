@@ -42,8 +42,8 @@ export default defineConfig(() => ({
         // "/" e a landing; o app instalado abre direto no redirecionamento por perfil.
         start_url: "/app",
         display: "standalone",
-        background_color: "#f8fafc",
-        theme_color: "#2563eb",
+        background_color: "#fafafa",
+        theme_color: "#a3822a",
         lang: "pt-BR",
         icons: [
           {

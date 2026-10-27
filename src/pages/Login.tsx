@@ -1,12 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { Logo } from '@/components/Logo';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { LogoMarca } from '@/components/Logo';
 import { toast } from 'sonner';
-import { Lock, Mail, ArrowRight, Loader2, User } from 'lucide-react';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
+import {
+  TelaComFoto,
+  TituloFoto,
+  botaoFoto,
+  campoFoto,
+  linkFoto,
+  rotuloFoto,
+} from '@/components/telas/TelaComFoto';
 import { API_URL } from '@/config/api';
 import { rotaEntradaCliente } from '@/services/customer-portal';
 import { esquecerTipoAcesso, lembrarTipoAcesso } from '@/lib/tipo-acesso';
@@ -15,6 +20,7 @@ const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [verSenha, setVerSenha] = useState(false);
   const { login, isAuthenticated, isLoading: verificandoSessao, getRedirectPath } = useAuth();
   const navigate = useNavigate();
 
@@ -40,7 +46,7 @@ const Login: React.FC = () => {
   // sessao que estava viva.
   if (verificandoSessao) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="flex min-h-screen items-center justify-center bg-neutral-950">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
       </div>
     );
@@ -109,134 +115,81 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background p-4">
-      {/* --- EFEITOS DE FUNDO (Preservados do seu design original) --- */}
-      <div className="absolute inset-0 gradient-dark" />
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 gradient-glow opacity-60 blur-3xl" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent/10 rounded-full blur-3xl" />
-      
-      {/* Grid pattern */}
-      <div 
-        className="absolute inset-0 opacity-[0.02]"
-        style={{
-          backgroundImage: 'linear-gradient(hsl(var(--border)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--border)) 1px, transparent 1px)',
-          backgroundSize: '60px 60px',
-        }}
-      />
+    <TelaComFoto
+      topo={
+        <span className="flex items-center gap-2 text-sm font-semibold">
+          <LogoMarca className="h-7 w-7" />
+          iBarber
+        </span>
+      }
+    >
+      {/* O titulo diz de quem e esta tela: o cliente que cair aqui por
+          engano percebe pelo cabecalho, nao so pelo link do rodape. */}
+      <TituloFoto linha="Acesso da" destaque="Equipe" descricao="Dono e barbeiros: agenda, caixa e comissões." />
 
-      {/* --- CARD DE LOGIN --- */}
-      <div className="relative z-10 w-full max-w-md animate-slide-up">
-        {/* Mantivemos a classe 'glass' e o padding para preservar o visual do card */}
-        <div className="glass rounded-2xl p-8 shadow-elevated flex flex-col items-center">
-          
-          {/* Logo Centralizada */}
-          <div className="mb-6 flex justify-center">
-            <Logo size="lg" />
-          </div>
-
-          {/* O titulo diz de quem e esta tela: o cliente que cair aqui por
-              engano percebe pelo cabecalho, nao so pelo link do rodape. */}
-          <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-foreground">Acesso da Equipe</h1>
-            <p className="text-sm text-muted-foreground mt-2">
-              Dono e funcionários — painel da empresa
-            </p>
-          </div>
-
-          {/* Formulário Próprio (Substituindo o Clerk) */}
-          <form onSubmit={handleSubmit} className="w-full space-y-4">
-            
-            <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <div className="relative">
-                    <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input 
-                        id="email"
-                        type="email" 
-                        placeholder="voce@suaempresa.com"
-                        autoComplete="email"
-                        className="pl-10 bg-background/50 border-input"
-                        value={email}
-                        onChange={e => setEmail(e.target.value)}
-                        required
-                    />
-                </div>
-            </div>
-
-            <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                    <Label htmlFor="password">Senha</Label>
-                    <Link to="/esqueci-senha" className="text-xs text-primary hover:underline">
-                        Esqueci minha senha
-                    </Link>
-                </div>
-                <div className="relative">
-                    <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input 
-                        id="password"
-                        type="password" 
-                        placeholder="Sua senha"
-                        autoComplete="current-password"
-                        className="pl-10 bg-background/50 border-input"
-                        value={password}
-                        onChange={e => setPassword(e.target.value)}
-                        required
-                    />
-                </div>
-            </div>
-
-            <Button type="submit" className="w-full mt-6" disabled={isLoading} variant="glow">
-                {isLoading ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <ArrowRight className="mr-2 h-4 w-4" />}
-                {isLoading ? 'Autenticando...' : 'Entrar'}
-            </Button>
-
-          </form>
-
-          {/* Saida para o cliente que errou a porta. Era um link de texto solto
-              e passava batido; agora e um bloco separado do formulario, e o
-              clique ja grava a escolha para nao repetir o erro amanha. */}
-          <div className="mt-8 w-full">
-            <div className="flex items-center gap-3">
-              <span className="h-px flex-1 bg-border" />
-              <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                Não é da equipe?
-              </span>
-              <span className="h-px flex-1 bg-border" />
-            </div>
-
-            <Link
-              to={rotaEntradaCliente()}
-              onClick={() => lembrarTipoAcesso('cliente')}
-              className="group mt-4 flex w-full items-center gap-4 rounded-xl border border-input bg-background/50 p-4 text-left transition-colors hover:border-primary hover:bg-primary/5"
-            >
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <User className="h-5 w-5" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block font-semibold text-foreground">Sou cliente da empresa</span>
-                <span className="block text-xs text-muted-foreground">
-                  Entrar ou criar conta no Portal do Cliente
-                </span>
-              </span>
-              <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" />
-            </Link>
-
-            <p className="mt-4 text-center text-xs text-muted-foreground">
-              <Link className="hover:underline" to="/entrar" onClick={esquecerTipoAcesso}>
-                Ver as opções de acesso novamente
-              </Link>
-            </p>
-          </div>
-
-
+      <form onSubmit={handleSubmit} className="mt-8 w-full space-y-4">
+        <div>
+          <label htmlFor="email" className={rotuloFoto}>E-mail</label>
+          <input
+            id="email"
+            type="email"
+            inputMode="email"
+            placeholder="voce@suabarbearia.com"
+            autoComplete="email"
+            className={campoFoto}
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            required
+          />
         </div>
 
-        {/* Footer */}
-        <p className="mt-6 text-center text-sm text-muted-foreground">
-          © {new Date().getFullYear()} iBarber. Todos os direitos reservados.
-        </p>
-      </div>
-    </div>
+        <div>
+          <label htmlFor="password" className={rotuloFoto}>Senha</label>
+          <div className="relative">
+            <input
+              id="password"
+              type={verSenha ? 'text' : 'password'}
+              placeholder="Sua senha"
+              autoComplete="current-password"
+              className={`${campoFoto} pr-12`}
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setVerSenha((atual) => !atual)}
+              aria-label={verSenha ? 'Esconder senha' : 'Mostrar senha'}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-white/60 hover:text-white"
+            >
+              {verSenha ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+            </button>
+          </div>
+          <Link to="/esqueci-senha" className="mt-2 inline-block pl-4 text-xs text-white/70 hover:underline">
+            Esqueci minha senha
+          </Link>
+        </div>
+
+        <button type="submit" className={`${botaoFoto} mt-2`} disabled={isLoading}>
+          {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
+          {isLoading ? 'Entrando...' : 'Entrar'}
+        </button>
+      </form>
+
+      {/* Saida para o cliente que errou a porta; o clique ja grava a escolha
+          para nao repetir o erro amanha. */}
+      <p className="mt-5 text-center text-sm text-white/80">
+        É cliente?{' '}
+        <Link to={rotaEntradaCliente()} onClick={() => lembrarTipoAcesso('cliente')} className={linkFoto}>
+          Agendar horário
+        </Link>
+      </p>
+      <p className="mt-2 text-center text-xs text-white/50">
+        <Link className="hover:underline" to="/entrar" onClick={esquecerTipoAcesso}>
+          Ver as opções de acesso novamente
+        </Link>
+      </p>
+    </TelaComFoto>
   );
 };
 

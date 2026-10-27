@@ -24,6 +24,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { companyService } from '@/services/company';
 import { AgendaBoard } from '@/components/agenda/AgendaBoard';
 import { ReceberAtendimentoDialog, AtendimentoParaReceber } from '@/components/agenda/ReceberAtendimentoDialog';
+import { AtendimentosSemBaixa } from '@/components/agenda/AtendimentosSemBaixa';
 import { useCompanyModules } from '@/hooks/useCompanyModules';
 import LinkDosClientes from '@/components/agenda/LinkDosClientes';
 
@@ -402,6 +403,15 @@ const Agendamentos: React.FC = () => {
         }
         buttonLabel="Novo Agendamento"
         onButtonClick={handleNew}
+      />
+
+      {/* Antes da grade: o que ja passou e ainda pede baixa. */}
+      <AtendimentosSemBaixa
+        mostrarBarbeiro={!isFuncionario}
+        onAlterado={() => {
+          fetchAppointments();
+          setBoardRefresh((prev) => prev + 1);
+        }}
       />
 
       {/* Grade x lista: a grade e a visao do dia a dia da barbearia,

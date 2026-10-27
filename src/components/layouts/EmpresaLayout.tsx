@@ -153,6 +153,19 @@ export const EmpresaLayout: React.FC = () => {
     (company as any)?.company_logo_url ||
     null;
   const companyName = company?.name || user.tenantName || 'Minha Empresa';
+
+  // Menu de baixo no celular, como no app do cliente: as tres telas que cada
+  // perfil abre todo dia, mais "Menu" para o resto. Antes tudo ficava atras
+  // do icone de tres tracos, que o barbeiro nao reconhecia como menu.
+  const prioridade = isOwner
+    ? ['/empresa/dashboard', '/empresa/agendamentos', '/empresa/caixa', '/empresa/clientes']
+    : ['/empresa/agendamentos', '/empresa/clientes', '/empresa/caixa', '/empresa/app'];
+  const atalhosMobile = prioridade
+    .map((path) => filteredNavItems.find((item) => item.path === path))
+    .filter((item): item is NavItem => Boolean(item))
+    .slice(0, 3);
+  const estaEm = (path: string) =>
+    location.pathname === path || (path !== '/empresa/dashboard' && location.pathname.startsWith(path));
   const sidebarTitle = user.name || companyName;
 
   return (
@@ -335,9 +348,44 @@ export const EmpresaLayout: React.FC = () => {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+        <main className="flex-1 overflow-y-auto p-4 pb-24 lg:p-6">
           <Outlet />
         </main>
+
+        <nav
+          aria-label="Atalhos"
+          className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-border bg-card pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_24px_-8px_hsl(0_0%_0%/0.12)] lg:hidden"
+        >
+          {atalhosMobile.map((item) => {
+            const ativo = estaEm(item.path);
+            return (
+              <button
+                key={item.path}
+                type="button"
+                onClick={() => navigate(item.path)}
+                aria-current={ativo ? 'page' : undefined}
+                className={cn(
+                  'flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium',
+                  ativo ? 'text-primary' : 'text-muted-foreground'
+                )}
+              >
+                <item.icon className="h-5 w-5" />
+                {item.label}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => setIsMobileMenuOpen(true)}
+            className={cn(
+              'flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium',
+              isMobileMenuOpen ? 'text-primary' : 'text-muted-foreground'
+            )}
+          >
+            <Menu className="h-5 w-5" />
+            Menu
+          </button>
+        </nav>
       </div>
     </div>
   );
