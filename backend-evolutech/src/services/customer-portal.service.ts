@@ -277,7 +277,7 @@ export class CustomerPortalService {
         scheduledAt: true,
         status: true,
         createdAt: true,
-        review: { select: { rating: true, comment: true } },
+        review: { select: { rating: true, ratingEmpresa: true, comment: true } },
       },
     });
 
@@ -292,7 +292,9 @@ export class CustomerPortalService {
       scheduled_at: item.scheduledAt,
       status: this.normalizeAppointmentStatus(item.status),
       created_at: item.createdAt,
-      review: item.review || null,
+      review: item.review
+        ? { rating: item.review.rating, rating_empresa: item.review.ratingEmpresa, comment: item.review.comment }
+        : null,
       can_review: podeAvaliar(item),
     }));
   }
@@ -497,7 +499,7 @@ export class CustomerPortalService {
 
   async getBookingOptions(auth: AuthenticatedCustomer) {
     const context = await this.getCustomerContext(auth);
-    const [services, professionals, notas] = await Promise.all([
+    const [services, professionals, notas, notaBarbearia] = await Promise.all([
       (prisma as any).appointmentService.findMany({
         where: { companyId: context.companyId, isActive: true },
         select: { id: true, name: true, durationMinutes: true, price: true },
@@ -516,9 +518,11 @@ export class CustomerPortalService {
         orderBy: { user: { fullName: 'asc' } },
       }),
       reviewService.notasPublicas(context.companyId),
+      reviewService.notaPublicaDaBarbearia(context.companyId),
     ]);
 
     return {
+      company_rating: notaBarbearia,
       services: services.map((item: any) => ({
         id: item.id,
         name: item.name,
