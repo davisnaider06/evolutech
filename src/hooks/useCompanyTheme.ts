@@ -37,28 +37,38 @@ const DEFAULT_THEME: Omit<CompanyTheme, 'id' | 'company_id'> = {
   favicon_path: null,
   login_cover_path: null,
   company_display_name: null,
-  primary_color: '217 91% 50%',
+  primary_color: '43 60% 40%',
   primary_foreground: '0 0% 100%',
-  secondary_color: '214 32% 91%',
-  secondary_foreground: '222 47% 11%',
-  accent_color: '187 85% 40%',
+  secondary_color: '40 20% 94%',
+  secondary_foreground: '0 0% 12%',
+  accent_color: '30 35% 26%',
   accent_foreground: '0 0% 100%',
-  background_color: '210 40% 98%',
-  foreground_color: '222 47% 11%',
+  background_color: '0 0% 98%',
+  foreground_color: '0 0% 10%',
   card_color: '0 0% 100%',
-  card_foreground: '222 47% 11%',
-  muted_color: '210 40% 96%',
-  muted_foreground: '215 16% 40%',
-  border_color: '214 32% 88%',
-  destructive_color: '0 84% 55%',
+  card_foreground: '0 0% 10%',
+  muted_color: '40 12% 95%',
+  muted_foreground: '0 0% 40%',
+  border_color: '40 10% 89%',
+  destructive_color: '0 72% 50%',
   sidebar_background: '0 0% 100%',
-  sidebar_foreground: '222 47% 11%',
-  sidebar_primary: '217 91% 50%',
-  sidebar_accent: '214 32% 93%',
-  border_radius: '0.75rem',
-  font_family: 'Inter',
+  sidebar_foreground: '0 0% 10%',
+  sidebar_primary: '43 60% 40%',
+  sidebar_accent: '40 20% 94%',
+  border_radius: '0.875rem',
+  font_family: 'Poppins',
   dark_mode_enabled: false,
 };
+
+/**
+ * Tema gravado com as cores padrao antigas (azul do Evolutech).
+ *
+ * Quem abriu Aparencia e salvou sem mexer gravou o azul no banco, e esse azul
+ * passaria a valer por cima do dourado novo. Azul padrao nao e escolha da
+ * barbearia: tratado como "sem tema", ela recebe o padrao atual.
+ */
+export const temaComCoresPadraoAntigas = (theme: Pick<CompanyTheme, 'primary_color' | 'background_color'>) =>
+  theme.primary_color === '217 91% 50%' && theme.background_color === '210 40% 98%';
 
 export const useCompanyTheme = () => {
   const { user } = useAuth();
@@ -103,7 +113,7 @@ export const useCompanyTheme = () => {
           font_family: data.font_family ?? data.fontFamily ?? DEFAULT_THEME.font_family,
           dark_mode_enabled: data.dark_mode_enabled ?? data.darkModeEnabled ?? DEFAULT_THEME.dark_mode_enabled,
         };
-        setTheme(normalized as CompanyTheme);
+        setTheme(temaComCoresPadraoAntigas(normalized) ? null : (normalized as CompanyTheme));
       } else {
         setTheme(null);
       }

@@ -2,60 +2,61 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-
 @layer base {
-  /* Tema padrao claro. A barbearia que personalizou as cores em Tema
-     continua com as dela: estas so valem para quem nunca mexeu. */
+  /* Tema padrao: dourado de barbearia sobre fundo claro, como o prototipo
+     em design-references/. A barbearia que personalizou as cores em
+     Aparencia continua com as dela: estas so valem para quem nunca mexeu. */
   :root {
-    --background: 210 40% 98%;
-    --foreground: 222 47% 11%;
+    --background: 0 0% 98%;
+    --foreground: 0 0% 10%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 0 0% 10%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: 0 0% 10%;
 
-    --primary: 217 91% 50%;
+    /* Dourado um pouco mais fechado que o do prototipo: texto branco em
+       cima dele ainda precisa ser legivel no sol da calcada. */
+    --primary: 43 60% 40%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 214 32% 91%;
-    --secondary-foreground: 222 47% 11%;
+    --secondary: 40 20% 94%;
+    --secondary-foreground: 0 0% 12%;
 
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 40%;
+    --muted: 40 12% 95%;
+    --muted-foreground: 0 0% 40%;
 
-    --accent: 187 85% 40%;
+    --accent: 30 35% 26%;
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 84% 55%;
+    --destructive: 0 72% 50%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 214 32% 88%;
-    --input: 214 32% 85%;
-    --ring: 217 91% 50%;
+    --border: 40 10% 89%;
+    --input: 40 10% 86%;
+    --ring: 43 60% 40%;
 
-    --radius: 0.75rem;
+    --radius: 0.875rem;
 
     /* Custom tokens */
-    --gradient-primary: linear-gradient(135deg, hsl(217 91% 50%) 0%, hsl(187 85% 40%) 100%);
-    --gradient-dark: linear-gradient(180deg, hsl(210 40% 98%) 0%, hsl(214 32% 93%) 100%);
-    --gradient-card: linear-gradient(135deg, hsl(0 0% 100%) 0%, hsl(210 40% 97%) 100%);
-    --gradient-glow: radial-gradient(ellipse at center, hsl(217 91% 50% / 0.10) 0%, transparent 70%);
-    
-    --shadow-glow: 0 0 60px -15px hsl(217 91% 50% / 0.3);
-    --shadow-card: 0 4px 24px -4px hsl(222 47% 11% / 0.08);
-    --shadow-elevated: 0 8px 32px -8px hsl(222 47% 11% / 0.14);
+    --gradient-primary: linear-gradient(135deg, hsl(43 60% 42%) 0%, hsl(36 55% 32%) 100%);
+    --gradient-dark: linear-gradient(180deg, hsl(0 0% 98%) 0%, hsl(40 12% 94%) 100%);
+    --gradient-card: linear-gradient(135deg, hsl(0 0% 100%) 0%, hsl(40 20% 97%) 100%);
+    --gradient-glow: radial-gradient(ellipse at center, hsl(43 60% 40% / 0.10) 0%, transparent 70%);
+
+    --shadow-glow: 0 0 60px -15px hsl(43 60% 40% / 0.35);
+    --shadow-card: 0 4px 24px -6px hsl(0 0% 10% / 0.08);
+    --shadow-elevated: 0 8px 32px -8px hsl(0 0% 10% / 0.16);
 
     --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 222 47% 11%;
-    --sidebar-primary: 217 91% 50%;
+    --sidebar-foreground: 0 0% 10%;
+    --sidebar-primary: 43 60% 40%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 214 32% 93%;
-    --sidebar-accent-foreground: 222 47% 11%;
-    --sidebar-border: 214 32% 88%;
-    --sidebar-ring: 217 91% 50%;
+    --sidebar-accent: 40 20% 94%;
+    --sidebar-accent-foreground: 0 0% 10%;
+    --sidebar-border: 40 10% 89%;
+    --sidebar-ring: 43 60% 40%;
 
     /* Role colors */
     --super-admin: 280 85% 60%;
@@ -72,7 +73,7 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Poppins', system-ui, sans-serif;
   }
 
   /* Custom scrollbar */

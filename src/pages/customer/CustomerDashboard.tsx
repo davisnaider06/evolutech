@@ -1,11 +1,20 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Star } from 'lucide-react';
+import {
+  CalendarDays,
+  CalendarPlus,
+  ChevronRight,
+  Clock,
+  Home,
+  LogOut,
+  MapPin,
+  Star,
+  User,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   Dialog,
   DialogContent,
@@ -14,22 +23,39 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { cn } from '@/lib/utils';
 import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
 import { customerPortalService, rotaLoginCliente } from '@/services/customer-portal';
 import {
   CustomerAppointment,
   CustomerBookingOptionsResponse,
-  CustomerDashboardResponse,
   CustomerPaymentGatewayResult,
   CustomerPlanCatalogItem,
   CustomerSubscription,
 } from '@/types/customer-portal';
-import { formatarData, formatarDataHora, hojeNaBarbearia } from '@/lib/horario';
+import { formatarData, formatarDataHora } from '@/lib/horario';
+import { corDoProfissional, iniciais } from '@/lib/profissional';
 import { AtivarNotificacoes } from '@/components/notificacoes/AtivarNotificacoes';
-import EscolhaProfissional from '@/components/agenda/EscolhaProfissional';
+import { LogoMarca } from '@/components/Logo';
 import { lerAgendamentoPendente } from '@/lib/agendamento-pendente';
 import AvaliarAtendimento from '@/components/avaliacao/AvaliarAtendimento';
 import { Estrelas } from '@/components/avaliacao/Estrelas';
+import PassosAgendamento, {
+  ESCOLHA_VAZIA,
+  EscolhaAgendamento,
+  HorarioLivre,
+  iconeDoServico,
+  reais,
+} from '@/components/agenda/PassosAgendamento';
+
+/**
+ * Portal do cliente no visual do prototipo (design-references/image.png):
+ * cartao dourado em destaque, servicos em blocos, barbeiros em lista e o menu
+ * fixo embaixo — Inicio, Agendar, Horarios e Conta.
+ *
+ * Cada aba responde uma pergunta so. Antes era uma pagina longa com abas
+ * "Horarios" e "Planos", e o formulario de marcar ficava no meio da lista.
+ */
 
 /**
  * Hora da barbearia, sempre.
@@ -48,8 +74,8 @@ const formatCurrency = (value?: number | null) =>
 
 // O cliente le "Confirmado", nao "confirmado" nem "no_show".
 const STATUS_AGENDAMENTO: Record<string, { texto: string; classe: string }> = {
-  pendente: { texto: 'Aguardando confirmação', classe: 'border-amber-500/40 text-amber-600' },
-  confirmado: { texto: 'Confirmado', classe: 'border-emerald-500/40 text-emerald-600' },
+  pendente: { texto: 'Aguardando confirmação', classe: 'border-amber-500/40 text-amber-700' },
+  confirmado: { texto: 'Confirmado', classe: 'border-emerald-500/40 text-emerald-700' },
   concluido: { texto: 'Concluído', classe: 'text-muted-foreground' },
   cancelado: { texto: 'Cancelado', classe: 'text-muted-foreground' },
   no_show: { texto: 'Não compareceu', classe: 'text-muted-foreground' },
@@ -72,14 +98,6 @@ const PERIODO: Record<string, string> = {
   yearly: 'por ano',
 };
 
-const rotuloServico = (service: { name: string; duration_minutes?: number; price?: number }) => {
-  const detalhes = [
-    service.duration_minutes ? `${service.duration_minutes} min` : '',
-    Number(service.price || 0) > 0 ? formatCurrency(service.price) : '',
-  ].filter(Boolean);
-  return detalhes.length ? `${service.name} — ${detalhes.join(' · ')}` : service.name;
-};
-
 const resumoPlano = (plan: { is_unlimited: boolean; included_services?: number | null }) =>
   plan.is_unlimited
     ? 'Serviços ilimitados no período'
@@ -87,21 +105,43 @@ const resumoPlano = (plan: { is_unlimited: boolean; included_services?: number |
       ? `${plan.included_services} serviços no período`
       : '';
 
+type Aba = 'inicio' | 'agendar' | 'horarios' | 'conta';
+
+const ABAS: Array<{ id: Aba; rotulo: string; icone: React.ElementType }> = [
+  { id: 'inicio', rotulo: 'Início', icone: Home },
+  { id: 'agendar', rotulo: 'Agendar', icone: CalendarPlus },
+  { id: 'horarios', rotulo: 'Horários', icone: CalendarDays },
+  { id: 'conta', rotulo: 'Conta', icone: User },
+];
+
+type Profissional = CustomerBookingOptionsResponse['professionals'][number];
+
+const FotoBarbeiro: React.FC<{ profissional?: Profissional | null; nome?: string | null; className?: string }> = ({
+  profissional,
+  nome,
+  className,
+}) => (
+  <Avatar className={cn('rounded-xl', className)}>
+    <AvatarImage src={profissional?.avatar_url || undefined} alt={nome || ''} className="object-cover" />
+    <AvatarFallback
+      style={corDoProfissional(profissional?.id || nome || '?')}
+      className="rounded-xl font-semibold"
+    >
+      {iniciais(nome || profissional?.name || '?')}
+    </AvatarFallback>
+  </Avatar>
+);
+
 const CustomerDashboard: React.FC = () => {
-  const [dashboard, setDashboard] = useState<CustomerDashboardResponse | null>(null);
   const [appointments, setAppointments] = useState<CustomerAppointment[]>([]);
   const [subscriptions, setSubscriptions] = useState<CustomerSubscription[]>([]);
   const [plansCatalog, setPlansCatalog] = useState<CustomerPlanCatalogItem[]>([]);
   const [bookingOptions, setBookingOptions] = useState<CustomerBookingOptionsResponse | null>(null);
-  const [appointmentForm, setAppointmentForm] = useState({
-    service_id: '',
-    professional_id: '',
-    date: '',
-    scheduled_at: '',
-  });
-  const [availableSlots, setAvailableSlots] = useState<Array<{ time: string; scheduled_at: string }>>([]);
+  const [escolha, setEscolha] = useState<EscolhaAgendamento>(ESCOLHA_VAZIA);
+  const [availableSlots, setAvailableSlots] = useState<HorarioLivre[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [cancelando, setCancelando] = useState<CustomerAppointment | null>(null);
   const [cancelingId, setCancelingId] = useState<string | null>(null);
   const [creatingAppointment, setCreatingAppointment] = useState(false);
   const [subscribingPlanId, setSubscribingPlanId] = useState<string | null>(null);
@@ -113,18 +153,22 @@ const CustomerDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [avaliando, setAvaliando] = useState<CustomerAppointment | null>(null);
+  const [aba, setAba] = useState<Aba>('inicio');
+
+  const irPara = (proxima: Aba) => {
+    setAba(proxima);
+    window.scrollTo({ top: 0 });
+  };
 
   const loadData = async () => {
     setLoading(true);
     const results = await Promise.allSettled([
-      customerPortalService.dashboard(),
       customerPortalService.appointments(),
       customerPortalService.subscriptions(),
       customerPortalService.bookingOptions(),
       customerPortalService.plans(),
     ]);
-    const [dashboardData, appointmentsData, subscriptionsData, bookingData, plansData] = results;
-    if (dashboardData.status === 'fulfilled') setDashboard(dashboardData.value);
+    const [appointmentsData, subscriptionsData, bookingData, plansData] = results;
     if (appointmentsData.status === 'fulfilled') setAppointments(appointmentsData.value);
     if (subscriptionsData.status === 'fulfilled') setSubscriptions(subscriptionsData.value);
     if (bookingData.status === 'fulfilled') setBookingOptions(bookingData.value);
@@ -159,23 +203,20 @@ const CustomerDashboard: React.FC = () => {
 
   useEffect(() => {
     const loadSlots = async () => {
-      if (!appointmentForm.service_id || !appointmentForm.professional_id || !appointmentForm.date) {
+      if (!escolha.service_id || !escolha.professional_id || !escolha.date) {
         setAvailableSlots([]);
-        setAppointmentForm((old) => ({ ...old, scheduled_at: '' }));
         return;
       }
       setLoadingSlots(true);
       try {
         const data = await customerPortalService.appointmentSlots({
-          date: appointmentForm.date,
-          service_id: appointmentForm.service_id,
-          professional_id: appointmentForm.professional_id,
+          date: escolha.date,
+          service_id: escolha.service_id,
+          professional_id: escolha.professional_id,
         });
         setAvailableSlots(Array.isArray(data.slots) ? data.slots : []);
-        setAppointmentForm((old) => ({ ...old, scheduled_at: '' }));
       } catch (error: any) {
         setAvailableSlots([]);
-        setAppointmentForm((old) => ({ ...old, scheduled_at: '' }));
         toast.error(error.message || 'Erro ao carregar horários disponíveis');
       } finally {
         setLoadingSlots(false);
@@ -183,26 +224,25 @@ const CustomerDashboard: React.FC = () => {
     };
 
     loadSlots();
-  }, [appointmentForm.service_id, appointmentForm.professional_id, appointmentForm.date]);
+  }, [escolha.service_id, escolha.professional_id, escolha.date]);
+
+  const mudarEscolha = useCallback((proxima: EscolhaAgendamento) => setEscolha(proxima), []);
 
   const canCancelStatus = useMemo(() => new Set(['pendente', 'confirmado']), []);
 
-  const handleCreateAppointment = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!appointmentForm.service_id || !appointmentForm.professional_id || !appointmentForm.date || !appointmentForm.scheduled_at) {
-      toast.error('Escolha serviço, profissional, dia e horário');
-      return;
-    }
+  const handleCreateAppointment = async () => {
+    if (!escolha.scheduled_at) return;
     setCreatingAppointment(true);
     try {
       const criado = await customerPortalService.createAppointment({
-        service_id: appointmentForm.service_id,
-        professional_id: appointmentForm.professional_id,
-        scheduled_at: appointmentForm.scheduled_at,
+        service_id: escolha.service_id,
+        professional_id: escolha.professional_id,
+        scheduled_at: escolha.scheduled_at,
       });
       toast.success(criado.professional_name ? `Horário marcado com ${criado.professional_name}!` : 'Horário marcado!');
-      setAppointmentForm({ service_id: '', professional_id: '', date: '', scheduled_at: '' });
+      setEscolha(ESCOLHA_VAZIA);
       setAvailableSlots([]);
+      irPara('inicio');
       await loadData();
     } catch (error: any) {
       toast.error(error.message || 'Não foi possível agendar');
@@ -211,12 +251,15 @@ const CustomerDashboard: React.FC = () => {
     }
   };
 
-  const handleCancelAppointment = async (appointmentId: string) => {
-    if (!window.confirm('Cancelar este horário?')) return;
-    setCancelingId(appointmentId);
+  // Cancelar pede confirmacao num dialogo do app: o window.confirm do
+  // navegador some atras do teclado em alguns Android e parecia travado.
+  const confirmarCancelamento = async () => {
+    if (!cancelando) return;
+    setCancelingId(cancelando.id);
     try {
-      await customerPortalService.cancelAppointment(appointmentId);
+      await customerPortalService.cancelAppointment(cancelando.id);
       toast.success('Horário cancelado');
+      setCancelando(null);
       await loadData();
     } catch (error: any) {
       toast.error(error.message || 'Não foi possível cancelar');
@@ -256,6 +299,10 @@ const CustomerDashboard: React.FC = () => {
     );
   }
 
+  const servicos = bookingOptions?.services || [];
+  const profissionais = bookingOptions?.professionals || [];
+  const profissionalPorId = (id?: string | null) => profissionais.find((item) => item.id === id) || null;
+
   // Proximos em ordem de data (o mais perto primeiro); o resto e historico.
   // A API devolve tudo do mais novo para o mais velho, e o horario de
   // amanha ficava escondido no meio da lista.
@@ -268,26 +315,60 @@ const CustomerDashboard: React.FC = () => {
   const planosAtivos = new Set(
     subscriptions.filter((item) => item.status === 'active' || item.status === 'pending').map((item) => item.plan?.id)
   );
-  const agendaDisponivel = Boolean(bookingOptions?.services?.length && bookingOptions?.professionals?.length);
+  const agendaDisponivel = Boolean(servicos.length && profissionais.length);
 
   // O mais recente primeiro: e o corte que o cliente ainda lembra.
   const paraAvaliar = appointments.find((item) => item.can_review);
 
+  // "Barbeiro da semana" do prototipo: o mais bem avaliado (o backend so manda
+  // nota a partir de 3 avaliacoes); sem notas, o primeiro com foto.
+  const destaque =
+    [...profissionais]
+      .filter((item) => item.rating)
+      .sort((a, b) => (b.rating?.media || 0) - (a.rating?.media || 0))[0] ||
+    profissionais.find((item) => item.avatar_url) ||
+    profissionais[0] ||
+    null;
+
+  const agendarCom = (parcial: Partial<EscolhaAgendamento>) => {
+    setEscolha({ ...ESCOLHA_VAZIA, ...parcial });
+    irPara('agendar');
+  };
+
+  const primeiroNome = customer?.name?.split(' ')[0] || '';
+
   const linhaAgendamento = (item: CustomerAppointment) => {
     const status = statusAgendamento(item.status);
+    const futuro = proximos.includes(item);
     return (
-      <div key={item.id} className="flex items-center justify-between gap-3 rounded-md border p-3">
-        <div className="min-w-0">
-          <p className="font-medium">{item.service_name || 'Serviço'}</p>
-          <p className="text-sm text-muted-foreground">
-            {formatDateTime(item.scheduled_at)} · {item.professional_name || 'Profissional'}
+      <div key={item.id} className="flex items-center gap-3 rounded-2xl bg-card p-3 shadow-card">
+        <FotoBarbeiro
+          profissional={profissionalPorId(item.professional_id)}
+          nome={item.professional_name}
+          className="h-14 w-14"
+        />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-semibold">{item.service_name || 'Serviço'}</p>
+          <p className="truncate text-xs text-muted-foreground">{item.professional_name || 'Barbeiro'}</p>
+          <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+            <Clock className="h-3 w-3" />
+            {formatDateTime(item.scheduled_at)}
           </p>
           {item.review ? <Estrelas nota={item.review.rating} className="mt-1" /> : null}
         </div>
         {item.can_review ? (
-          <Button size="sm" variant="outline" className="shrink-0" onClick={() => setAvaliando(item)}>
+          <Button size="sm" className="shrink-0 rounded-full" onClick={() => setAvaliando(item)}>
             <Star className="mr-1 h-3.5 w-3.5" />
             Avaliar
+          </Button>
+        ) : futuro ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="shrink-0 rounded-full text-muted-foreground"
+            onClick={() => setCancelando(item)}
+          >
+            Cancelar
           </Button>
         ) : (
           <Badge variant="outline" className={`shrink-0 ${status.classe}`}>
@@ -298,219 +379,260 @@ const CustomerDashboard: React.FC = () => {
     );
   };
 
+  const tituloSecao = (titulo: string, acao?: { rotulo: string; onClick: () => void }) => (
+    <div className="mb-3 flex items-center justify-between">
+      <h2 className="text-lg font-semibold">{titulo}</h2>
+      {acao ? (
+        <button type="button" onClick={acao.onClick} className="text-sm font-medium text-primary">
+          {acao.rotulo}
+        </button>
+      ) : null}
+    </div>
+  );
+
   return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-3xl space-y-5 p-4 md:p-8">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            {company?.logo_url ? (
-              <img
-                src={company.logo_url}
-                alt={company.name}
-                className="h-10 w-10 rounded-md object-contain border border-border bg-background p-1"
-              />
-            ) : null}
-            <div>
-              <h1 className="text-xl font-bold">{company?.name || 'Meus horários'}</h1>
-              <p className="text-sm text-muted-foreground">Olá, {customer?.name?.split(' ')[0]}</p>
-            </div>
-          </div>
-          <Button variant="ghost" size="sm" onClick={handleLogout}>
-            Sair
-          </Button>
+    <div className="min-h-[100dvh] bg-background">
+      <header className="sticky top-0 z-20 bg-background/90 backdrop-blur">
+        <div className="mx-auto flex max-w-xl items-center gap-3 px-4 py-3">
+          {company?.logo_url ? (
+            <img
+              src={company.logo_url}
+              alt={company.name}
+              className="h-9 w-9 rounded-lg border border-border bg-card object-contain p-0.5"
+            />
+          ) : (
+            <LogoMarca className="h-9 w-9" />
+          )}
+          <p className="flex min-w-0 flex-1 items-center justify-center gap-1 truncate text-sm font-semibold">
+            <MapPin className="h-4 w-4 shrink-0 text-primary" />
+            <span className="truncate">{company?.name || 'Minha barbearia'}</span>
+          </p>
+          <button
+            type="button"
+            aria-label="Minha conta"
+            onClick={() => irPara('conta')}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/15 text-sm font-bold text-primary"
+          >
+            {iniciais(customer?.name || '?')}
+          </button>
         </div>
+      </header>
 
-        {/* O que o cliente abre o portal para saber: quando e o proximo
-            horario. Antes o topo eram dois numeros (total e proximos). */}
-        <Card className="border-primary/40">
-          <CardContent className="p-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Seu próximo horário</p>
+      <main className="mx-auto max-w-xl px-4 pb-32 pt-2">
+        {aba === 'inicio' && (
+          <div className="space-y-7">
+            <p className="text-sm text-muted-foreground">
+              Olá, <span className="font-semibold text-foreground">{primeiroNome}</span>
+            </p>
+
+            {/* O cartao dourado do prototipo. Com horario marcado ele mostra
+                o horario: e o que o cliente abre o portal para saber. */}
             {proximo ? (
-              <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <p className="text-2xl font-bold">{formatDateTime(proximo.scheduled_at)}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {proximo.service_name || 'Serviço'} com {proximo.professional_name || 'profissional'}
+              <section className="relative overflow-hidden rounded-3xl bg-primary p-5 text-primary-foreground shadow-elevated">
+                <div className="relative z-10 max-w-[62%]">
+                  <h2 className="text-2xl font-bold leading-tight">Seu próximo horário</h2>
+                  <p className="mt-2 text-sm font-medium">{formatDateTime(proximo.scheduled_at)}</p>
+                  <p className="text-sm text-primary-foreground/85">
+                    {proximo.service_name || 'Serviço'} com {proximo.professional_name || 'barbeiro'}
                   </p>
-                  <Badge variant="outline" className={`mt-2 ${statusAgendamento(proximo.status).classe}`}>
+                  <span className="mt-3 inline-flex rounded-full bg-white px-3 py-1 text-xs font-semibold text-foreground">
                     {statusAgendamento(proximo.status).texto}
-                  </Badge>
+                  </span>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="self-start text-muted-foreground sm:self-end"
-                  disabled={cancelingId === proximo.id}
-                  onClick={() => handleCancelAppointment(proximo.id)}
-                >
-                  {cancelingId === proximo.id ? 'Cancelando...' : 'Cancelar horário'}
-                </Button>
-              </div>
-            ) : (
-              <p className="mt-1 text-sm text-muted-foreground">Nenhum horário marcado. Agende abaixo.</p>
-            )}
-          </CardContent>
-        </Card>
+                <FotoBarbeiro
+                  profissional={profissionalPorId(proximo.professional_id)}
+                  nome={proximo.professional_name}
+                  className="absolute bottom-4 right-4 top-4 h-auto w-[34%] rounded-2xl"
+                />
+              </section>
+            ) : destaque ? (
+              <section className="relative overflow-hidden rounded-3xl bg-primary p-5 text-primary-foreground shadow-elevated">
+                <div className="relative z-10 max-w-[62%]">
+                  <h2 className="text-2xl font-bold leading-tight">
+                    {destaque.rating ? 'Barbeiro mais bem avaliado' : 'Marque seu próximo corte'}
+                  </h2>
+                  <p className="mt-1 text-sm font-medium">{destaque.name}</p>
+                  {destaque.rating ? (
+                    <span className="mt-1 flex items-center gap-1 text-xs">
+                      <Estrelas nota={destaque.rating.media} />
+                      <span className="text-primary-foreground/85">{destaque.rating.media.toFixed(1)}</span>
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => agendarCom({ professional_id: destaque.id })}
+                    disabled={!agendaDisponivel}
+                    className="mt-3 inline-flex rounded-full bg-white px-4 py-1.5 text-xs font-semibold text-foreground disabled:opacity-60"
+                  >
+                    Agendar com {destaque.name.split(' ')[0]}
+                  </button>
+                </div>
+                <FotoBarbeiro
+                  profissional={destaque}
+                  nome={destaque.name}
+                  className="absolute bottom-4 right-4 top-4 h-auto w-[34%] rounded-2xl"
+                />
+              </section>
+            ) : null}
 
-        {paraAvaliar ? (
-          <Card className="border-amber-300 bg-amber-50/60 dark:bg-amber-950/20">
-            <CardContent className="flex items-center justify-between gap-3 p-4">
-              <div className="min-w-0">
-                <p className="font-semibold">Como foi seu último atendimento?</p>
-                <p className="text-sm text-muted-foreground">
-                  {paraAvaliar.service_name || 'Serviço'} com {paraAvaliar.professional_name || 'o profissional'}.
-                  Anônimo para o barbeiro.
-                </p>
-              </div>
-              <Button size="sm" className="shrink-0" onClick={() => setAvaliando(paraAvaliar)}>
-                Avaliar
-              </Button>
-            </CardContent>
-          </Card>
-        ) : null}
-
-        <AvaliarAtendimento
-          atendimento={avaliando}
-          onClose={() => setAvaliando(null)}
-          onAvaliado={() => {
-            setAvaliando(null);
-            loadData();
-          }}
-        />
-
-        <AtivarNotificacoes
-          api={customerPortalService}
-          textos={{
-            ativo: 'Este aparelho recebe a confirmação e os lembretes dos seus horários.',
-            convite: 'Receba a confirmação do agendamento e lembretes um dia, uma hora e 15 minutos antes.',
-          }}
-        />
-
-        <Tabs defaultValue="appointments" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="appointments">Horários</TabsTrigger>
-            <TabsTrigger value="subscriptions">Planos</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="appointments" className="space-y-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Marcar horário</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {!agendaDisponivel ? (
-                  <p className="text-sm text-muted-foreground">
-                    A agenda online ainda não está aberta. Fale com a barbearia para marcar.
+            {paraAvaliar ? (
+              <section className="flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary/5 p-4">
+                <Star className="h-8 w-8 shrink-0 fill-amber-400 text-amber-400" />
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold">Como foi seu último corte?</p>
+                  <p className="text-xs text-muted-foreground">
+                    {paraAvaliar.service_name || 'Serviço'} com {paraAvaliar.professional_name || 'o barbeiro'}.
+                    Anônimo para o barbeiro.
                   </p>
-                ) : (
-                  // Mesma ordem do link publico: servico (com preco),
-                  // profissional, dia e horario em botoes.
-                  <form className="space-y-3" onSubmit={handleCreateAppointment}>
-                    <select
-                      aria-label="Serviço"
-                      className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
-                      value={appointmentForm.service_id}
-                      onChange={(event) =>
-                        setAppointmentForm((old) => ({ ...old, service_id: event.target.value, scheduled_at: '' }))
-                      }
-                    >
-                      <option value="">1. Escolha o serviço</option>
-                      {(bookingOptions?.services || []).map((item) => (
-                        <option key={item.id} value={item.id}>{rotuloServico(item)}</option>
-                      ))}
-                    </select>
-                    <p className="text-sm font-medium">2. Escolha o profissional</p>
-                    <EscolhaProfissional
-                      profissionais={bookingOptions?.professionals || []}
-                      valor={appointmentForm.professional_id}
-                      onChange={(id) =>
-                        setAppointmentForm((old) => ({ ...old, professional_id: id, scheduled_at: '' }))
-                      }
-                      permitirQualquer
-                    />
-                    <input
-                      aria-label="Dia"
-                      className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
-                      type="date"
-                      min={hojeNaBarbearia()}
-                      value={appointmentForm.date}
-                      onChange={(event) =>
-                        setAppointmentForm((old) => ({ ...old, date: event.target.value, scheduled_at: '' }))
-                      }
-                    />
-                    {availableSlots.length > 0 ? (
-                      <div className="grid grid-cols-4 gap-2 sm:grid-cols-6" role="radiogroup" aria-label="Horários livres">
-                        {availableSlots.map((slot) => {
-                          const ativo = appointmentForm.scheduled_at === slot.scheduled_at;
-                          return (
-                            <button
-                              key={slot.scheduled_at}
-                              type="button"
-                              role="radio"
-                              aria-checked={ativo}
-                              onClick={() => setAppointmentForm((old) => ({ ...old, scheduled_at: slot.scheduled_at }))}
-                              className={`h-10 rounded-md border text-sm font-medium transition-colors ${
-                                ativo
-                                  ? 'border-primary bg-primary text-primary-foreground'
-                                  : 'border-input bg-background hover:border-primary'
-                              }`}
-                            >
-                              {slot.time}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <p className="rounded-md border border-dashed border-input px-3 py-3 text-sm text-muted-foreground">
-                        {!appointmentForm.service_id || !appointmentForm.professional_id || !appointmentForm.date
-                          ? 'Escolha serviço, profissional e dia para ver os horários.'
-                          : loadingSlots
-                            ? 'Carregando horários...'
-                            : 'Nenhum horário livre nesse dia. Tente outra data ou outro profissional.'}
-                      </p>
-                    )}
-                    <Button
-                      type="submit"
-                      className="h-11 w-full"
-                      disabled={creatingAppointment || !appointmentForm.scheduled_at}
-                    >
-                      {creatingAppointment ? 'Agendando...' : 'Confirmar horário'}
-                    </Button>
-                  </form>
-                )}
-              </CardContent>
-            </Card>
+                </div>
+                <Button size="sm" className="shrink-0 rounded-full" onClick={() => setAvaliando(paraAvaliar)}>
+                  Avaliar
+                </Button>
+              </section>
+            ) : null}
 
-            {proximos.length > 1 && (
-              <div className="space-y-2">
-                <h2 className="text-sm font-semibold text-muted-foreground">Outros horários marcados</h2>
-                {proximos.slice(1).map(linhaAgendamento)}
-              </div>
+            {!agendaDisponivel ? (
+              <p className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
+                A agenda online ainda não está aberta. Fale com a barbearia para marcar.
+              </p>
+            ) : (
+              <>
+                <section>
+                  {tituloSecao('Serviços', { rotulo: 'Ver todos', onClick: () => irPara('agendar') })}
+                  <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+                    {servicos.map((servico) => {
+                      const Icone = iconeDoServico(servico.name);
+                      return (
+                        <button
+                          key={servico.id}
+                          type="button"
+                          onClick={() => agendarCom({ service_id: servico.id })}
+                          className="flex w-[5.5rem] shrink-0 flex-col items-center gap-2 text-center"
+                        >
+                          <span className="flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-2xl bg-card shadow-card">
+                            <Icone className="h-7 w-7 text-foreground" />
+                          </span>
+                          <span className="line-clamp-2 text-xs font-medium leading-tight">{servico.name}</span>
+                          {reais(servico.price) ? (
+                            <span className="-mt-1 text-[11px] text-muted-foreground">{reais(servico.price)}</span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                <section>
+                  {tituloSecao('Barbeiros', { rotulo: 'Agendar', onClick: () => irPara('agendar') })}
+                  <div className="space-y-3">
+                    {profissionais.map((profissional) => (
+                      <button
+                        key={profissional.id}
+                        type="button"
+                        onClick={() => agendarCom({ professional_id: profissional.id })}
+                        className="flex w-full items-center gap-3 rounded-2xl bg-card p-3 text-left shadow-card"
+                      >
+                        <FotoBarbeiro profissional={profissional} nome={profissional.name} className="h-16 w-16" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-semibold">{profissional.name}</span>
+                          <span className="mt-0.5 block text-xs font-medium uppercase tracking-wide text-emerald-600">
+                            Toque para agendar
+                          </span>
+                          {profissional.rating ? (
+                            <span className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                              <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                              <span className="font-medium text-foreground">{profissional.rating.media.toFixed(1)}</span>
+                              ({profissional.rating.total} avaliações)
+                            </span>
+                          ) : null}
+                        </span>
+                        <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              </>
             )}
 
+            <AtivarNotificacoes
+              api={customerPortalService}
+              textos={{
+                ativo: 'Este aparelho recebe a confirmação e os lembretes dos seus horários.',
+                convite: 'Receba a confirmação do agendamento e lembretes um dia, uma hora e 15 minutos antes.',
+              }}
+            />
+          </div>
+        )}
+
+        {aba === 'agendar' && (
+          <div className="pt-2">
+            <h1 className="mb-5 text-2xl font-bold">Marcar horário</h1>
+            {!agendaDisponivel ? (
+              <p className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
+                A agenda online ainda não está aberta. Fale com a barbearia para marcar.
+              </p>
+            ) : (
+              <PassosAgendamento
+                servicos={servicos}
+                profissionais={profissionais}
+                valor={escolha}
+                onChange={mudarEscolha}
+                horarios={availableSlots}
+                carregandoHorarios={loadingSlots}
+              />
+            )}
+          </div>
+        )}
+
+        {aba === 'horarios' && (
+          <div className="space-y-6 pt-2">
+            <h1 className="text-2xl font-bold">Meus horários</h1>
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold text-muted-foreground">Marcados</h2>
+              {proximos.length === 0 ? (
+                <div className="rounded-2xl border border-dashed p-4 text-center">
+                  <p className="text-sm text-muted-foreground">Nenhum horário marcado.</p>
+                  <Button className="mt-3 rounded-full" onClick={() => irPara('agendar')} disabled={!agendaDisponivel}>
+                    Marcar horário
+                  </Button>
+                </div>
+              ) : (
+                proximos.map(linhaAgendamento)
+              )}
+            </section>
             {historico.length > 0 && (
-              <div className="space-y-2">
+              <section className="space-y-3">
                 <h2 className="text-sm font-semibold text-muted-foreground">Histórico</h2>
                 {historico.map(linhaAgendamento)}
-              </div>
+              </section>
             )}
-          </TabsContent>
+          </div>
+        )}
 
-          {/* Primeiro o que o cliente ja tem; depois o que pode contratar.
-              Antes os planos a venda vinham sob "Minhas Assinaturas" e
-              pareciam ser dele. */}
-          <TabsContent value="subscriptions" className="space-y-4">
-            <div className="space-y-2">
+        {aba === 'conta' && (
+          <div className="space-y-6 pt-2">
+            <div className="flex items-center gap-3">
+              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/15 text-lg font-bold text-primary">
+                {iniciais(customer?.name || '?')}
+              </span>
+              <div className="min-w-0">
+                <h1 className="truncate text-xl font-bold">{customer?.name}</h1>
+                <p className="truncate text-sm text-muted-foreground">{company?.name}</p>
+              </div>
+            </div>
+
+            {/* Primeiro o que o cliente ja tem; depois o que pode contratar. */}
+            <section className="space-y-3">
               <h2 className="text-sm font-semibold text-muted-foreground">Seu plano</h2>
               {subscriptions.length === 0 ? (
-                <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                <p className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
                   Você ainda não tem plano.
                 </p>
               ) : (
                 subscriptions.map((item) => (
-                  <div key={item.id} className="rounded-md border p-3">
+                  <div key={item.id} className="rounded-2xl bg-card p-4 shadow-card">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="font-medium">{item.plan?.name || 'Plano removido'}</p>
+                      <p className="font-semibold">{item.plan?.name || 'Plano removido'}</p>
                       <Badge variant="outline">{STATUS_ASSINATURA[item.status] || item.status}</Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">
@@ -523,44 +645,131 @@ const CustomerDashboard: React.FC = () => {
                   </div>
                 ))
               )}
-            </div>
+            </section>
 
             {plansCatalog.length > 0 && (
-              <div className="space-y-2">
-                <h2 className="text-sm font-semibold text-muted-foreground">Planos disponíveis</h2>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {plansCatalog.map((plan) => (
-                    <div key={plan.id} className="flex flex-col rounded-md border p-3">
-                      <p className="font-medium">{plan.name}</p>
-                      <p className="text-lg font-bold">
-                        {formatCurrency(plan.price)}{' '}
-                        <span className="text-sm font-normal text-muted-foreground">{PERIODO[plan.interval] || ''}</span>
-                      </p>
-                      {resumoPlano(plan) && <p className="text-sm text-muted-foreground">{resumoPlano(plan)}</p>}
-                      {plan.description && <p className="text-sm text-muted-foreground">{plan.description}</p>}
-                      {planosAtivos.has(plan.id) ? (
-                        <p className="mt-2 text-sm font-medium text-primary">Você já tem este plano</p>
-                      ) : (
-                        <Button
-                          size="sm"
-                          className="mt-2 self-start"
-                          onClick={() => {
-                            setSubscribePlanId(plan.id);
-                            setPaymentMethod('pix');
-                            setSubscriptionPaymentResult(null);
-                          }}
-                        >
-                          Assinar
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <section className="space-y-3">
+                <h2 className="text-sm font-semibold text-muted-foreground">Planos da barbearia</h2>
+                {plansCatalog.map((plan) => (
+                  <div key={plan.id} className="flex flex-col rounded-2xl bg-card p-4 shadow-card">
+                    <p className="font-semibold">{plan.name}</p>
+                    <p className="text-lg font-bold">
+                      {formatCurrency(plan.price)}{' '}
+                      <span className="text-sm font-normal text-muted-foreground">{PERIODO[plan.interval] || ''}</span>
+                    </p>
+                    {resumoPlano(plan) && <p className="text-sm text-muted-foreground">{resumoPlano(plan)}</p>}
+                    {plan.description && <p className="text-sm text-muted-foreground">{plan.description}</p>}
+                    {planosAtivos.has(plan.id) ? (
+                      <p className="mt-2 text-sm font-medium text-primary">Você já tem este plano</p>
+                    ) : (
+                      <Button
+                        size="sm"
+                        className="mt-3 self-start rounded-full"
+                        onClick={() => {
+                          setSubscribePlanId(plan.id);
+                          setPaymentMethod('pix');
+                          setSubscriptionPaymentResult(null);
+                        }}
+                      >
+                        Assinar
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </section>
             )}
-          </TabsContent>
-        </Tabs>
+
+            <AtivarNotificacoes
+              api={customerPortalService}
+              textos={{
+                ativo: 'Este aparelho recebe a confirmação e os lembretes dos seus horários.',
+                convite: 'Receba a confirmação do agendamento e lembretes um dia, uma hora e 15 minutos antes.',
+              }}
+            />
+
+            <Button variant="outline" className="h-12 w-full rounded-full" onClick={handleLogout}>
+              <LogOut className="mr-2 h-4 w-4" />
+              Sair
+            </Button>
+          </div>
+        )}
+      </main>
+
+      <AvaliarAtendimento
+        atendimento={avaliando}
+        onClose={() => setAvaliando(null)}
+        onAvaliado={() => {
+          setAvaliando(null);
+          loadData();
+        }}
+      />
+
+      {/* Rodape fixo: na aba Agendar, o botao de confirmar fica em cima do
+          menu, sempre a vista. */}
+      <div className="fixed inset-x-0 bottom-0 z-30 bg-card shadow-[0_-4px_24px_-8px_hsl(0_0%_0%/0.15)]">
+        {aba === 'agendar' && agendaDisponivel ? (
+          <div className="mx-auto max-w-xl border-b border-border/60 px-4 pb-3 pt-3">
+            <button
+              type="button"
+              onClick={handleCreateAppointment}
+              disabled={creatingAppointment || !escolha.scheduled_at}
+              className="flex h-12 w-full items-center justify-center rounded-full bg-primary text-base font-semibold text-primary-foreground transition-transform active:scale-[0.98] disabled:bg-muted disabled:text-muted-foreground"
+            >
+              {creatingAppointment
+                ? 'Agendando...'
+                : escolha.scheduled_at
+                  ? `Confirmar ${formatDateTime(escolha.scheduled_at)}`
+                  : 'Escolha um horário'}
+            </button>
+          </div>
+        ) : null}
+        <nav className="mx-auto grid max-w-xl grid-cols-4 pb-[env(safe-area-inset-bottom)]" aria-label="Menu">
+          {ABAS.map((item) => {
+            const ativo = aba === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => irPara(item.id)}
+                aria-current={ativo ? 'page' : undefined}
+                className={cn(
+                  'relative flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition-colors',
+                  ativo ? 'text-primary' : 'text-muted-foreground'
+                )}
+              >
+                <item.icone className={cn('h-5 w-5', ativo && 'fill-primary/15')} />
+                {item.rotulo}
+                {item.id === 'horarios' && proximos.length > 0 ? (
+                  <span className="absolute right-[calc(50%-18px)] top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                    {proximos.length}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </nav>
       </div>
+
+      <Dialog open={!!cancelando} onOpenChange={(open) => !open && !cancelingId && setCancelando(null)}>
+        <DialogContent className="max-w-sm rounded-3xl">
+          <DialogHeader>
+            <DialogTitle>Cancelar este horário?</DialogTitle>
+            <DialogDescription>
+              {cancelando
+                ? `${cancelando.service_name || 'Serviço'} com ${cancelando.professional_name || 'o barbeiro'}, ${formatDateTime(cancelando.scheduled_at)}.`
+                : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" className="rounded-full" onClick={() => setCancelando(null)} disabled={!!cancelingId}>
+              Manter horário
+            </Button>
+            <Button variant="destructive" className="rounded-full" onClick={confirmarCancelamento} disabled={!!cancelingId}>
+              {cancelingId ? 'Cancelando...' : 'Sim, cancelar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={!!subscribePlanId}

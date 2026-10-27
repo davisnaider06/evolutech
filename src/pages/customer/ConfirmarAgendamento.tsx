@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
-import { CalendarCheck, CheckCircle2, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { CheckCircle2, Loader2 } from 'lucide-react';
+import { TelaComFoto, TituloFoto, botaoFoto } from '@/components/telas/TelaComFoto';
 import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
 import { customerPortalService } from '@/services/customer-portal';
 import { esquecerAgendamentoPendente, lerAgendamentoPendente } from '@/lib/agendamento-pendente';
@@ -28,7 +27,7 @@ const ConfirmarAgendamento: React.FC = () => {
 
   if (sessao.isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-muted">
+      <div className="flex min-h-screen items-center justify-center bg-neutral-950">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
@@ -61,49 +60,48 @@ const ConfirmarAgendamento: React.FC = () => {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted p-3">
-      <Card className="w-full max-w-md text-center">
-        <CardHeader>
-          <div className="mb-2 flex justify-center">
-            {confirmado ? (
-              <CheckCircle2 className="h-14 w-14 text-green-500" />
-            ) : (
-              <CalendarCheck className="h-14 w-14 text-primary" />
-            )}
-          </div>
-          <CardTitle>{confirmado ? 'Horário marcado!' : 'Confirme seu agendamento'}</CardTitle>
-          <p className="text-2xl font-bold">{formatarDataHora(pendente.scheduled_at)}</p>
-          <CardDescription>
-            <strong>{pendente.service_name || 'Serviço'}</strong> com{' '}
-            <strong>{barbeiroEscolhido || pendente.professional_name || 'profissional'}</strong>
-            {sessao.company?.name ? ` na ${sessao.company.name}` : ''}.
-          </CardDescription>
-          {erro && (
-            <div className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {erro}
-            </div>
-          )}
-        </CardHeader>
-        <CardFooter>
-          <div className="w-full space-y-3">
-            {confirmado ? (
-              <Button className="h-11 w-full" onClick={() => navigate('/cliente/dashboard', { replace: true })}>
-                Ver meus horários
-              </Button>
-            ) : (
-              <>
-                <Button className="h-11 w-full" onClick={confirmar} disabled={enviando}>
-                  {enviando ? 'Confirmando...' : 'Confirmar agendamento'}
-                </Button>
-                <Link className="block text-sm text-muted-foreground underline" to={`/agendar/${slugNormalizado}`}>
-                  Trocar o horário
-                </Link>
-              </>
-            )}
-          </div>
-        </CardFooter>
-      </Card>
-    </div>
+    <TelaComFoto>
+      {confirmado ? (
+        <div className="mb-4 flex justify-center">
+          <CheckCircle2 className="h-14 w-14 text-emerald-400" />
+        </div>
+      ) : null}
+      <TituloFoto
+        linha={confirmado ? 'Pronto,' : 'Confirme seu'}
+        destaque={confirmado ? 'Horário marcado!' : 'Horário'}
+      />
+      <div className="mt-5 rounded-2xl border border-white/15 bg-white/10 p-4 text-center backdrop-blur-md">
+        <p className="text-xl font-bold">{formatarDataHora(pendente.scheduled_at)}</p>
+        <p className="mt-1 text-sm text-white/80">
+          {pendente.service_name || 'Serviço'} com {barbeiroEscolhido || pendente.professional_name || 'barbeiro'}
+          {sessao.company?.name ? ` na ${sessao.company.name}` : ''}
+        </p>
+      </div>
+      {erro && (
+        <div className="mt-3 rounded-2xl border border-red-400/40 bg-red-500/20 px-4 py-3 text-sm text-white">
+          {erro}
+        </div>
+      )}
+      {confirmado ? (
+        <button
+          type="button"
+          className={`${botaoFoto} mt-6`}
+          onClick={() => navigate('/cliente/dashboard', { replace: true })}
+        >
+          Ver meus horários
+        </button>
+      ) : (
+        <>
+          <button type="button" className={`${botaoFoto} mt-6`} onClick={confirmar} disabled={enviando}>
+            {enviando ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
+            {enviando ? 'Confirmando...' : 'Confirmar agendamento'}
+          </button>
+          <Link className="mt-4 text-center text-sm text-white/70 underline" to={`/agendar/${slugNormalizado}`}>
+            Trocar o horário
+          </Link>
+        </>
+      )}
+    </TelaComFoto>
   );
 };
 

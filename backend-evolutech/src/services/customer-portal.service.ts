@@ -7,6 +7,7 @@ import { getBlockedIntervals, isIntervalBlocked } from '../utils/appointment-blo
 import { interpretarDataHora, limitesDoDia } from '../config/fuso';
 import { appointmentNotificationService } from './appointment-notification.service';
 import { podeAvaliar, reviewService } from './review.service';
+import { nomePublicoProfissional } from '../utils/nome-publico.util';
 import { decidirBarbeiro, ehQualquerBarbeiro, horariosDeQualquerBarbeiro } from '../utils/escolha-barbeiro.util';
 
 class CustomerPortalError extends Error {
@@ -287,7 +288,7 @@ export class CustomerPortalService {
       service_id: item.serviceId,
       service_name: item.serviceName,
       professional_id: item.professionalId,
-      professional_name: item.professionalName,
+      professional_name: nomePublicoProfissional(item.professionalName),
       scheduled_at: item.scheduledAt,
       status: this.normalizeAppointmentStatus(item.status),
       created_at: item.createdAt,
@@ -526,7 +527,7 @@ export class CustomerPortalService {
       })),
       professionals: professionals.map((item: any) => ({
         id: item.userId,
-        name: item.user.fullName,
+        name: nomePublicoProfissional(item.user.fullName),
         avatar_url: item.user.avatarUrl || null,
         rating: notas.get(item.userId) || null,
       })),
@@ -714,7 +715,7 @@ export class CustomerPortalService {
       scheduled_at: created.scheduledAt,
       status: created.status,
       service_name: created.serviceName,
-      professional_name: created.professionalName,
+      professional_name: nomePublicoProfissional(created.professionalName),
     };
   }
 

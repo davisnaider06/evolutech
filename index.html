@@ -6,12 +6,18 @@
     <title>iBarber</title>
     <meta name="description" content="Sistema para barbearias: agenda online, caixa, comissões e avaliações dos barbeiros" />
     <meta name="author" content="iBarber" />
-    <meta name="theme-color" content="#2563eb" />
+    <meta name="theme-color" content="#a3822a" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="iBarber" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/favicon.ico" />
+    <!-- Fonte pelo <link>: o @import no index.css vinha depois do @tailwind e
+         o navegador descartava, entao a fonte nunca carregava. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="preload" as="image" href="/imagens/barbearia-capa.jpg" />
 
     <meta property="og:title" content="iBarber" />
     <meta property="og:description" content="Sistema para barbearias: agenda online, caixa, comissões e avaliações dos barbeiros" />
