@@ -263,6 +263,9 @@ export const companyService = {
   /** O que precisa da atencao de quem acabou de abrir o app. */
   getPendencias: async () => request('/pendencias'),
 
+  /** Checklist do dono recem-chegado: o que falta para o link funcionar. */
+  getPrimeirosPassos: async () => request('/primeiros-passos'),
+
   getPushPublicKey: async () => request('/push/public-key'),
   subscribePush: async (subscription: unknown) =>
     request('/push/subscribe', {

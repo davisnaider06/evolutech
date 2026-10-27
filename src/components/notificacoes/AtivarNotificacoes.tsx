@@ -65,12 +65,27 @@ export const AtivarNotificacoes: React.FC<{
             não é possível.
           </CardDescription>
         </CardHeader>
+        {/* Passo a passo numerado: "toque em Compartilhar e depois em..." numa
+            frase so era lido pela metade. */}
         <CardContent className="text-sm text-muted-foreground">
-          <p className="flex items-center gap-1.5">
-            Toque em <Share className="inline h-4 w-4" /> <strong>Compartilhar</strong> e
-            depois em <strong>Adicionar à Tela de Início</strong>.
-          </p>
-          <p className="mt-2">Abra o app pelo ícone e volte aqui para ligar os avisos.</p>
+          <ol className="space-y-2">
+            {[
+              <>Abra este endereço no <strong>Safari</strong>.</>,
+              <>
+                Toque em <Share className="inline h-4 w-4 align-text-bottom" />{' '}
+                <strong>Compartilhar</strong>, na barra de baixo.
+              </>,
+              <>Role a lista e toque em <strong>Adicionar à Tela de Início</strong>.</>,
+              <>Abra o app pelo ícone novo e volte aqui para ligar os avisos.</>,
+            ].map((passo, indice) => (
+              <li key={indice} className="flex gap-2">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground">
+                  {indice + 1}
+                </span>
+                <span>{passo}</span>
+              </li>
+            ))}
+          </ol>
         </CardContent>
       </Card>
     );

@@ -25,6 +25,7 @@ import { companyService } from '@/services/company';
 import { AgendaBoard } from '@/components/agenda/AgendaBoard';
 import { ReceberAtendimentoDialog, AtendimentoParaReceber } from '@/components/agenda/ReceberAtendimentoDialog';
 import { AtendimentosSemBaixa } from '@/components/agenda/AtendimentosSemBaixa';
+import { AtivarNotificacoes } from '@/components/notificacoes/AtivarNotificacoes';
 import { useCompanyModules } from '@/hooks/useCompanyModules';
 import LinkDosClientes from '@/components/agenda/LinkDosClientes';
 
@@ -413,6 +414,11 @@ const Agendamentos: React.FC = () => {
           setBoardRefresh((prev) => prev + 1);
         }}
       />
+
+      {/* O barbeiro cai aqui ao entrar: e onde ele precisa ver como ligar o
+          aviso de agendamento novo (no iPhone, instalando o app antes). Some
+          sozinho depois de ligado. */}
+      <AtivarNotificacoes />
 
       {/* Grade x lista: a grade e a visao do dia a dia da barbearia,
           a lista serve para busca e edicao em massa. */}

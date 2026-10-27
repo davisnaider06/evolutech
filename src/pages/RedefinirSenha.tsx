@@ -172,6 +172,14 @@ const RedefinirSenha: React.FC<{ tipo: Tipo }> = ({ tipo }) => {
         <Button className="w-full" type="submit" disabled={enviando}>
           {enviando ? 'Enviando...' : 'Enviar link'}
         </Button>
+        {/* Antes do envio, nao so depois: o cliente que so tem WhatsApp
+            mandava o pedido, esperava um e-mail que nunca vinha e desistia. */}
+        {tipo === 'cliente' && (
+          <p className="rounded-md bg-muted/60 p-3 text-xs text-muted-foreground">
+            Não cadastrou e-mail? Mande uma mensagem para a barbearia: ela gera um link de nova senha em um
+            toque e te envia pelo WhatsApp.
+          </p>
+        )}
       </form>
     );
   }

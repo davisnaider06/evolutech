@@ -133,6 +133,36 @@ export function formatarDataHora(valor: Date | string | number | null | undefine
   return `${formatarData(data)} ${formatarHora(data)}`;
 }
 
+const DIAS_DA_SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+
+/**
+ * "qua, 29/10 às 14:30", "hoje às 14:30" ou "amanhã às 09:00" na barbearia.
+ *
+ * Para o cliente: "29/10/2026 14:30" obrigava a abrir o calendario para saber
+ * se era quarta ou quinta. O ano so aparece quando nao e o atual.
+ */
+export function formatarDiaHora(valor: Date | string | number | null | undefined): string {
+  const data = paraData(valor);
+  if (!data) return '';
+  const p = partesDaCasa(data);
+  const hora = formatarHora(data);
+  const dia = `${p.ano}-${doisDigitos(p.mes)}-${doisDigitos(p.dia)}`;
+  const hoje = hojeNaBarbearia();
+  if (dia === hoje) return `hoje às ${hora}`;
+  const [ha, hm, hd] = hoje.split('-').map(Number);
+  const amanha = new Date(Date.UTC(ha, hm - 1, hd + 1)).toISOString().slice(0, 10);
+  if (dia === amanha) return `amanhã às ${hora}`;
+  const semana = DIAS_DA_SEMANA[new Date(Date.UTC(p.ano, p.mes - 1, p.dia)).getUTCDay()];
+  const ano = String(p.ano) === hoje.slice(0, 4) ? '' : `/${p.ano}`;
+  return `${semana}, ${doisDigitos(p.dia)}/${doisDigitos(p.mes)}${ano} às ${hora}`;
+}
+
+/** Mesma coisa com a primeira letra maiuscula, para titulo. */
+export const formatarDiaHoraTitulo = (valor: Date | string | number | null | undefined): string => {
+  const texto = formatarDiaHora(valor);
+  return texto ? texto[0].toUpperCase() + texto.slice(1) : '';
+};
+
 /**
  * Valor de um <input type="datetime-local">: "AAAA-MM-DDTHH:mm".
  *

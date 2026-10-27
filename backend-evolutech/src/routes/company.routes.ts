@@ -56,6 +56,7 @@ router.get('/appointments/board', companyController.getAgendaBoard.bind(companyC
 // O que precisa da atencao do dono agora: agenda de hoje, mensalidade em
 // aberto, agendamento que entrou pelo link publico e ninguem viu ainda.
 router.get('/pendencias', companyController.getPendencias.bind(companyController));
+router.get('/primeiros-passos', companyController.getPrimeirosPassos.bind(companyController));
 
 // Push: inscricao por aparelho. Sem modulo associado de proposito — receber
 // aviso nao e funcionalidade contratavel, e parte de usar o sistema.

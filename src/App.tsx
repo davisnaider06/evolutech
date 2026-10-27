@@ -18,7 +18,6 @@ import { EmpresaLayout } from "@/components/layouts/EmpresaLayout";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import RedefinirSenha from "./pages/RedefinirSenha";
-import EscolhaAcesso from "./pages/EscolhaAcesso";
 import AcceptInvite from "./pages/AcceptInvite";
 import NotFound from "./pages/NotFound";
 import Landing from "./pages/Landing";
@@ -96,11 +95,11 @@ const App = () => (
                 <Route path="/app" element={<Index />} />
                 <Route path="/vendas" element={<Navigate to="/" replace />} />
                 {/* Escolha de porta antes do login: cliente ou equipe */}
-                <Route path="/entrar" element={<EscolhaAcesso />} />
+                <Route path="/entrar" element={<Navigate to="/login" replace />} />
                 <Route path="/login/*" element={<Login />} />
                 {/* "Cadastro" tambem e ambiguo: quem digita isso quase sempre
                     e cliente novo. Vai para a escolha, nao para o login do dono. */}
-                <Route path="/cadastro/*" element={<Navigate to="/entrar" replace />} />
+                <Route path="/cadastro/*" element={<Navigate to="/login" replace />} />
                 <Route path="/aceitar-convite" element={<AcceptInvite />} />
                 <Route path="/chat/:slug" element={<ChatbotPublic />} />
                 <Route path="/agendar/:slug" element={<AgendamentoCliente />} />

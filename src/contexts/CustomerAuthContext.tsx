@@ -5,6 +5,7 @@ import {
   lembrarEmpresaDoCliente,
 } from '@/services/customer-portal';
 import { CustomerAuthCompany, CustomerAuthUser } from '@/types/customer-portal';
+import { lembrarTipoAcesso } from '@/lib/tipo-acesso';
 import {
   tokenExpirado,
   credencialRecusada,
@@ -74,6 +75,7 @@ export const CustomerAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
         localStorage.setItem(CUSTOMER_TOKEN_KEY, renovado);
       }
       lembrarEmpresaDoCliente(data.company?.slug);
+      lembrarTipoAcesso('cliente');
       salvarSessao(SESSAO_CLIENTE_KEY, data);
       setState({
         customer: data.customer,
@@ -102,6 +104,7 @@ export const CustomerAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const login = useCallback((token: string, customer: CustomerAuthUser, company: CustomerAuthCompany) => {
     localStorage.setItem(CUSTOMER_TOKEN_KEY, token);
     lembrarEmpresaDoCliente(company?.slug);
+    lembrarTipoAcesso('cliente');
     salvarSessao(SESSAO_CLIENTE_KEY, { customer, company });
     setState({
       customer,

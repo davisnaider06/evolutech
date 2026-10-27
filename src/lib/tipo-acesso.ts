@@ -1,20 +1,22 @@
 /**
- * De que lado do sistema esta pessoa entra: o portal do cliente ou o painel da
- * equipe.
+ * De que lado do sistema este aparelho entra quando o app abre sem sessao: o
+ * portal do cliente ou o painel da equipe.
  *
- * O app abre sempre em "/" e, sem sessao, caia direto no login da equipe. O
- * cliente da barbearia nao entendia que precisava do link "Portal do Cliente"
- * e ficava tentando a propria senha no formulario do dono. Agora "/" manda
- * para a tela de escolha (/entrar) e so pula essa tela quando a escolha ja
- * esta guardada neste aparelho.
+ * O site do iBarber e para o dono da barbearia, entao sem nada guardado o app
+ * abre no login da equipe. O cliente nunca passa por ele: chega pelo link da
+ * barbearia (/agendar/<slug>), que o dono divulga no Instagram e no WhatsApp.
  *
- * A escolha vale por aparelho e sobrevive ao "sair" de proposito: quem escolheu
- * errado troca pelo link "nao e voce?" nas duas telas de login.
+ * Havia uma tela "Sou cliente / Sou da equipe" antes do login. Ela mandava o
+ * "Sou cliente" para a ultima barbearia aberta no aparelho — o dono que tinha
+ * testado o link de outra barbearia caia na agenda dela. A tela saiu; o lado
+ * e gravado sozinho no login de cada um e na primeira visita ao link.
  */
 
 export type TipoAcesso = 'cliente' | 'equipe';
 
-const TIPO_ACESSO_KEY = 'evolutech_tipo_acesso';
+// Chave nova de proposito: a antiga guardava o "Sou cliente" da tela que saiu,
+// e era ela que mandava o dono para a agenda de outra barbearia.
+const TIPO_ACESSO_KEY = 'ibarber_lado_do_aparelho';
 
 const valido = (valor: string | null): valor is TipoAcesso =>
   valor === 'cliente' || valor === 'equipe';
@@ -34,13 +36,5 @@ export const lembrarTipoAcesso = (tipo: TipoAcesso) => {
     localStorage.setItem(TIPO_ACESSO_KEY, tipo);
   } catch (_error) {
     // Sem storage a tela de escolha volta na proxima abertura — aceitavel.
-  }
-};
-
-export const esquecerTipoAcesso = () => {
-  try {
-    localStorage.removeItem(TIPO_ACESSO_KEY);
-  } catch (_error) {
-    // Idem: nada a fazer, a escolha ja nao existia.
   }
 };

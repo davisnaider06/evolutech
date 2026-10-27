@@ -15,7 +15,7 @@ import { customerAuthService } from '@/services/customer-portal';
 import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
 import { CustomerPortalCompanyOption } from '@/types/customer-portal';
 import { lerAgendamentoPendente } from '@/lib/agendamento-pendente';
-import { formatarDataHora } from '@/lib/horario';
+import { formatarDiaHora } from '@/lib/horario';
 
 const CustomerRegister: React.FC = () => {
   const { slug } = useParams<{ slug?: string }>();
@@ -128,7 +128,7 @@ const CustomerRegister: React.FC = () => {
         destaque={nomeBarbearia || 'Conta'}
         descricao={
           pendente
-            ? `Falta pouco: crie a conta para confirmar ${formatarDataHora(pendente.scheduled_at)}.`
+            ? `Falta pouco: crie a conta para confirmar ${formatarDiaHora(pendente.scheduled_at)}.`
             : 'Só nome, WhatsApp e uma senha. Leva menos de um minuto.'
         }
       />
