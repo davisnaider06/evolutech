@@ -533,6 +533,9 @@ model AppointmentReview {
   professionalId String?     @map("professional_id")
   customerId     String?     @map("customer_id")
   rating         Int
+  // Nota da barbearia (ambiente, atendimento, pontualidade). NULL nas
+  // avaliacoes feitas antes de existir.
+  ratingEmpresa  Int?        @map("rating_empresa")
   comment        String?
   createdAt      DateTime    @default(now()) @map("created_at")
   appointment    Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)

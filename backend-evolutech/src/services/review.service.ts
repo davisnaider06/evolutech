@@ -11,6 +11,10 @@
  * - Link publico: media de cada barbeiro, so depois de MIN_AVALIACOES_PUBLICAS
  *   notas, para uma avaliacao isolada nao definir a reputacao de ninguem.
  *
+ * Cada avaliacao tem duas notas: a do corte (rating, do barbeiro) e a da
+ * barbearia (rating_empresa: ambiente, atendimento, pontualidade). A da casa
+ * nao entra na nota do barbeiro, e o barbeiro nao a recebe.
+ *
  * O anonimato e garantido aqui, na leitura. A tela nunca recebe o que o
  * perfil nao pode ver.
  */
@@ -55,13 +59,26 @@ export class ReviewService {
   // Cliente
   // ---------------------------------------------------------------------
 
-  async avaliar(auth: AuthenticatedCustomer, appointmentId: string, body: { rating?: unknown; comment?: unknown }) {
+  async avaliar(
+    auth: AuthenticatedCustomer,
+    appointmentId: string,
+    body: { rating?: unknown; rating_empresa?: unknown; comment?: unknown }
+  ) {
     const id = String(appointmentId || '').trim();
     if (!id) throw new ReviewError('appointmentId obrigatorio', 400);
 
     const rating = Number(body.rating);
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
       throw new ReviewError('Nota deve ser de 1 a 5 estrelas', 400);
+    }
+    // Opcional para nao quebrar app antigo aberto no celular, que so manda a
+    // nota do corte.
+    let ratingEmpresa: number | null = null;
+    if (body.rating_empresa !== undefined && body.rating_empresa !== null && body.rating_empresa !== '') {
+      ratingEmpresa = Number(body.rating_empresa);
+      if (!Number.isInteger(ratingEmpresa) || ratingEmpresa < 1 || ratingEmpresa > 5) {
+        throw new ReviewError('Nota da barbearia deve ser de 1 a 5 estrelas', 400);
+      }
     }
     const comment = String(body.comment ?? '').trim().slice(0, MAX_COMENTARIO) || null;
 
@@ -90,11 +107,18 @@ export class ReviewService {
           professionalId: appointment.professionalId,
           customerId: auth.customerId,
           rating,
+          ratingEmpresa,
           comment,
         },
-        select: { id: true, rating: true, comment: true, createdAt: true },
+        select: { id: true, rating: true, ratingEmpresa: true, comment: true, createdAt: true },
       });
-      return { id: created.id, rating: created.rating, comment: created.comment, created_at: created.createdAt };
+      return {
+        id: created.id,
+        rating: created.rating,
+        rating_empresa: created.ratingEmpresa,
+        comment: created.comment,
+        created_at: created.createdAt,
+      };
     } catch (error: any) {
       // Dois toques no "Enviar" ao mesmo tempo: o UNIQUE segura o segundo.
       if (error?.code === 'P2002') throw new ReviewError('Este atendimento ja foi avaliado', 409);
@@ -133,6 +157,32 @@ export class ReviewService {
     return notas;
   }
 
+  /**
+   * Nota da barbearia para o cliente ver. Mesma regra do barbeiro: so a partir
+   * de MIN_AVALIACOES_PUBLICAS notas.
+   */
+  async notaPublicaDaBarbearia(companyId: string): Promise<NotaProfissional | null> {
+    const nota = await this.notaDaBarbearia(companyId);
+    return nota && nota.total >= MIN_AVALIACOES_PUBLICAS ? nota : null;
+  }
+
+  private async notaDaBarbearia(companyId: string): Promise<NotaProfissional | null> {
+    try {
+      const agregado = await prisma.appointmentReview.aggregate({
+        where: { companyId, ratingEmpresa: { not: null } },
+        _avg: { ratingEmpresa: true },
+        _count: { ratingEmpresa: true },
+      });
+      const total = agregado._count.ratingEmpresa;
+      return total ? { media: arredondar(Number(agregado._avg.ratingEmpresa || 0)), total } : null;
+    } catch (error: any) {
+      // Enfeite, como as notas dos barbeiros: sem a coluna (migration ainda
+      // nao aplicada) a tela segue sem a nota da casa.
+      console.warn('[reviews] nota da barbearia indisponivel:', error?.message || error);
+      return null;
+    }
+  }
+
   // ---------------------------------------------------------------------
   // Equipe
   // ---------------------------------------------------------------------
@@ -153,7 +203,7 @@ export class ReviewService {
   private async resumoDoDono(companyId: string) {
     const trintaDiasAtras = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-    const [equipe, geral, ultimos30, recentes] = await Promise.all([
+    const [equipe, geral, ultimos30, recentes, barbearia] = await Promise.all([
       prisma.userRole.findMany({
         where: {
           companyId,
@@ -181,6 +231,7 @@ export class ReviewService {
         select: {
           id: true,
           rating: true,
+          ratingEmpresa: true,
           comment: true,
           createdAt: true,
           professionalId: true,
@@ -188,6 +239,7 @@ export class ReviewService {
           appointment: { select: { serviceName: true, scheduledAt: true, professionalName: true, customerName: true } },
         },
       }),
+      this.notaDaBarbearia(companyId),
     ]);
 
     const nomes = new Map(equipe.map((item) => [item.userId, item.user.fullName]));
@@ -243,12 +295,15 @@ export class ReviewService {
           todasNotas.find((t) => String(t.rating) === n)?._count._all || 0,
         ]),
       ),
+      // O dono ve a nota da casa desde a primeira avaliacao.
+      barbearia,
       ranking,
       recentes: recentes.map((r) => {
         const cliente = r.customerId ? clientePorId.get(r.customerId) : undefined;
         return {
           id: r.id,
           rating: r.rating,
+          rating_empresa: r.ratingEmpresa,
           comment: r.comment,
           created_at: r.createdAt,
           professional_id: r.professionalId,

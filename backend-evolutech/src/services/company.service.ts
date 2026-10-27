@@ -9506,7 +9506,7 @@ export class CompanyService {
   async getPublicBookingOptions(slug: string) {
     const company = await this.getPublicBookingCompany(slug);
 
-    const [professionals, services, notas] = await Promise.all([
+    const [professionals, services, notas, notaBarbearia] = await Promise.all([
       prisma.userRole.findMany({
         where: {
           companyId: company.id,
@@ -9530,10 +9530,12 @@ export class CompanyService {
         orderBy: { name: 'asc' },
       }),
       reviewService.notasPublicas(company.id),
+      reviewService.notaPublicaDaBarbearia(company.id),
     ]);
 
     return {
       company,
+      company_rating: notaBarbearia,
       professionals: professionals.map((item: any) => ({
         id: item.userId,
         name: nomePublicoProfissional(item.user.fullName),
