@@ -17,6 +17,7 @@ import {
   Link2,
 } from 'lucide-react';
 import { PainelPendencias } from '@/components/notificacoes/PainelPendencias';
+import { PrimeirosPassos } from '@/components/dashboard/PrimeirosPassos';
 import { AtendimentosSemBaixa } from '@/components/agenda/AtendimentosSemBaixa';
 import LinkDosClientes from '@/components/agenda/LinkDosClientes';
 import { useCompanyModules } from '@/hooks/useCompanyModules';
@@ -168,6 +169,10 @@ const EmpresaDashboard: React.FC = () => {
       {/* O que pede acao agora (agendamento novo pelo link, mensalidade em
           aberto, agenda de hoje) vem antes dos numeros. Antes este painel so
           existia em "Minhas tarefas" e o dono nao via. */}
+      {/* Barbearia nova: o que falta para o link de agendamento funcionar.
+          Some sozinho quando tudo estiver feito. */}
+      {isOwner && <PrimeirosPassos />}
+
       <PainelPendencias />
 
       {hasModuleForCurrentRole('appointments') && <AtendimentosSemBaixa mostrarBarbeiro />}

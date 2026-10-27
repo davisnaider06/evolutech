@@ -33,7 +33,7 @@ import {
   CustomerPlanCatalogItem,
   CustomerSubscription,
 } from '@/types/customer-portal';
-import { formatarData, formatarDataHora } from '@/lib/horario';
+import { formatarData, formatarDiaHora, formatarDiaHoraTitulo } from '@/lib/horario';
 import { corDoProfissional, iniciais } from '@/lib/profissional';
 import { AtivarNotificacoes } from '@/components/notificacoes/AtivarNotificacoes';
 import { LogoMarca } from '@/components/Logo';
@@ -66,7 +66,7 @@ import PassosAgendamento, {
  */
 const formatDateTime = (value?: string | null) => {
   if (!value) return '-';
-  return formatarDataHora(value) || '-';
+  return formatarDiaHoraTitulo(value) || '-';
 };
 
 const formatCurrency = (value?: number | null) =>
@@ -74,7 +74,7 @@ const formatCurrency = (value?: number | null) =>
 
 // O cliente le "Confirmado", nao "confirmado" nem "no_show".
 const STATUS_AGENDAMENTO: Record<string, { texto: string; classe: string }> = {
-  pendente: { texto: 'Aguardando confirmação', classe: 'border-amber-500/40 text-amber-700' },
+  pendente: { texto: 'Aguardando a barbearia', classe: 'border-amber-500/40 text-amber-700' },
   confirmado: { texto: 'Confirmado', classe: 'border-emerald-500/40 text-emerald-700' },
   concluido: { texto: 'Concluído', classe: 'text-muted-foreground' },
   cancelado: { texto: 'Cancelado', classe: 'text-muted-foreground' },
@@ -354,6 +354,11 @@ const CustomerDashboard: React.FC = () => {
             <Clock className="h-3 w-3" />
             {formatDateTime(item.scheduled_at)}
           </p>
+          {/* "Aguardando confirmacao" sozinho fazia o cliente achar que faltava
+              algo da parte dele. */}
+          {futuro && item.status === 'pendente' ? (
+            <p className="mt-0.5 text-[11px] text-amber-700">A barbearia ainda vai confirmar. Você não precisa fazer nada.</p>
+          ) : null}
           {item.review ? <Estrelas nota={item.review.rating} className="mt-1" /> : null}
         </div>
         {item.can_review ? (
@@ -718,7 +723,7 @@ const CustomerDashboard: React.FC = () => {
               {creatingAppointment
                 ? 'Agendando...'
                 : escolha.scheduled_at
-                  ? `Confirmar ${formatDateTime(escolha.scheduled_at)}`
+                  ? `Confirmar ${formatarDiaHora(escolha.scheduled_at)}`
                   : 'Escolha um horário'}
             </button>
           </div>
@@ -756,7 +761,7 @@ const CustomerDashboard: React.FC = () => {
             <DialogTitle>Cancelar este horário?</DialogTitle>
             <DialogDescription>
               {cancelando
-                ? `${cancelando.service_name || 'Serviço'} com ${cancelando.professional_name || 'o barbeiro'}, ${formatDateTime(cancelando.scheduled_at)}.`
+                ? `${cancelando.service_name || 'Serviço'} com ${cancelando.professional_name || 'o barbeiro'}, ${formatarDiaHora(cancelando.scheduled_at)}.`
                 : ''}
             </DialogDescription>
           </DialogHeader>

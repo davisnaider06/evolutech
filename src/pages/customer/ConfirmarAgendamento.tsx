@@ -5,7 +5,7 @@ import { TelaComFoto, TituloFoto, botaoFoto } from '@/components/telas/TelaComFo
 import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
 import { customerPortalService } from '@/services/customer-portal';
 import { esquecerAgendamentoPendente, lerAgendamentoPendente } from '@/lib/agendamento-pendente';
-import { formatarDataHora } from '@/lib/horario';
+import { formatarDiaHoraTitulo } from '@/lib/horario';
 
 /**
  * Ultimo passo do link do cliente: depois de entrar ou criar a conta, ele ve
@@ -71,7 +71,7 @@ const ConfirmarAgendamento: React.FC = () => {
         destaque={confirmado ? 'Horário marcado!' : 'Horário'}
       />
       <div className="mt-5 rounded-2xl border border-white/15 bg-white/10 p-4 text-center backdrop-blur-md">
-        <p className="text-xl font-bold">{formatarDataHora(pendente.scheduled_at)}</p>
+        <p className="text-xl font-bold">{formatarDiaHoraTitulo(pendente.scheduled_at)}</p>
         <p className="mt-1 text-sm text-white/80">
           {pendente.service_name || 'Serviço'} com {barbeiroEscolhido || pendente.professional_name || 'barbeiro'}
           {sessao.company?.name ? ` na ${sessao.company.name}` : ''}

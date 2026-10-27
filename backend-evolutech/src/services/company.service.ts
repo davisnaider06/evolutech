@@ -9991,6 +9991,45 @@ export class CompanyService {
    *
    * Funcionario ve so a propria agenda; dono ve a barbearia inteira.
    */
+  /**
+   * "Primeiros passos" do dono que acabou de entrar. Sem servico e sem horario
+   * o link de agendamento abre vazio, e o painel zerado nao dizia o que fazer
+   * primeiro. Cada passo e lido do que ja esta salvo, nao de uma marcacao: o
+   * dono que cadastrou os servicos por outra tela ve o passo concluido.
+   */
+  async getPrimeirosPassos(user: AuthenticatedUser, queryParams: { company_id?: string } = {}) {
+    const companyId = this.resolveCompanyId(user, queryParams);
+
+    const [company, servicos, equipe, agendamentosPeloLink] = await Promise.all([
+      prisma.company.findUnique({
+        where: { id: companyId },
+        select: { slug: true, agendaStartTime: true },
+      }),
+      (prisma as any).appointmentService.count({ where: { companyId, isActive: true } }),
+      prisma.userRole.findMany({
+        where: {
+          companyId,
+          role: { in: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'] },
+          user: { isActive: true },
+        },
+        select: { role: true, user: { select: { avatarUrl: true } } },
+      }),
+      // Agendamento com cliente cadastrado so nasce pelo link ou pelo portal:
+      // e o sinal de que o link chegou a alguem.
+      (prisma as any).appointment.count({ where: { companyId, customerId: { not: null } } }),
+    ]);
+    if (!company) throw new CompanyServiceError('Empresa nao encontrada', 404);
+
+    return {
+      slug: company.slug,
+      horario: Boolean(company.agendaStartTime),
+      servicos: servicos > 0,
+      barbeiros: equipe.some((item) => item.role === 'FUNCIONARIO_EMPRESA'),
+      fotos: equipe.length > 0 && equipe.every((item) => Boolean(item.user.avatarUrl)),
+      link_divulgado: agendamentosPeloLink > 0,
+    };
+  }
+
   async getPendencias(user: AuthenticatedUser, queryParams: { company_id?: string } = {}) {
     const companyId = this.resolveCompanyId(user, queryParams);
 

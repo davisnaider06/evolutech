@@ -9,6 +9,7 @@ import {
   lerSessao,
   limparSessao,
 } from '@/lib/session';
+import { lembrarTipoAcesso } from '@/lib/tipo-acesso';
 
 /** Ultima resposta boa de /auth/me, para reabrir o app sem esperar a rede. */
 const SESSAO_CACHE_KEY = 'evolutech_sessao';
@@ -198,6 +199,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = (token: string, userData: any, companyData?: any) => {
     localStorage.setItem('evolutech_token', token);
+    lembrarTipoAcesso('equipe');
     // O cache antigo pode ser de outro usuario; o proximo /auth/me repoe.
     limparSessao(SESSAO_CACHE_KEY);
 

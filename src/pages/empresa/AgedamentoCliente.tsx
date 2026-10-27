@@ -2,9 +2,10 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, LogIn, MapPin, UserPlus } from 'lucide-react';
 import { appointmentsService } from '@/services/appointments';
-import { formatarDataHora } from '@/lib/horario';
+import { formatarDiaHoraTitulo } from '@/lib/horario';
 import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
 import { lembrarEmpresaDoCliente } from '@/services/customer-portal';
+import { lembrarTipoAcesso, tipoAcessoLembrado } from '@/lib/tipo-acesso';
 import { guardarAgendamentoPendente, lerAgendamentoPendente } from '@/lib/agendamento-pendente';
 import { ProfissionalOpcao, QUALQUER_BARBEIRO, ROTULO_QUALQUER_BARBEIRO } from '@/components/agenda/EscolhaProfissional';
 import PassosAgendamento, {
@@ -56,8 +57,11 @@ const AgendamentoCliente: React.FC = () => {
         setLoadingOptions(true);
         const options = await appointmentsService.getPublicBookingOptions(slug);
         setCompanyName(options.company?.name || '');
-        // Quem abriu pelo link volta para esta barbearia ao tocar em "Sou cliente".
+        // Quem abriu pelo link e instalou o app volta para esta barbearia ao
+        // abrir o app. So vale num aparelho que ainda nao tem lado: o dono que
+        // testa o proprio link continua abrindo no painel.
         lembrarEmpresaDoCliente(slugNormalizado);
+        if (!tipoAcessoLembrado()) lembrarTipoAcesso('cliente');
         setServices(options.services || []);
         setProfessionals(options.professionals || []);
         // Voltou da confirmacao para trocar o horario (ou o horario foi pego
@@ -179,7 +183,7 @@ const AgendamentoCliente: React.FC = () => {
         <TituloFoto linha="Falta só" destaque="Sua conta" />
         {/* O resumo fica a vista: o cliente ve que nada se perdeu. */}
         <div className="mt-5 rounded-2xl border border-white/15 bg-white/10 p-4 text-center backdrop-blur-md">
-          <p className="text-xl font-bold">{formatarDataHora(escolha.scheduled_at)}</p>
+          <p className="text-xl font-bold">{formatarDiaHoraTitulo(escolha.scheduled_at)}</p>
           <p className="mt-1 text-sm text-white/80">
             {selectedService?.name || 'Serviço'} com {nomeBarbeiro || 'barbeiro'}
           </p>
@@ -259,7 +263,7 @@ const AgendamentoCliente: React.FC = () => {
         <div className="mx-auto max-w-xl px-4 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-3">
           <p className="mb-2 truncate text-center text-xs text-muted-foreground">
             {escolha.scheduled_at
-              ? `${formatarDataHora(escolha.scheduled_at)} · ${selectedService?.name || ''} ${reais(selectedService?.price) ? `· ${reais(selectedService?.price)}` : ''}`
+              ? `${formatarDiaHoraTitulo(escolha.scheduled_at)} · ${selectedService?.name || ''} ${reais(selectedService?.price) ? `· ${reais(selectedService?.price)}` : ''}`
               : 'Você entra ou cria sua conta no próximo passo.'}
           </p>
           <button

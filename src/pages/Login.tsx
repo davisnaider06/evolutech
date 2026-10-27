@@ -9,12 +9,9 @@ import {
   TituloFoto,
   botaoFoto,
   campoFoto,
-  linkFoto,
   rotuloFoto,
 } from '@/components/telas/TelaComFoto';
 import { API_URL } from '@/config/api';
-import { rotaEntradaCliente } from '@/services/customer-portal';
-import { esquecerTipoAcesso, lembrarTipoAcesso } from '@/lib/tipo-acesso';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -176,18 +173,10 @@ const Login: React.FC = () => {
         </button>
       </form>
 
-      {/* Saida para o cliente que errou a porta; o clique ja grava a escolha
-          para nao repetir o erro amanha. */}
-      <p className="mt-5 text-center text-sm text-white/80">
-        É cliente?{' '}
-        <Link to={rotaEntradaCliente()} onClick={() => lembrarTipoAcesso('cliente')} className={linkFoto}>
-          Agendar horário
-        </Link>
-      </p>
-      <p className="mt-2 text-center text-xs text-white/50">
-        <Link className="hover:underline" to="/entrar" onClick={esquecerTipoAcesso}>
-          Ver as opções de acesso novamente
-        </Link>
+      {/* O cliente agenda pelo link da barbearia dele; esta tela nao sabe
+          qual e, entao so explica onde ele esta. */}
+      <p className="mt-5 text-center text-xs text-white/60">
+        É cliente? Agende pelo link que a sua barbearia divulga no Instagram ou no WhatsApp.
       </p>
     </TelaComFoto>
   );

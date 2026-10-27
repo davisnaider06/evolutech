@@ -50,9 +50,11 @@ interface NavItem {
   group: NavGroup;
 }
 
-// Quatro grupos no lugar de uma lista corrida de ate 24 itens: o dono acha
-// o assunto pelo grupo, e no celular a gaveta fica legivel.
-type NavGroup = 'inicio' | 'atendimento' | 'vendas' | 'dinheiro' | 'gestao';
+// Grupos no lugar de uma lista corrida de ate 24 itens: o dono acha o assunto
+// pelo grupo, e no celular a gaveta fica legivel. O que se usa raramente (ou
+// so uma vez, na configuracao) fica em "Mais opcoes", fechado: com tudo
+// aberto o dono novo nao sabia por onde comecar.
+type NavGroup = 'inicio' | 'atendimento' | 'vendas' | 'dinheiro' | 'gestao' | 'mais';
 
 const GROUP_LABELS: Record<NavGroup, string> = {
   inicio: '',
@@ -60,9 +62,10 @@ const GROUP_LABELS: Record<NavGroup, string> = {
   vendas: 'Vendas',
   dinheiro: 'Dinheiro',
   gestao: 'Gestão',
+  mais: 'Mais opções',
 };
 
-const GROUP_ORDER: NavGroup[] = ['inicio', 'atendimento', 'vendas', 'dinheiro', 'gestao'];
+const GROUP_ORDER: NavGroup[] = ['inicio', 'atendimento', 'vendas', 'dinheiro', 'gestao', 'mais'];
 
 // 'Estoque' saiu: o item apontava para /empresa/estoque, rota que nunca
 // existiu — quem tinha o modulo inventory caia no 404.
@@ -89,25 +92,26 @@ const navItems: NavItem[] = [
   // "Vender" em vez de "PDV": sigla que o dono de barbearia nem sempre conhece.
   { icon: Store, label: 'Vender', path: '/empresa/pdv', moduleCode: 'pdv', group: 'vendas' },
   { icon: Package, label: 'Produtos', path: '/empresa/produtos', moduleCode: 'products', group: 'vendas' },
-  { icon: ShoppingCart, label: 'Pedidos', path: '/empresa/pedidos', moduleCode: 'orders', group: 'vendas' },
-  { icon: BookOpen, label: 'Cursos', path: '/empresa/cursos', moduleCode: 'courses', group: 'vendas' },
+  { icon: ShoppingCart, label: 'Pedidos', path: '/empresa/pedidos', moduleCode: 'orders', group: 'mais' },
+  { icon: BookOpen, label: 'Cursos', path: '/empresa/cursos', moduleCode: 'courses', group: 'mais' },
 
   { icon: Wallet, label: 'Caixa', path: '/empresa/caixa', moduleCode: 'cash', group: 'dinheiro' },
-  { icon: ReceiptText, label: 'Cobranças', path: '/empresa/cobrancas', moduleCode: 'billing', group: 'dinheiro' },
+  { icon: ReceiptText, label: 'Cobranças', path: '/empresa/cobrancas', moduleCode: 'billing', group: 'mais' },
   { icon: Percent, label: 'Comissões', path: '/empresa/comissoes', moduleCode: 'commissions', group: 'dinheiro' },
   { icon: TrendingUp, label: 'Financeiro', path: '/empresa/financeiro', moduleCode: 'finance', group: 'dinheiro' },
-  { icon: BarChart3, label: 'Relatórios', path: '/empresa/relatorios', moduleCode: 'reports', group: 'dinheiro' },
+  { icon: BarChart3, label: 'Relatórios', path: '/empresa/relatorios', moduleCode: 'reports', group: 'mais' },
   // Gateways e um modulo como outro qualquer: so aparece para quem recebeu.
   // Antes vinha com `alwaysShow` e o codigo 'finance', entao todo dono via a
   // tela de gateways mesmo sem nunca ter contratado meio de pagamento.
-  { icon: CreditCard, label: 'Gateways', path: '/empresa/gateways', moduleCode: 'gateways', ownerOnly: true, group: 'dinheiro' },
+  // "Gateways" e jargao: para o dono e receber pagamento pelo celular.
+  { icon: CreditCard, label: 'Pagamento online', path: '/empresa/gateways', moduleCode: 'gateways', ownerOnly: true, group: 'mais' },
 
   { icon: UserPlus, label: 'Equipe', path: '/empresa/equipe', moduleCode: 'users', ownerOnly: true, group: 'gestao' },
-  { icon: ShieldCheck, label: 'Permissões', path: '/empresa/permissoes', moduleCode: 'permissions', ownerOnly: true, group: 'gestao' },
-  { icon: Palette, label: 'Aparência', path: '/empresa/temas', moduleCode: 'design', ownerOnly: true, alwaysShow: true, group: 'gestao' },
+  { icon: ShieldCheck, label: 'O que cada um vê', path: '/empresa/permissoes', moduleCode: 'permissions', ownerOnly: true, group: 'mais' },
+  { icon: Palette, label: 'Aparência', path: '/empresa/temas', moduleCode: 'design', ownerOnly: true, alwaysShow: true, group: 'mais' },
   { icon: Settings, label: 'Configurações', path: '/empresa/configuracoes', moduleCode: 'settings', alwaysShow: true, group: 'gestao' },
   { icon: HeadphonesIcon, label: 'Suporte', path: '/empresa/suporte', moduleCode: 'support', group: 'gestao' },
-  { icon: GraduationCap, label: 'Treinamentos', path: '/empresa/treinamentos', moduleCode: 'training', group: 'gestao' },
+  { icon: GraduationCap, label: 'Tutoriais', path: '/empresa/treinamentos', moduleCode: 'training', group: 'mais' },
 ];
 
 export const EmpresaLayout: React.FC = () => {
@@ -117,6 +121,11 @@ export const EmpresaLayout: React.FC = () => {
   const location = useLocation();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  // Abre sozinho quando a tela atual mora em "Mais opcoes", para o item ativo
+  // nao ficar escondido.
+  const [maisAberto, setMaisAberto] = useState(() =>
+    navItems.some((item) => item.group === 'mais' && location.pathname.startsWith(item.path))
+  );
 
   const isOwner = user?.role === 'DONO_EMPRESA';
 
@@ -227,13 +236,25 @@ export const EmpresaLayout: React.FC = () => {
           {GROUP_ORDER.map((group) => {
             const items = filteredNavItems.filter((item) => item.group === group);
             if (items.length === 0) return null;
+            const recolhivel = group === 'mais' && !isCollapsed;
             return (
               <div key={group} className="mb-4 last:mb-0">
-                {GROUP_LABELS[group] && !isCollapsed && (
+                {recolhivel ? (
+                  <button
+                    type="button"
+                    onClick={() => setMaisAberto((atual) => !atual)}
+                    aria-expanded={maisAberto}
+                    className="mb-1 flex w-full items-center justify-between px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 hover:text-foreground"
+                  >
+                    {GROUP_LABELS[group]}
+                    <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', maisAberto && 'rotate-90')} />
+                  </button>
+                ) : GROUP_LABELS[group] && !isCollapsed && (
                   <p className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
                     {GROUP_LABELS[group]}
                   </p>
                 )}
+                {recolhivel && !maisAberto ? null : (
                 <ul className="space-y-1">
                   {items.map((item) => {
                     const isActive = location.pathname === item.path ||
@@ -261,6 +282,7 @@ export const EmpresaLayout: React.FC = () => {
                     );
                   })}
                 </ul>
+                )}
               </div>
             );
           })}

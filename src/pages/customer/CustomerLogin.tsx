@@ -14,9 +14,9 @@ import {
 import { customerAuthService, empresaDoCliente } from '@/services/customer-portal';
 import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
 import { CustomerPortalCompanyOption } from '@/types/customer-portal';
-import { esquecerTipoAcesso, lembrarTipoAcesso } from '@/lib/tipo-acesso';
+import { lembrarTipoAcesso } from '@/lib/tipo-acesso';
 import { lerAgendamentoPendente } from '@/lib/agendamento-pendente';
-import { formatarDataHora } from '@/lib/horario';
+import { formatarDiaHora } from '@/lib/horario';
 
 const CustomerLogin: React.FC = () => {
   const { slug } = useParams<{ slug?: string }>();
@@ -133,7 +133,7 @@ const CustomerLogin: React.FC = () => {
         destaque={hasSlugFromRoute && nomeBarbearia ? nomeBarbearia : 'Barbearia'}
         descricao={
           pendente
-            ? `Seu horário de ${formatarDataHora(pendente.scheduled_at)} está guardado. Entre para confirmar.`
+            ? `Seu horário de ${formatarDiaHora(pendente.scheduled_at)} está guardado. Entre para confirmar.`
             : 'Veja seus horários, avalie o atendimento e marque o próximo corte.'
         }
       />
@@ -222,16 +222,10 @@ const CustomerLogin: React.FC = () => {
         </Link>
       </p>
 
-      {/* Caminho de volta, espelhando o da tela da equipe: quem caiu aqui
-          sendo dono ou funcionario sai por este link, e o clique grava a
-          escolha para nao errar de novo. */}
+      {/* Saida para o dono ou barbeiro que abriu o link da propria barbearia. */}
       <p className="mt-3 text-center text-xs text-white/50">
         <Link className="hover:underline" to="/login" onClick={() => lembrarTipoAcesso('equipe')}>
           Sou da equipe
-        </Link>
-        {' · '}
-        <Link className="hover:underline" to="/entrar" onClick={esquecerTipoAcesso}>
-          Outras opções de acesso
         </Link>
       </p>
     </TelaComFoto>

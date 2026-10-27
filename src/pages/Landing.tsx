@@ -216,7 +216,7 @@ const Pagina: React.FC = () => (
         </nav>
         <div className="flex items-center gap-2">
           <Link
-            to="/entrar"
+            to="/login"
             className="rounded-full px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-200/60"
           >
             Entrar
@@ -480,7 +480,7 @@ const Pagina: React.FC = () => (
       <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 text-sm text-stone-500 sm:flex-row sm:px-6">
         <Logo size="sm" />
         <div className="flex flex-wrap justify-center gap-x-6 gap-y-2">
-          <Link to="/entrar" className="hover:text-stone-900">Entrar</Link>
+          <Link to="/login" className="hover:text-stone-900">Entrar</Link>
           <a href={linkWhatsApp(CTA_TEXTO)} target="_blank" rel="noreferrer" className="hover:text-stone-900">
             WhatsApp (12) 99101-5266
           </a>

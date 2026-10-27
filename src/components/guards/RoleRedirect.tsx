@@ -30,21 +30,14 @@ export const RoleRedirect: React.FC = () => {
       return;
     }
 
-    // Sem sessao de nenhum dos dois lados: quem ja disse de que lado entra vai
-    // direto para o login dele; quem nunca disse passa pela tela de escolha.
-    // Mandar todo mundo para /login era o que fazia o cliente da barbearia
-    // tentar a senha dele no formulario do dono.
-    const tipo = tipoAcessoLembrado();
-    if (tipo === 'cliente') {
+    // Sem sessao: o celular do cliente (que entrou pelo link da barbearia)
+    // volta para a barbearia dele; todo o resto e o dono ou a equipe.
+    if (tipoAcessoLembrado() === 'cliente') {
       navigate(rotaEntradaCliente(), { replace: true });
       return;
     }
-    if (tipo === 'equipe') {
-      navigate('/login', { replace: true });
-      return;
-    }
 
-    navigate('/entrar', { replace: true });
+    navigate('/login', { replace: true });
   }, [
     isLoading,
     isAuthenticated,
