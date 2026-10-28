@@ -23,6 +23,8 @@ interface ResumoDono {
   media: number | null;
   total: number;
   distribuicao: Distribuicao;
+  /** Nota da casa (ambiente, atendimento, pontualidade), separada dos cortes. */
+  barbearia?: { media: number; total: number } | null;
   ranking: Array<{
     professional_id: string;
     name: string;
@@ -35,6 +37,7 @@ interface ResumoDono {
   recentes: Array<{
     id: string;
     rating: number;
+    rating_empresa?: number | null;
     comment: string | null;
     created_at: string;
     professional_name: string | null;
@@ -91,7 +94,26 @@ const CartaoMedia: React.FC<{ media: number | null; total: number; distribuicao:
 
 const VisaoDono: React.FC<{ resumo: ResumoDono }> = ({ resumo }) => (
   <div className="space-y-5">
-    <CartaoMedia titulo="Média da barbearia" media={resumo.media} total={resumo.total} distribuicao={resumo.distribuicao} />
+    <CartaoMedia titulo="Média dos cortes" media={resumo.media} total={resumo.total} distribuicao={resumo.distribuicao} />
+
+    {/* A nota da casa fica a parte: espera, limpeza e recepcao nao sao culpa
+        de quem cortou. */}
+    <Card>
+      <CardContent className="flex items-center gap-4 p-5">
+        <p className="text-4xl font-extrabold tabular-nums">
+          {resumo.barbearia ? resumo.barbearia.media.toFixed(1) : '–'}
+        </p>
+        <div className="min-w-0">
+          <p className="font-medium">Nota da barbearia</p>
+          <Estrelas nota={resumo.barbearia?.media || 0} tamanho="h-4 w-4" />
+          <p className="mt-1 text-xs text-muted-foreground">
+            {resumo.barbearia
+              ? `Ambiente, atendimento e pontualidade · ${resumo.barbearia.total} ${resumo.barbearia.total === 1 ? 'avaliação' : 'avaliações'}. Seus clientes veem a partir de 3.`
+              : 'Ambiente, atendimento e pontualidade. Aparece quando os clientes começarem a avaliar.'}
+          </p>
+        </div>
+      </CardContent>
+    </Card>
 
     <Card>
       <CardHeader className="pb-3">
@@ -157,9 +179,18 @@ const VisaoDono: React.FC<{ resumo: ResumoDono }> = ({ resumo }) => (
           </p>
         ) : (
           resumo.recentes.map((r) => (
-            <div key={r.id} className={cn('rounded-lg border p-3', r.rating <= 2 && 'border-destructive/40 bg-destructive/5')}>
+            <div key={r.id} className={cn('rounded-lg border p-3', (r.rating <= 2 || (r.rating_empresa ?? 5) <= 2) && 'border-destructive/40 bg-destructive/5')}>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <Estrelas nota={r.rating} />
+                <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    Corte <Estrelas nota={r.rating} />
+                  </span>
+                  {r.rating_empresa ? (
+                    <span className="flex items-center gap-1">
+                      Barbearia <Estrelas nota={r.rating_empresa} />
+                    </span>
+                  ) : null}
+                </span>
                 <span className="text-xs text-muted-foreground">{formatarDataHora(r.created_at)}</span>
               </div>
               {r.comment ? <p className="mt-1.5 text-sm">“{r.comment}”</p> : null}

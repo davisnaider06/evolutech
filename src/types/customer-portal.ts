@@ -60,7 +60,7 @@ export interface CustomerAppointment {
   status: string;
   created_at: string;
   /** Nota que o cliente ja deu para este atendimento. */
-  review?: { rating: number; comment: string | null } | null;
+  review?: { rating: number; rating_empresa?: number | null; comment: string | null } | null;
   /** Concluido, com barbeiro, sem nota e dentro do prazo. */
   can_review?: boolean;
 }
@@ -133,6 +133,8 @@ export interface CustomerBookingOption {
 }
 
 export interface CustomerBookingOptionsResponse {
+  /** Nota da barbearia; null ate ter avaliacoes suficientes. */
+  company_rating?: { media: number; total: number } | null;
   services: Array<CustomerBookingOption & { duration_minutes: number; price: number }>;
   professionals: Array<
     CustomerBookingOption & { avatar_url?: string | null; rating?: { media: number; total: number } | null }
