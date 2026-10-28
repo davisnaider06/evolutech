@@ -1,0 +1,79 @@
+# CI: a cada push e pull request confere tipos e build do front e do backend.
+# CD: na main, só depois de todo o CI passar, dispara o deploy do backend no Render.
+# O front sobe pela integração Git da Vercel (vercel.json), fora deste workflow.
+name: CI/CD
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend · tipos e build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Checagem de tipos
+        run: npx tsc -p tsconfig.app.json --noEmit
+      - name: Build
+        run: npm run build
+      # Ainda há ~900 erros de lint antigos. Roda para dar visibilidade, mas não
+      # barra o deploy; quando zerar, tirar o continue-on-error.
+      - name: Lint (informativo)
+        continue-on-error: true
+        run: npm run lint
+
+  backend:
+    name: Backend · schema, tipos e build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend-evolutech
+    # O Prisma exige as variáveis do schema mesmo sem conectar. Nenhum job
+    # do CI fala com o Neon.
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend-evolutech/package-lock.json
+      - run: npm ci
+      - name: Valida o schema
+        run: npx prisma validate
+      - run: npx prisma generate
+      - name: Build
+        run: npm run build
+
+  deploy:
+    name: Deploy do backend (main)
+    runs-on: ubuntu-latest
+    needs: [frontend, backend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: producao
+    steps:
+      - name: Dispara o deploy no Render
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::warning::Secret RENDER_DEPLOY_HOOK_URL não configurado; deploy não disparado."
+            exit 0
+          fi
+          curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL"
+          echo "Deploy disparado para ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
