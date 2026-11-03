@@ -26,3 +26,14 @@ export function corDoProfissional(id: string): { backgroundColor: string; color:
   }
   return { backgroundColor: `hsl(${hash} 62% 92%)`, color: `hsl(${hash} 68% 28%)` };
 }
+
+/**
+ * Nome curto para frases ("Agendar com Rafael"). So o primeiro nome quando o
+ * nome e longo: "Barber 2" ou "Ze Carlos" cortados no espaco viravam "Barber"
+ * e "Ze", e o cliente nao sabia de quem era.
+ */
+export const nomeCurto = (nome?: string | null): string => {
+  const limpo = String(nome || '').trim();
+  if (!limpo) return '';
+  return limpo.length <= 12 ? limpo : limpo.split(/\s+/)[0];
+};

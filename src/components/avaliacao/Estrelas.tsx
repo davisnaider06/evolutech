@@ -39,12 +39,17 @@ export const NotaCurta: React.FC<{ rating?: NotaProfissional | null; className?:
 const ROTULOS = ['', 'Ruim', 'Fraco', 'Ok', 'Bom', 'Excelente'];
 
 /** Escolha da nota: cinco estrelas grandes, faceis de tocar no celular. */
-export const EscolhaEstrelas: React.FC<{ valor: number; onChange: (nota: number) => void }> = ({ valor, onChange }) => {
+export const EscolhaEstrelas: React.FC<{
+  valor: number;
+  onChange: (nota: number) => void;
+  /** Quando ha mais de uma nota na mesma tela (corte e barbearia). */
+  rotulo?: string;
+}> = ({ valor, onChange, rotulo = 'Nota' }) => {
   const [sobre, setSobre] = useState(0);
   const exibida = sobre || valor;
   return (
     <div className="flex flex-col items-center gap-2">
-      <div className="flex gap-1" role="radiogroup" aria-label="Nota" onMouseLeave={() => setSobre(0)}>
+      <div className="flex gap-1" role="radiogroup" aria-label={rotulo} onMouseLeave={() => setSobre(0)}>
         {[1, 2, 3, 4, 5].map((i) => (
           <button
             key={i}

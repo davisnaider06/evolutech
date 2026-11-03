@@ -6,9 +6,12 @@ import {
   CalendarPlus,
   ChevronRight,
   Clock,
+  Gift,
   Home,
   LogOut,
   MapPin,
+  Repeat2,
+  Scissors,
   Star,
   User,
 } from 'lucide-react';
@@ -29,12 +32,13 @@ import { customerPortalService, rotaLoginCliente } from '@/services/customer-por
 import {
   CustomerAppointment,
   CustomerBookingOptionsResponse,
+  CustomerLoyaltyResponse,
   CustomerPaymentGatewayResult,
   CustomerPlanCatalogItem,
   CustomerSubscription,
 } from '@/types/customer-portal';
 import { formatarData, formatarDiaHora, formatarDiaHoraTitulo } from '@/lib/horario';
-import { corDoProfissional, iniciais } from '@/lib/profissional';
+import { corDoProfissional, iniciais, nomeCurto } from '@/lib/profissional';
 import { AtivarNotificacoes } from '@/components/notificacoes/AtivarNotificacoes';
 import { LogoMarca } from '@/components/Logo';
 import { lerAgendamentoPendente } from '@/lib/agendamento-pendente';
@@ -153,6 +157,7 @@ const CustomerDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [avaliando, setAvaliando] = useState<CustomerAppointment | null>(null);
+  const [fidelidade, setFidelidade] = useState<CustomerLoyaltyResponse | null>(null);
   const [aba, setAba] = useState<Aba>('inicio');
 
   const irPara = (proxima: Aba) => {
@@ -173,6 +178,13 @@ const CustomerDashboard: React.FC = () => {
     if (subscriptionsData.status === 'fulfilled') setSubscriptions(subscriptionsData.value);
     if (bookingData.status === 'fulfilled') setBookingOptions(bookingData.value);
     if (plansData.status === 'fulfilled') setPlansCatalog(plansData.value);
+
+    // Fidelidade fora do allSettled de cima: barbearia sem o programa nao e
+    // erro, e nao pode virar o aviso vermelho de "dados nao carregados".
+    customerPortalService
+      .loyalty()
+      .then(setFidelidade)
+      .catch(() => setFidelidade(null));
 
     const firstError = results.find((result) => result.status === 'rejected');
     if (firstError?.status === 'rejected') {
@@ -330,6 +342,55 @@ const CustomerDashboard: React.FC = () => {
     profissionais[0] ||
     null;
 
+  // Resumo do cliente, tirado do proprio historico. E o que ele quer saber
+  // ao abrir o app sem horario marcado: quando cortou, com quem, e se esta na
+  // hora de voltar.
+  const DIA_MS = 24 * 60 * 60 * 1000;
+  const visitas = appointments
+    .filter((item) => item.status === 'concluido')
+    .sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime());
+  const ultimaVisita = visitas[0];
+  const diasDesdeUltima = ultimaVisita
+    ? Math.max(0, Math.floor((agora - new Date(ultimaVisita.scheduled_at).getTime()) / DIA_MS))
+    : null;
+  // Intervalo medio entre visitas, so com historico suficiente para nao
+  // chutar: tres visitas dao dois intervalos.
+  const intervaloMedio =
+    visitas.length >= 3
+      ? Math.round(
+          (new Date(visitas[0].scheduled_at).getTime() - new Date(visitas[visitas.length - 1].scheduled_at).getTime()) /
+            DIA_MS /
+            (visitas.length - 1)
+        )
+      : null;
+  const contagem = (lista: Array<string | null | undefined>) => {
+    const mapa = new Map<string, number>();
+    for (const valor of lista) if (valor) mapa.set(valor, (mapa.get(valor) || 0) + 1);
+    return [...mapa.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+  };
+  const barbeiroFavoritoId = contagem(visitas.map((item) => item.professional_id));
+  const barbeiroFavorito = profissionalPorId(barbeiroFavoritoId);
+  const servicoDoUltimo = servicos.find((item) => item.id === ultimaVisita?.service_id) || null;
+  const profissionalDoUltimo = profissionalPorId(ultimaVisita?.professional_id);
+  const minhasAvaliacoes = appointments.filter((item) => item.review);
+  const notaBarbearia = bookingOptions?.company_rating || null;
+  const fidelidadeAtiva = Boolean(fidelidade?.settings?.is_active);
+  const pontos = fidelidade?.profile?.points_balance || 0;
+  const faltamParaGratis =
+    fidelidadeAtiva && fidelidade?.settings?.tenth_service_free
+      ? 10 - ((fidelidade?.profile?.total_services_count || 0) % 10)
+      : null;
+  // Data ja passada vira "ja passou da sua media": "voltar por volta de 05/09"
+  // lido em 20/09 parecia erro do app.
+  const voltaPrevista =
+    ultimaVisita && intervaloMedio
+      ? diasDesdeUltima !== null && diasDesdeUltima > intervaloMedio
+        ? `Já passou da sua média de ${intervaloMedio} dias`
+        : `Você costuma voltar por volta de ${formatarData(
+            new Date(new Date(ultimaVisita.scheduled_at).getTime() + intervaloMedio * DIA_MS)
+          ).slice(0, 5)}`
+      : null;
+
   const agendarCom = (parcial: Partial<EscolhaAgendamento>) => {
     setEscolha({ ...ESCOLHA_VAZIA, ...parcial });
     irPara('agendar');
@@ -469,7 +530,7 @@ const CustomerDashboard: React.FC = () => {
                     disabled={!agendaDisponivel}
                     className="mt-3 inline-flex rounded-full bg-white px-4 py-1.5 text-xs font-semibold text-foreground disabled:opacity-60"
                   >
-                    Agendar com {destaque.name.split(' ')[0]}
+                    Agendar com {nomeCurto(destaque.name)}
                   </button>
                 </div>
                 <FotoBarbeiro
@@ -486,13 +547,136 @@ const CustomerDashboard: React.FC = () => {
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold">Como foi seu último corte?</p>
                   <p className="text-xs text-muted-foreground">
-                    {paraAvaliar.service_name || 'Serviço'} com {paraAvaliar.professional_name || 'o barbeiro'}.
-                    Anônimo para o barbeiro.
+                    Dê nota para {nomeCurto(paraAvaliar.professional_name) || 'o barbeiro'} e para a barbearia.
+                    Leva 10 segundos e é anônimo para o barbeiro.
                   </p>
                 </div>
                 <Button size="sm" className="shrink-0 rounded-full" onClick={() => setAvaliando(paraAvaliar)}>
                   Avaliar
                 </Button>
+              </section>
+            ) : null}
+
+            {/* Resumo do cliente: so aparece depois da primeira visita, para o
+                cliente novo nao ver um painel de zeros. */}
+            {visitas.length > 0 ? (
+              <section>
+                {tituloSecao('Seu resumo')}
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-2xl bg-card p-3 shadow-card">
+                    <p className="text-2xl font-bold">{visitas.length}</p>
+                    <p className="text-[11px] leading-tight text-muted-foreground">
+                      {visitas.length === 1 ? 'visita' : 'visitas'}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl bg-card p-3 shadow-card">
+                    <p className="text-2xl font-bold">{diasDesdeUltima === 0 ? 'Hoje' : `${diasDesdeUltima}d`}</p>
+                    <p className="text-[11px] leading-tight text-muted-foreground">desde o último corte</p>
+                  </div>
+                  {fidelidadeAtiva ? (
+                    <div className="rounded-2xl bg-card p-3 shadow-card">
+                      {/* A coluna tem ~90px num celular de 320px: saldo de 4
+                          digitos com o icone ao lado estourava o cartao. */}
+                      <p className="flex min-w-0 items-center gap-1 text-2xl font-bold tabular-nums">
+                        <span className="truncate">{pontos.toLocaleString('pt-BR')}</span>
+                        <Gift className="h-4 w-4 shrink-0 text-primary" />
+                      </p>
+                      <p className="text-[11px] leading-tight text-muted-foreground">
+                        {faltamParaGratis ? `faltam ${faltamParaGratis} para o grátis` : 'pontos de fidelidade'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl bg-card p-3 shadow-card">
+                      <p className="truncate text-base font-bold leading-8">
+                        {nomeCurto(barbeiroFavorito?.name) || '—'}
+                      </p>
+                      <p className="text-[11px] leading-tight text-muted-foreground">seu barbeiro</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Repetir o ultimo corte em um toque: e o que o cliente fiel faz
+                    toda vez, e antes ele refazia os quatro passos. */}
+                {!proximo && ultimaVisita && agendaDisponivel ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      agendarCom({
+                        service_id: servicoDoUltimo ? servicoDoUltimo.id : '',
+                        professional_id: profissionalDoUltimo ? profissionalDoUltimo.id : '',
+                      })
+                    }
+                    className="mt-3 flex w-full items-center gap-3 rounded-2xl border border-primary/30 bg-primary/5 p-3 text-left"
+                  >
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                      <Repeat2 className="h-5 w-5" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-semibold">Repetir o último corte</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {ultimaVisita.service_name || 'Serviço'} com {ultimaVisita.professional_name || 'barbeiro'}
+                      </span>
+                      {voltaPrevista ? (
+                        <span className="block text-xs text-muted-foreground">{voltaPrevista}</span>
+                      ) : null}
+                    </span>
+                    <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+                  </button>
+                ) : null}
+              </section>
+            ) : null}
+
+            {/* Avaliacoes: a nota da casa (com avaliacoes suficientes) e as
+                notas que o proprio cliente ja deu. */}
+            {notaBarbearia || minhasAvaliacoes.length > 0 ? (
+              <section>
+                {tituloSecao('Avaliações')}
+                {notaBarbearia ? (
+                  <div className="flex items-center gap-4 rounded-2xl bg-card p-4 shadow-card">
+                    <p className="text-4xl font-bold">{notaBarbearia.media.toFixed(1)}</p>
+                    <div className="min-w-0">
+                      <Estrelas nota={notaBarbearia.media} tamanho="h-4 w-4" />
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {company?.name || 'A barbearia'} · {notaBarbearia.total}{' '}
+                        {notaBarbearia.total === 1 ? 'avaliação' : 'avaliações'} de clientes
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
+                {minhasAvaliacoes.length > 0 ? (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Suas notas</p>
+                    {minhasAvaliacoes.slice(0, 3).map((item) => (
+                      <div key={item.id} className="rounded-2xl bg-card p-3 shadow-card">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="truncate text-sm font-medium">
+                            {item.service_name || 'Serviço'} com {nomeCurto(item.professional_name) || 'barbeiro'}
+                          </p>
+                          <span className="shrink-0 text-[11px] text-muted-foreground">
+                            {formatarData(item.scheduled_at).slice(0, 5)}
+                          </span>
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Scissors className="h-3 w-3" /> Corte{' '}
+                            <Estrelas nota={item.review?.rating || 0} tamanho="h-3 w-3" />
+                          </span>
+                          {item.review?.rating_empresa ? (
+                            <span className="flex items-center gap-1">
+                              <MapPin className="h-3 w-3" /> Barbearia{' '}
+                              <Estrelas nota={item.review.rating_empresa} tamanho="h-3 w-3" />
+                            </span>
+                          ) : null}
+                        </div>
+                        {item.review?.comment ? (
+                          <p className="mt-1.5 line-clamp-2 text-xs italic text-muted-foreground">
+                            "{item.review.comment}"
+                          </p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </section>
             ) : null}
 
@@ -702,6 +886,7 @@ const CustomerDashboard: React.FC = () => {
 
       <AvaliarAtendimento
         atendimento={avaliando}
+        nomeBarbearia={company?.name}
         onClose={() => setAvaliando(null)}
         onAvaliado={() => {
           setAvaliando(null);
