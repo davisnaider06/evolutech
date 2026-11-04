@@ -19,8 +19,10 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(dados.title, {
       body: dados.body,
-      icon: '/favicon.ico',
-      badge: '/favicon.ico',
+      icon: '/icons/icon-192.png',
+      // Badge e a silhueta que o Android mostra na barra de status: branca
+      // sobre transparente, senao vira um quadrado cinza.
+      badge: '/icons/badge-96.png',
       tag: dados.tag,
       // O iPhone so mostra o aviso com o app fechado; renotify garante que
       // um aviso novo com a mesma tag volte a chamar atencao.

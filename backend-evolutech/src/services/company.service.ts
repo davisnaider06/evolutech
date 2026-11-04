@@ -32,6 +32,15 @@ import { CustomerAuthError, CustomerAuthService } from './customer-auth.service'
 import { reviewService } from './review.service';
 import { decidirBarbeiro, ehQualquerBarbeiro, horariosDeQualquerBarbeiro } from '../utils/escolha-barbeiro.util';
 import { pushService } from './push.service';
+import {
+  HorarioOcupadoError,
+  agendamentoRepetido,
+  duracaoDoAgendamento,
+  duracoesDosServicosSemDuracao,
+  garantirSemSobreposicao,
+  reservarHorario,
+  STATUS_QUE_LIBERAM,
+} from '../utils/reserva-horario.util';
 
 /**
  * Colunas que o CRUD generico aceita gravar, por tabela.
@@ -425,6 +434,30 @@ export class CompanyService {
     }
   }
 
+  /**
+   * Catalogo de servicos (nome, preco, duracao) e decisao do dono.
+   *
+   * O modulo "appointments" que libera a agenda para o barbeiro tambem
+   * liberava criar, editar e apagar servicos: o barbeiro mudava o preco que
+   * vira faturamento e comissao. Listar continua liberado.
+   */
+  private ensureCatalogoSoDono(table: string, user: AuthenticatedUser) {
+    if (table === 'appointment_services' && user.role === 'FUNCIONARIO_EMPRESA') {
+      throw new CompanyServiceError('Apenas o dono pode alterar os servicos', 403);
+    }
+  }
+
+  /** Disponibilidade: o barbeiro so mexe na propria. */
+  private ensureDisponibilidadePropria(table: string, user: AuthenticatedUser, professionalId: unknown) {
+    if (
+      table === 'appointment_availability' &&
+      user.role === 'FUNCIONARIO_EMPRESA' &&
+      String(professionalId || '') !== user.id
+    ) {
+      throw new CompanyServiceError('Voce so pode alterar a sua propria disponibilidade', 403);
+    }
+  }
+
   private ensureCompanySupportActor(user: AuthenticatedUser, companyId: string) {
     if (!this.isCompanyUserRole(user.role) || !user.companyId || user.companyId !== companyId) {
       throw new CompanyServiceError('Apenas usuarios da empresa podem abrir chamados de suporte', 403);
@@ -698,6 +731,10 @@ export class CompanyService {
 
     const companyId = this.resolveCompanyId(user, data);
     await this.validateModuleAccess(table, user, companyId);
+    this.ensureCatalogoSoDono(table, user);
+    if (table === 'appointment_availability' && user.role === 'FUNCIONARIO_EMPRESA') {
+      data = { ...data, professionalId: user.id, professional_id: undefined };
+    }
     if (
       (table === 'courses' || table === 'course_accesses') &&
       !['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'].includes(user.role)
@@ -711,6 +748,9 @@ export class CompanyService {
     delete payload.companyId;
     payload.companyId = companyId;
     if (table === 'appointments') {
+      // A duracao vem do servico, nunca do formulario.
+      delete payload.durationMinutes;
+      delete payload.duration_minutes;
       payload.status = this.normalizeAppointmentStatus(payload.status, 'pendente');
       this.normalizeAppointmentCustomerAndPrice(payload);
       // Cliente e servico por id, horario como data de verdade: e o que
@@ -730,12 +770,13 @@ export class CompanyService {
       } else {
         await this.resolveAppointmentProfessional(payload, companyId);
       }
+      payload.durationMinutes = Number(servico?.durationMinutes || 30);
       if (!['cancelado', 'no_show'].includes(String(payload.status))) {
         await this.garantirHorarioLivre({
           companyId,
           professionalId: payload.professionalId,
           inicio: quando,
-          duracaoMinutos: Number(servico?.durationMinutes || 30),
+          duracaoMinutos: payload.durationMinutes,
         });
       }
     }
@@ -773,6 +814,31 @@ export class CompanyService {
       return this.decorateCustomer(created);
     }
 
+    if (table === 'appointments') {
+      const dados = filtrarCamposGravaveis(table, payload, 'create');
+      const ocupaHorario =
+        Boolean(payload.professionalId) && !['cancelado', 'no_show'].includes(String(payload.status));
+      // A checagem acima da a mensagem amigavel; esta, dentro da trava, e a
+      // que impede dois cadastros simultaneos no mesmo horario.
+      const criado = ocupaHorario
+        ? await this.gravarComTravaDeAgenda(
+            {
+              companyId,
+              professionalId: payload.professionalId,
+              inicio: payload.scheduledAt,
+              duracaoMinutos: payload.durationMinutes,
+            },
+            (tx) => (tx as any).appointment.create({ data: dados })
+          )
+        : await model.create({ data: dados });
+      void appointmentNotificationService.avisarMudanca(criado.id, {
+        tipo: 'criado',
+        autor: 'equipe',
+        autorUserId: user.id,
+      });
+      return criado;
+    }
+
     return model.create({ data: filtrarCamposGravaveis(table, payload, 'create') });
   }
 
@@ -793,8 +859,11 @@ export class CompanyService {
               scheduledAt: true,
               serviceId: true,
               status: true,
+              durationMinutes: true,
+              updatedAt: true,
             }
           : {}),
+        ...(table === 'appointment_availability' ? { professionalId: true } : {}),
       },
     });
     if (!existing) throw new CompanyServiceError('Registro não encontrado', 404);
@@ -814,18 +883,53 @@ export class CompanyService {
       throw new CompanyServiceError('Acesso negado ao agendamento de outro profissional', 403);
     }
 
+    // Dono e barbeiro editando o mesmo agendamento: quem salvasse por ultimo
+    // apagava a mudanca do outro sem ninguem saber. A tela manda a versao que
+    // abriu; se mudou desde entao, recusa.
+    const versaoEsperada = data?.expected_updated_at ?? data?.expectedUpdatedAt;
+    if (table === 'appointments' && versaoEsperada) {
+      const esperada = new Date(String(versaoEsperada)).getTime();
+      const atual = new Date((existing as any).updatedAt).getTime();
+      if (Number.isFinite(esperada) && esperada !== atual) {
+        throw new CompanyServiceError(
+          'Esse agendamento foi alterado por outra pessoa enquanto voce editava. Atualize a agenda e tente de novo.',
+          409
+        );
+      }
+    }
+
     this.ensureCaixaSoDonoAltera(table, user);
+    this.ensureCatalogoSoDono(table, user);
+    if (table === 'appointment_availability') {
+      this.ensureDisponibilidadePropria(table, user, (existing as any).professionalId);
+      if (user.role === 'FUNCIONARIO_EMPRESA') {
+        data = { ...data, professionalId: user.id, professional_id: undefined };
+      }
+    }
 
     await this.validateModuleAccess(table, user, existing.companyId);
 
     const payload = { ...data };
+    delete payload.expected_updated_at;
+    delete payload.expectedUpdatedAt;
+    let travaDaAgenda: {
+      professionalId: string;
+      inicio: Date;
+      duracaoMinutos: number;
+    } | null = null;
     delete payload.id;
     delete payload.companyId;
     delete payload.company_id;
 
     // Editar tambem precisa manter o vinculo, senao trocar o barbeiro pelo
     // formulario devolveria o agendamento ao limbo de professionalId nulo.
-    if (table === 'appointments' && user.role !== 'FUNCIONARIO_EMPRESA') {
+    // So mexe no barbeiro quando o payload fala dele: confirmar ou concluir
+    // manda apenas o status e, antes, isso zerava o professionalId (o horario
+    // sumia da agenda do barbeiro e saia da comissao dele).
+    const mexeNoBarbeiro = ['professionalId', 'professional_id', 'professionalName', 'professional_name'].some(
+      (campo) => payload[campo] !== undefined
+    );
+    if (table === 'appointments' && user.role !== 'FUNCIONARIO_EMPRESA' && mexeNoBarbeiro) {
       await this.resolveAppointmentProfessional(payload, existing.companyId);
     }
     const targetType = String(payload.type || '').trim().toLowerCase();
@@ -833,9 +937,12 @@ export class CompanyService {
       payload.status = this.normalizeAppointmentStatus(payload.status);
     }
     if (table === 'appointments') {
+      delete payload.durationMinutes;
+      delete payload.duration_minutes;
       this.normalizeAppointmentCustomerAndPrice(payload);
       await this.resolveAppointmentCustomer(payload, existing.companyId);
       const servico = await this.resolveAppointmentService(payload, existing.companyId);
+      if (servico) payload.durationMinutes = Number(servico.durationMinutes || 30);
       const quando = this.normalizeAppointmentSchedule(payload);
 
       const inicio = quando || ((existing as any).scheduledAt as Date | null);
@@ -848,7 +955,7 @@ export class CompanyService {
       if (inicio && !['cancelado', 'no_show'].includes(statusFinal)) {
         // Duracao: a do servico que veio no payload; sem ele, a do servico
         // ja gravado. Cancelado e no-show liberam o horario, entao passam.
-        let duracao = Number(servico?.durationMinutes || 0);
+        let duracao = Number(servico?.durationMinutes || (existing as any).durationMinutes || 0);
         if (!duracao) {
           const servicoAtual = (existing as any).serviceId
             ? await (prisma as any).appointmentService.findUnique({
@@ -859,13 +966,17 @@ export class CompanyService {
           duracao = Number(servicoAtual?.durationMinutes || 30);
         }
 
+        const professionalIdTrava = user.role === 'FUNCIONARIO_EMPRESA' ? user.id : professionalIdFinal;
         await this.garantirHorarioLivre({
           companyId: existing.companyId,
-          professionalId: user.role === 'FUNCIONARIO_EMPRESA' ? user.id : professionalIdFinal,
+          professionalId: professionalIdTrava,
           inicio,
           duracaoMinutos: duracao,
           ignorarId: id,
         });
+        if (professionalIdTrava) {
+          travaDaAgenda = { professionalId: professionalIdTrava, inicio, duracaoMinutos: duracao };
+        }
       }
     }
     if (table === 'cash_transactions') {
@@ -986,6 +1097,42 @@ export class CompanyService {
         include: { preferredProfessional: { select: { id: true, fullName: true } } },
       });
       return this.decorateCustomer(updated);
+    }
+
+    if (table === 'appointments') {
+      const dados = filtrarCamposGravaveis(table, payload, 'update');
+      const trava = travaDaAgenda;
+      const atualizado = trava
+        ? await this.gravarComTravaDeAgenda(
+            { companyId: existing.companyId, ...trava, ignorarId: id },
+            (tx) => (tx as any).appointment.update({ where: { id }, data: dados })
+          )
+        : await model.update({ where: { id }, data: dados });
+
+      // Quem precisa saber: o barbeiro do horario (e o anterior, se trocou) e
+      // o cliente. Concluir ou marcar "nao veio" nao gera aviso aqui.
+      const antes = existing as any;
+      const statusAntes = this.normalizeAppointmentStatus(antes.status);
+      const statusDepois = this.normalizeAppointmentStatus(atualizado.status);
+      const mudouHorario =
+        new Date(antes.scheduledAt).getTime() !== new Date(atualizado.scheduledAt).getTime();
+      const mudouBarbeiro = (antes.professionalId || null) !== (atualizado.professionalId || null);
+      const tipo =
+        statusDepois === 'cancelado' && statusAntes !== 'cancelado'
+          ? 'cancelado'
+          : ['pendente', 'confirmado'].includes(statusDepois) && (mudouHorario || mudouBarbeiro)
+            ? 'alterado'
+            : null;
+      if (tipo) {
+        void appointmentNotificationService.avisarMudanca(id, {
+          tipo,
+          autor: 'equipe',
+          autorUserId: user.id,
+          horarioAnterior: mudouHorario ? antes.scheduledAt : null,
+          barbeiroAnteriorId: mudouBarbeiro ? antes.professionalId : null,
+        });
+      }
+      return atualizado;
     }
 
     return model.update({
@@ -1189,54 +1336,39 @@ export class CompanyService {
     duracaoMinutos: number;
     ignorarId?: string;
   }) {
-    const { companyId, professionalId, inicio, duracaoMinutos, ignorarId } = params;
-    if (!professionalId) return;
+    if (!params.professionalId) return;
+    try {
+      await garantirSemSobreposicao(prisma, { ...params, professionalId: params.professionalId });
+    } catch (error) {
+      throw this.traduzirHorarioOcupado(error);
+    }
+  }
 
-    const dia = limitesDoDia(inicio);
-    const novoInicio = inicio.getTime();
-    const novoFim = novoInicio + Math.max(1, duracaoMinutos) * 60 * 1000;
-
-    const doDia = await (prisma as any).appointment.findMany({
-      where: {
-        companyId,
-        professionalId,
-        scheduledAt: { gte: dia.inicio, lte: dia.fim },
-        status: { notIn: ['cancelado', 'cancelled', 'no_show', 'no-show'] },
-        ...(ignorarId ? { id: { not: ignorarId } } : {}),
-      },
-      select: { id: true, scheduledAt: true, serviceId: true, customerName: true },
+  private traduzirHorarioOcupado(error: unknown) {
+    if (!(error instanceof HorarioOcupadoError)) return error;
+    const hora = new Date(error.conflito.scheduledAt).toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
     });
-    if (doDia.length === 0) return;
-
-    const idsDeServico = Array.from(
-      new Set(doDia.map((item: any) => item.serviceId).filter((id: any) => typeof id === 'string'))
+    return new CompanyServiceError(
+      'Horario ocupado: este barbeiro ja atende ' +
+        (error.conflito.customerName || 'outro cliente') +
+        ' as ' +
+        hora +
+        '.',
+      409
     );
-    const servicos = idsDeServico.length
-      ? await (prisma as any).appointmentService.findMany({
-          where: { id: { in: idsDeServico } },
-          select: { id: true, durationMinutes: true },
-        })
-      : [];
-    const duracaoPorServico = new Map<string, number>(
-      servicos.map((item: any) => [item.id, Number(item.durationMinutes || 30)])
-    );
+  }
 
-    const conflito = doDia.find((item: any) => {
-      const inicioExistente = new Date(item.scheduledAt).getTime();
-      const fimExistente =
-        inicioExistente + Number(duracaoPorServico.get(item.serviceId || '') || 30) * 60 * 1000;
-      return novoInicio < fimExistente && inicioExistente < novoFim;
-    });
-
-    if (conflito) {
-      const hora = new Date(conflito.scheduledAt).toLocaleTimeString('pt-BR', {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-      throw new CompanyServiceError(
-        `Horario ocupado: este barbeiro ja atende ${conflito.customerName || 'outro cliente'} as ${hora}.`,
-        409
-      );
+  /** Grava dentro da trava da agenda do barbeiro (ver utils/reserva-horario). */
+  private async gravarComTravaDeAgenda<T>(
+    params: { companyId: string; professionalId: string; inicio: Date; duracaoMinutos: number; ignorarId?: string },
+    gravar: (tx: Prisma.TransactionClient) => Promise<T>
+  ): Promise<T> {
+    try {
+      return await reservarHorario(params, gravar);
+    } catch (error) {
+      throw this.traduzirHorarioOcupado(error);
     }
   }
 
@@ -1277,7 +1409,10 @@ export class CompanyService {
       where: { id },
       select: {
         companyId: true,
-        ...(table === 'appointments' ? { professionalId: true } : {}),
+        ...(table === 'appointments' || table === 'appointment_availability'
+          ? { professionalId: true }
+          : {}),
+        ...(table === 'appointments' ? { status: true } : {}),
       },
     });
     if (!existing) throw new CompanyServiceError('Registro não encontrado', 404);
@@ -1298,6 +1433,25 @@ export class CompanyService {
     }
 
     this.ensureCaixaSoDonoAltera(table, user);
+    this.ensureCatalogoSoDono(table, user);
+    this.ensureDisponibilidadePropria(table, user, (existing as any).professionalId);
+
+    if (table === 'appointments') {
+      // Agendamento nao se apaga: some a avaliacao (cascade), o historico do
+      // cliente e o que entrou em comissao e relatorio. O barbeiro podia apagar
+      // o proprio atendimento e, junto, uma avaliacao ruim. Para tirar da
+      // agenda existe "cancelar".
+      if (user.role === 'FUNCIONARIO_EMPRESA') {
+        throw new CompanyServiceError('Para tirar da agenda, cancele o agendamento', 403);
+      }
+      const status = this.normalizeAppointmentStatus((existing as any).status);
+      if (status === 'concluido') {
+        throw new CompanyServiceError(
+          'Atendimento concluido nao pode ser excluido: ele conta no caixa, nas comissoes e nas avaliacoes',
+          409
+        );
+      }
+    }
 
     await this.validateModuleAccess(table, user, existing.companyId);
 
@@ -1588,7 +1742,7 @@ export class CompanyService {
         .filter((item: any) => item.professionalId === professional.userId)
         .map((item: any) => {
           const service = item.serviceId ? serviceById.get(String(item.serviceId)) : null;
-          const duration = Number(service?.durationMinutes || 30);
+          const duration = Number(item.durationMinutes || service?.durationMinutes || 30);
           const startMinutes = minutesFromDayStart(item.scheduledAt);
           return {
             id: item.id,
@@ -1609,6 +1763,8 @@ export class CompanyService {
             start_minutes: startMinutes,
             end_minutes: startMinutes + duration,
             duration_minutes: duration,
+            // Para a edicao avisar quando outra pessoa mexeu antes.
+            updated_at: item.updatedAt,
           };
         });
 
@@ -1803,6 +1959,17 @@ export class CompanyService {
       include: { professional: { select: { id: true, fullName: true } } },
     });
 
+    // O bloqueio impede marcacoes novas, mas nao mexe nas que ja existem.
+    // Devolve as que caem nele para a tela avisar quem precisa ser remarcado.
+    const agendamentosNoBloqueio = await this.agendamentosDentroDoBloqueio(companyId, professionalId, {
+      isRecurring,
+      startAt,
+      endAt,
+      weekday,
+      startMinutes: isRecurring ? this.timeStringToMinutes(String(startTime)) : null,
+      endMinutes: isRecurring ? this.timeStringToMinutes(String(endTime)) : null,
+    });
+
     return {
       id: created.id,
       company_id: created.companyId,
@@ -1817,7 +1984,56 @@ export class CompanyService {
       end_time: created.endTime || null,
       is_active: Boolean(created.isActive),
       created_at: created.createdAt,
+      agendamentos_no_bloqueio: agendamentosNoBloqueio,
     };
+  }
+
+  private async agendamentosDentroDoBloqueio(
+    companyId: string,
+    professionalId: string,
+    bloqueio: {
+      isRecurring: boolean;
+      startAt: Date;
+      endAt: Date;
+      weekday: number | null;
+      startMinutes: number | null;
+      endMinutes: number | null;
+    }
+  ) {
+    const agora = new Date();
+    const de = bloqueio.isRecurring ? agora : new Date(Math.max(agora.getTime(), bloqueio.startAt.getTime() - 12 * 3600 * 1000));
+    const ate = bloqueio.isRecurring ? new Date(agora.getTime() + 60 * 24 * 3600 * 1000) : bloqueio.endAt;
+    if (ate.getTime() <= de.getTime()) return [];
+
+    const futuros = await (prisma as any).appointment.findMany({
+      where: {
+        companyId,
+        professionalId,
+        scheduledAt: { gte: de, lte: ate },
+        status: { notIn: [...STATUS_QUE_LIBERAM, 'concluido', 'completed'] },
+      },
+      select: { id: true, scheduledAt: true, serviceId: true, durationMinutes: true, customerName: true },
+      orderBy: { scheduledAt: 'asc' },
+    });
+    const duracoes = await duracoesDosServicosSemDuracao(prisma, futuros);
+
+    return futuros
+      .filter((item: any) => {
+        const inicio = new Date(item.scheduledAt);
+        const fim = new Date(inicio.getTime() + duracaoDoAgendamento(item, duracoes) * 60 * 1000);
+        if (!bloqueio.isRecurring) {
+          return inicio.getTime() < bloqueio.endAt.getTime() && bloqueio.startAt.getTime() < fim.getTime();
+        }
+        if (inicio.getDay() !== bloqueio.weekday) return false;
+        const ini = inicio.getHours() * 60 + inicio.getMinutes();
+        const end = ini + duracaoDoAgendamento(item, duracoes);
+        return ini < Number(bloqueio.endMinutes) && Number(bloqueio.startMinutes) < end;
+      })
+      .map((item: any) => ({
+        id: item.id,
+        customer_name: item.customerName || null,
+        scheduled_at: item.scheduledAt,
+      }));
   }
 
   async deleteAppointmentBlock(user: AuthenticatedUser, blockId: string) {
@@ -6796,6 +7012,9 @@ export class CompanyService {
     customerId: string,
     queryParams: { company_id?: string; companyId?: string } = {}
   ) {
+    // So o dono: o link troca a senha do cliente, e quem o tem entra na conta
+    // dele. Com o modulo Clientes, qualquer barbeiro podia gerar.
+    this.ensureOwnerCompanyRole(user);
     const companyId = this.resolveCompanyId(user, queryParams);
     await this.ensureAnyModuleAccess(user, companyId, ['customers', 'clientes']);
     try {
@@ -9615,24 +9834,13 @@ export class CompanyService {
         companyId: company.id,
         professionalId,
         scheduledAt: { gte: startDate, lte: endDate },
-        status: { notIn: ['cancelado', 'cancelled', 'no_show', 'no-show'] },
+        status: { notIn: STATUS_QUE_LIBERAM },
       },
-      select: { scheduledAt: true, serviceId: true },
+      select: { scheduledAt: true, serviceId: true, durationMinutes: true },
       orderBy: { scheduledAt: 'asc' },
     });
 
-    const bookedServiceIds = Array.from(
-      new Set(booked.map((item: any) => item.serviceId).filter((id: any) => typeof id === 'string'))
-    );
-    const bookedServices = bookedServiceIds.length
-      ? await (prisma as any).appointmentService.findMany({
-          where: { id: { in: bookedServiceIds } },
-          select: { id: true, durationMinutes: true },
-        })
-      : [];
-    const durationMap = new Map<string, number>(
-      bookedServices.map((item: any) => [item.id, Number(item.durationMinutes || 30)])
-    );
+    const durationMap = await duracoesDosServicosSemDuracao(prisma, booked);
 
     // Bloqueios de agenda do barbeiro neste dia (almoco, folga, medico).
     const blockedIntervals = await getBlockedIntervals(company.id, professionalId, startDate);
@@ -9660,7 +9868,7 @@ export class CompanyService {
 
         const isBlocked = booked.some((item: any) => {
           const bookedStart = new Date(item.scheduledAt);
-          const bookedDuration = Number(durationMap.get(item.serviceId || '') || slotDuration);
+          const bookedDuration = duracaoDoAgendamento(item, durationMap, slotDuration);
           const bookedEnd = new Date(bookedStart);
           bookedEnd.setMinutes(bookedEnd.getMinutes() + bookedDuration);
           return overlaps(slotStartMs, slotEndMs, bookedStart.getTime(), bookedEnd.getTime());
@@ -9861,8 +10069,6 @@ export class CompanyService {
 
     const dayStart = new Date(scheduledAt);
     dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(scheduledAt);
-    dayEnd.setHours(23, 59, 59, 999);
 
     // O horario pode estar livre de agendamentos mas bloqueado pelo barbeiro.
     const blockedIntervals = await getBlockedIntervals(company.id, professionalId, dayStart);
@@ -9870,99 +10076,99 @@ export class CompanyService {
       throw new CompanyServiceError('Horario indisponivel: o profissional bloqueou esse periodo', 409);
     }
 
-    const booked = await (prisma as any).appointment.findMany({
-      where: {
-        companyId: company.id,
-        professionalId: professional.userId,
-        scheduledAt: { gte: dayStart, lte: dayEnd },
-        status: { notIn: ['cancelado', 'cancelled', 'no_show', 'no-show'] },
-      },
-      select: { id: true, scheduledAt: true, serviceId: true },
-    });
+    let created: any;
+    try {
+      created = await reservarHorario(
+        {
+          companyId: company.id,
+          professionalId: professional.userId,
+          inicio: scheduledAt,
+          duracaoMinutos: newDuration,
+        },
+        async (tx) => {
+          // Quem e o cliente se decide pelo telefone, sempre. Antes, quando o
+          // telefone faltava, o codigo procurava alguem de mesmo nome e usava o
+          // cadastro dele: o segundo "Joao Silva" da barbearia entrava no
+          // historico do primeiro e herdava ate a mensalidade atrasada dele.
+          //
+          // Cadastro que ja existe NAO e alterado aqui. A rota e publica: quem
+          // soubesse o telefone de alguem trocava o nome do cadastro dessa
+          // pessoa. O nome digitado fica so na auditoria.
+          const customerRecord: { id: string; name: string } = conhecido
+            ? await tx.customer.update({
+                where: { id: conhecido.id },
+                data: { isActive: true },
+                select: { id: true, name: true },
+              })
+            : await tx.customer.create({
+                data: {
+                  companyId: company.id,
+                  name: customerName,
+                  phone: customerPhone,
+                  isActive: true,
+                },
+                select: { id: true, name: true },
+              });
 
-    const bookedServiceIds = Array.from(
-      new Set(booked.map((item: any) => item.serviceId).filter((id: any) => typeof id === 'string'))
-    );
-    const bookedServices = bookedServiceIds.length
-      ? await (prisma as any).appointmentService.findMany({
-          where: { id: { in: bookedServiceIds } },
-          select: { id: true, durationMinutes: true },
-        })
-      : [];
-    const durationMap = new Map<string, number>(
-      bookedServices.map((item: any) => [item.id, Number(item.durationMinutes || 30)])
-    );
-    const overlaps = (aStart: number, aEnd: number, bStart: number, bEnd: number) =>
-      aStart < bEnd && bStart < aEnd;
-
-    const hasConflict = booked.some((item: any) => {
-      const bookedStart = new Date(item.scheduledAt).getTime();
-      const bookedDuration = Number(durationMap.get(item.serviceId || '') || newDuration);
-      const bookedEnd = bookedStart + bookedDuration * 60 * 1000;
-      return overlaps(newStart, newEnd, bookedStart, bookedEnd);
-    });
-
-    if (hasConflict) {
-      throw new CompanyServiceError('Horario ja reservado, escolha outro', 409);
-    }
-
-    const created = await prisma.$transaction(async (tx) => {
-      // Quem e o cliente se decide pelo telefone, sempre. Antes, quando o
-      // telefone faltava, o codigo procurava alguem de mesmo nome e usava o
-      // cadastro dele: o segundo "Joao Silva" da barbearia entrava no
-      // historico do primeiro e herdava ate a mensalidade atrasada dele.
-      const customerRecord: { id: string } | null = conhecido
-        ? await tx.customer.update({
-            where: { id: conhecido.id },
-            data: { name: customerName, isActive: true },
-            select: { id: true },
-          })
-        : await tx.customer.create({
+          const appointment = await (tx as any).appointment.create({
             data: {
               companyId: company.id,
-              name: customerName,
-              phone: customerPhone,
-              isActive: true,
-            },
-            select: { id: true },
+              customerId: customerRecord.id,
+              serviceId: service.id,
+              professionalId: professional.userId,
+              customerName: customerRecord.name || customerName,
+              serviceName: service.name,
+              professionalName: professional.user.fullName,
+              scheduledAt,
+              durationMinutes: newDuration,
+              status: 'pendente',
+            } as any,
           });
 
-      const appointment = await (tx as any).appointment.create({
-        data: {
-          companyId: company.id,
-          customerId: customerRecord?.id || null,
-          serviceId: service.id,
-          professionalId: professional.userId,
-          customerName,
-          serviceName: service.name,
-          professionalName: professional.user.fullName,
-          scheduledAt,
-          status: 'pendente',
-        } as any,
-      });
+          await tx.auditLog.create({
+            data: {
+              companyId: company.id,
+              action: 'PUBLIC_APPOINTMENT_CREATED',
+              resource: 'appointments',
+              details: {
+                appointmentId: appointment.id,
+                customerName,
+                customerPhone: customerPhone || null,
+                serviceId: service.id,
+                serviceName: service.name,
+                professionalId: professional.userId,
+                professionalName: professional.user.fullName,
+                scheduledAt: scheduledAt.toISOString(),
+                notes: notes || null,
+                source: 'public_link',
+              },
+            },
+          });
 
-      await tx.auditLog.create({
-        data: {
-          companyId: company.id,
-          action: 'PUBLIC_APPOINTMENT_CREATED',
-          resource: 'appointments',
-          details: {
-            appointmentId: appointment.id,
-            customerName,
-            customerPhone: customerPhone || null,
-            serviceId: service.id,
-            serviceName: service.name,
-            professionalId: professional.userId,
-            professionalName: professional.user.fullName,
-            scheduledAt: scheduledAt.toISOString(),
-            notes: notes || null,
-            source: 'public_link',
-          },
-        },
-      });
-
-      return appointment;
-    });
+          return appointment;
+        }
+      );
+    } catch (error) {
+      if (error instanceof HorarioOcupadoError) {
+        // Reenvio depois de queda de rede: devolve o que ja foi gravado.
+        const repetido = await agendamentoRepetido(company.id, conhecido?.id, scheduledAt, service.id);
+        if (repetido) {
+          return {
+            id: repetido.id,
+            company_name: company.name,
+            customer_name: repetido.customerName,
+            service_name: repetido.serviceName,
+            professional_name: repetido.professionalName,
+            service_id: repetido.serviceId,
+            professional_id: repetido.professionalId,
+            scheduled_at: repetido.scheduledAt,
+            status: repetido.status,
+          };
+        }
+        throw new CompanyServiceError('Horario ja reservado, escolha outro', 409);
+      }
+      throw error;
+    }
 
     // Aviso depois do commit e sem await: o agendamento ja esta gravado, e
     // e-mail ou push fora do ar nao pode transformar uma marcacao boa em erro

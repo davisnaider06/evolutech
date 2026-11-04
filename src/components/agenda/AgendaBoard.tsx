@@ -14,10 +14,12 @@ import {
 } from '@/components/ui/dialog';
 import { companyService } from '@/services/company';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useAtualizacaoAutomatica } from '@/hooks/useAtualizacaoAutomatica';
 import { iniciais, corDoProfissional } from '@/lib/profissional';
 // A agenda inteira fala a hora da barbearia: o dono no computador da loja,
 // o barbeiro no celular e o cliente no portal precisam ler o mesmo numero.
 import {
+  formatarDiaHora,
   hojeNaBarbearia,
   instanteDoSlot,
   minutosDoDiaNaBarbearia,
@@ -42,6 +44,8 @@ interface BoardAppointment {
   price: number;
   /** true quando o barbeiro negociou um valor diferente do de tabela. */
   has_custom_price?: boolean;
+  /** Versao do registro: a edicao manda de volta para detectar conflito. */
+  updated_at?: string;
 }
 
 interface BoardBlock {
@@ -209,22 +213,51 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
   const listaRef = useRef<HTMLDivElement>(null);
   const linhaFocoRef = useRef<HTMLElement | null>(null);
 
-  const loadBoard = useCallback(async () => {
-    setLoading(true);
-    try {
-      const result = await companyService.getAgendaBoard({ date });
-      setBoard(result);
-    } catch (error: any) {
-      toast.error(error?.message || 'Erro ao carregar a agenda');
-      setBoard(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [date]);
+  const loadBoard = useCallback(
+    async (opcoes: { silencioso?: boolean } = {}) => {
+      // Silencioso = atualizacao automatica: sem spinner, sem toast e sem
+      // apagar a agenda que esta na tela se a rede falhar.
+      if (!opcoes.silencioso) setLoading(true);
+      try {
+        const result = await companyService.getAgendaBoard({ date });
+        setBoard(result);
+      } catch (error: any) {
+        if (opcoes.silencioso) return;
+        toast.error(error?.message || 'Erro ao carregar a agenda');
+        setBoard(null);
+      } finally {
+        if (!opcoes.silencioso) setLoading(false);
+      }
+    },
+    [date]
+  );
 
   useEffect(() => {
     loadBoard();
   }, [loadBoard, refreshToken]);
+
+  // Cliente marcou ou cancelou pelo link enquanto a agenda estava aberta.
+  useAtualizacaoAutomatica(() => loadBoard({ silencioso: true }));
+
+  /** Avisa quem ja estava marcado dentro do horario que acabou de ser bloqueado. */
+  const avisarMarcadosNoBloqueio = (criado: any) => {
+    const marcados: Array<{ customer_name: string | null; scheduled_at: string }> =
+      criado?.agendamentos_no_bloqueio || [];
+    if (marcados.length === 0) return;
+    const nomes = marcados
+      .slice(0, 3)
+      .map((item) => `${item.customer_name || 'Sem cadastro'} (${formatarDiaHora(item.scheduled_at)})`)
+      .join(', ');
+    toast.warning(
+      marcados.length === 1
+        ? 'Tem 1 cliente marcado nesse horário'
+        : `Tem ${marcados.length} clientes marcados nesse horário`,
+      {
+        description: `${nomes}${marcados.length > 3 ? '…' : ''}. O bloqueio não cancela ninguém: remarque ou cancele na agenda.`,
+        duration: 12000,
+      }
+    );
+  };
 
   /**
    * Fatia do dia = menor servico ativo, limitada entre 10 e 60 minutos.
@@ -398,12 +431,18 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
 
   // Posiciona a caixa sem mexer na rolagem da pagina — scrollIntoView levaria
   // a tela inteira junto.
+  // So reposiciona quando muda o dia, o barbeiro ou o ponto de foco: a
+  // atualizacao automatica nao pode arrancar a rolagem de quem esta lendo.
+  const posicaoFeitaRef = useRef('');
   useEffect(() => {
     const caixa = listaRef.current;
     const linha = linhaFocoRef.current;
     if (!caixa || !linha) return;
+    const chave = `${date}|${barbeiroAtivoId}|${minutoFoco}`;
+    if (posicaoFeitaRef.current === chave) return;
+    posicaoFeitaRef.current = chave;
     caixa.scrollTop = Math.max(0, linha.offsetTop - caixa.offsetTop);
-  }, [board, barbeiroAtivoId, minutoFoco]);
+  }, [board, barbeiroAtivoId, minutoFoco, date]);
 
 
   const openBlockDialog = (professionalId: string) => {
@@ -441,7 +480,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
         // Recorrente: vale para esse dia da semana pelos proximos 12 meses.
         const vigenciaFim = new Date(endAt);
         vigenciaFim.setFullYear(vigenciaFim.getFullYear() + 1);
-        await companyService.createAppointmentBlock({
+        const criado = await companyService.createAppointmentBlock({
           professional_id: blockForm.professional_id || undefined,
           start_at: startAt.toISOString(),
           end_at: vigenciaFim.toISOString(),
@@ -451,13 +490,15 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
           start_time: startTime,
           end_time: endTime,
         });
+        avisarMarcadosNoBloqueio(criado);
       } else {
-        await companyService.createAppointmentBlock({
+        const criado = await companyService.createAppointmentBlock({
           professional_id: blockForm.professional_id || undefined,
           start_at: startAt.toISOString(),
           end_at: endAt.toISOString(),
           reason: blockForm.reason || undefined,
         });
+        avisarMarcadosNoBloqueio(criado);
       }
 
       toast.success('Horário bloqueado');
@@ -519,6 +560,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
       const fimLabel = minutesToLabel(acaoSlot.fim);
       setAcaoSlot(null);
       await loadBoard();
+      avisarMarcadosNoBloqueio(criado);
 
       toast.success(`Bloqueado das ${inicioLabel} as ${fimLabel}`, {
         action: criado?.id

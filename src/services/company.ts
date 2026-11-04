@@ -1,5 +1,14 @@
 import { API_URL } from '@/config/api';
 
+import { avisarSessaoExpirada, requisitar } from '@/lib/rede';
+
+/** fetch com tempo limite e aviso de sessao vencida (ver lib/rede). */
+const chamarApi = async (url: string, init?: RequestInit) => {
+  const resposta = await requisitar(url, init);
+  if (resposta.status === 401 && localStorage.getItem('evolutech_token')) avisarSessaoExpirada('equipe');
+  return resposta;
+};
+
 const API_COMPANY_URL = `${API_URL}/company`;
 
 const getHeaders = () => {
@@ -11,7 +20,7 @@ const getHeaders = () => {
 };
 
 const request = async (path: string, init?: RequestInit) => {
-  const response = await fetch(`${API_COMPANY_URL}${path}`, {
+  const response = await chamarApi(`${API_COMPANY_URL}${path}`, {
     ...init,
     headers: {
       ...getHeaders(),
@@ -150,7 +159,7 @@ export const companyService = {
     const searchParams = new URLSearchParams();
     if (month) searchParams.set('month', month);
     const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
-    const response = await fetch(`${API_COMPANY_URL}/commissions/export${suffix}`, {
+    const response = await chamarApi(`${API_COMPANY_URL}/commissions/export${suffix}`, {
       headers: getHeaders(),
     });
 
@@ -521,7 +530,7 @@ export const companyService = {
     if (params?.date_from) searchParams.set('date_from', params.date_from);
     if (params?.date_to) searchParams.set('date_to', params.date_to);
     const suffix = searchParams.toString() ? `?${searchParams.toString()}` : '';
-    const response = await fetch(`${API_COMPANY_URL}/collections/executions/export${suffix}`, {
+    const response = await chamarApi(`${API_COMPANY_URL}/collections/executions/export${suffix}`, {
       headers: getHeaders(),
     });
 

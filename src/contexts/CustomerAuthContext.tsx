@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { EVENTO_SESSAO_EXPIRADA } from '@/lib/rede';
 import {
   CUSTOMER_TOKEN_KEY,
   customerAuthService,
@@ -119,6 +120,16 @@ export const CustomerAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
     limparSessao(SESSAO_CLIENTE_KEY);
     setState({ customer: null, company: null, isAuthenticated: false, isLoading: false });
   }, []);
+
+  // Token recusado no meio do uso (lib/rede): derruba a sessao e o guard leva
+  // para o login, em vez de a tela ficar mostrando "Erro 401".
+  useEffect(() => {
+    const aoExpirar = (evento: Event) => {
+      if ((evento as CustomEvent).detail?.tipo === 'cliente') logout();
+    };
+    window.addEventListener(EVENTO_SESSAO_EXPIRADA, aoExpirar);
+    return () => window.removeEventListener(EVENTO_SESSAO_EXPIRADA, aoExpirar);
+  }, [logout]);
 
   const value = useMemo(
     () => ({

@@ -346,7 +346,10 @@ const Agendamentos: React.FC = () => {
     setIsSubmitting(true);
     try {
       if (editingAppointment) {
-        await appointmentsService.updateInternal(editingAppointment.id, payload);
+        await appointmentsService.updateInternal(editingAppointment.id, {
+          ...payload,
+          expected_updated_at: editingAppointment.updated_at,
+        });
         toast.success('Agendamento atualizado');
       } else {
         await appointmentsService.createInternal(payload);
@@ -357,6 +360,12 @@ const Agendamentos: React.FC = () => {
       setBoardRefresh((prev) => prev + 1);
     } catch (error: any) {
       toast.error(error.message || 'Erro ao salvar agendamento');
+      // Outra pessoa mexeu antes: recarrega para mostrar como esta agora.
+      if (/alterado por outra pessoa/i.test(String(error?.message || ''))) {
+        setIsFormOpen(false);
+        fetchAppointments();
+        setBoardRefresh((prev) => prev + 1);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -369,7 +378,10 @@ const Agendamentos: React.FC = () => {
     if (!editingAppointment) return;
     setIsSubmitting(true);
     try {
-      await appointmentsService.updateInternal(editingAppointment.id, { status: novoStatus });
+      await appointmentsService.updateInternal(editingAppointment.id, {
+        status: novoStatus,
+        expected_updated_at: editingAppointment.updated_at,
+      });
       const mensagens = {
         concluido: 'Atendimento concluído',
         confirmado: 'Horário confirmado',
@@ -442,7 +454,7 @@ const Agendamentos: React.FC = () => {
           refreshToken={boardRefresh}
           onSelectAppointment={(appointment) => {
             // A grade ja traz tudo o que o formulario precisa.
-            setEditingAppointment({ id: appointment.id } as Appointment);
+            setEditingAppointment({ id: appointment.id, updated_at: appointment.updated_at } as Appointment);
             setFormData({
               customer_id: appointment.customer_id || '',
               customer_name: appointment.customer_name || '',
@@ -540,6 +552,8 @@ const Agendamentos: React.FC = () => {
         }}
         onEdit={handleEdit}
         onDelete={handleDelete}
+        // Barbeiro nao exclui: tira da agenda cancelando (o backend recusa).
+        canDelete={!isFuncionario}
         emptyMessage="Nenhum agendamento encontrado"
       />
       </>

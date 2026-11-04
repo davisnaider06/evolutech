@@ -1,5 +1,14 @@
 import { API_URL } from '@/config/api';
 
+import { avisarSessaoExpirada, requisitar } from '@/lib/rede';
+
+/** fetch com tempo limite e aviso de sessao vencida (ver lib/rede). */
+const chamarApi = async (url: string, init?: RequestInit) => {
+  const resposta = await requisitar(url, init);
+  if (resposta.status === 401 && localStorage.getItem('evolutech_token')) avisarSessaoExpirada('equipe');
+  return resposta;
+};
+
 const COMPANY_API_URL = `${API_URL}/company`;
 const PUBLIC_API_URL = `${API_URL}/public`;
 
@@ -39,7 +48,7 @@ export const appointmentsService = {
     if (params?.search) searchParams.set('search', params.search);
     if (params?.status) searchParams.set('status', params.status);
 
-    const response = await fetch(`${COMPANY_API_URL}/appointments?${searchParams.toString()}`, {
+    const response = await chamarApi(`${COMPANY_API_URL}/appointments?${searchParams.toString()}`, {
       headers: getAuthHeaders(),
     });
 
@@ -66,7 +75,7 @@ export const appointmentsService = {
     scheduled_at: string;
     status?: string;
   }) => {
-    const response = await fetch(`${COMPANY_API_URL}/appointments`, {
+    const response = await chamarApi(`${COMPANY_API_URL}/appointments`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
@@ -104,9 +113,11 @@ export const appointmentsService = {
       service_id?: string;
       scheduled_at?: string;
       status?: string;
+      /** updated_at que a tela carregou: o servidor recusa se outro mexeu antes. */
+      expected_updated_at?: string | null;
     }
   ) => {
-    const response = await fetch(`${COMPANY_API_URL}/appointments/${id}`, {
+    const response = await chamarApi(`${COMPANY_API_URL}/appointments/${id}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       // Cliente e preco so vao quando foram informados: mandar sempre
@@ -122,6 +133,7 @@ export const appointmentsService = {
         ...('price' in data ? { price: data.price ?? null } : {}),
         scheduledAt: data.scheduled_at,
         status: data.status,
+        ...(data.expected_updated_at ? { expected_updated_at: data.expected_updated_at } : {}),
       }),
     });
 
@@ -134,7 +146,7 @@ export const appointmentsService = {
   },
 
   removeInternal: async (id: string) => {
-    const response = await fetch(`${COMPANY_API_URL}/appointments/${id}`, {
+    const response = await chamarApi(`${COMPANY_API_URL}/appointments/${id}`, {
       method: 'DELETE',
       headers: getAuthHeaders(),
     });
@@ -148,7 +160,7 @@ export const appointmentsService = {
   },
 
   getPublicBookingCompany: async (slug: string) => {
-    const response = await fetch(`${PUBLIC_API_URL}/booking/${encodeURIComponent(slug)}`);
+    const response = await chamarApi(`${PUBLIC_API_URL}/booking/${encodeURIComponent(slug)}`);
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
       throw new Error(error.error || 'Erro ao carregar empresa');
@@ -157,7 +169,7 @@ export const appointmentsService = {
   },
 
   getPublicBookingOptions: async (slug: string) => {
-    const response = await fetch(`${PUBLIC_API_URL}/booking/${encodeURIComponent(slug)}/options`);
+    const response = await chamarApi(`${PUBLIC_API_URL}/booking/${encodeURIComponent(slug)}/options`);
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
       throw new Error(error.error || 'Erro ao carregar opções de agendamento');
@@ -170,7 +182,7 @@ export const appointmentsService = {
     if (date) searchParams.set('date', date);
     if (professionalId) searchParams.set('professional_id', professionalId);
     const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
-    const response = await fetch(
+    const response = await chamarApi(
       `${PUBLIC_API_URL}/booking/${encodeURIComponent(slug)}/appointments${query}`
     );
     if (!response.ok) {
@@ -188,7 +200,7 @@ export const appointmentsService = {
     searchParams.set('date', params.date);
     searchParams.set('service_id', params.service_id);
     searchParams.set('professional_id', params.professional_id);
-    const response = await fetch(
+    const response = await chamarApi(
       `${PUBLIC_API_URL}/booking/${encodeURIComponent(slug)}/slots?${searchParams.toString()}`
     );
     if (!response.ok) {
@@ -209,7 +221,7 @@ export const appointmentsService = {
       notes?: string;
     }
   ) => {
-    const response = await fetch(`${PUBLIC_API_URL}/booking/${encodeURIComponent(slug)}/appointments`, {
+    const response = await chamarApi(`${PUBLIC_API_URL}/booking/${encodeURIComponent(slug)}/appointments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),

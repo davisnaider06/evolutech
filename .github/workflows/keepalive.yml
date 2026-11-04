@@ -1,0 +1,29 @@
+# Mantem o backend do Render acordado.
+#
+# No plano free o Render desliga o servico depois de ~15 min sem requisicao, e
+# a primeira chamada seguinte leva 30 s ou mais (medido: 32 s em 04/11/2026).
+# Quem sofre e o cliente que abre o link da barbearia vindo do Instagram.
+#
+# Bate em "/" e nao em "/api/health" de proposito: "/" nao consulta o banco,
+# entao o Neon continua podendo hibernar e nao gasta horas de computacao.
+#
+# Agendamentos do GitHub so rodam na branch padrao (main) e podem atrasar
+# alguns minutos em horario de pico. Por isso a cada 10 min, com folga para os
+# 15 do Render. Para desligar: Actions > Keep-alive do backend > Disable.
+name: Keep-alive do backend
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping no Render
+        run: |
+          curl -fsS --max-time 90 --retry 2 --retry-delay 5 -o /dev/null \
+            -w "status %{http_code} em %{time_total}s\n" \
+            https://evolutech-r1pw.onrender.com/

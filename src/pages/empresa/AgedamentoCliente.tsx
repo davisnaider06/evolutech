@@ -187,7 +187,7 @@ const AgendamentoCliente: React.FC = () => {
           <p className="mt-1 text-sm text-white/80">
             {selectedService?.name || 'Serviço'} com {nomeBarbeiro || 'barbeiro'}
           </p>
-          <p className="mt-2 text-xs text-white/60">Seu horário fica guardado enquanto você entra.</p>
+          <p className="mt-2 text-xs text-white/60">Guardamos sua escolha enquanto você entra. O horário só fica seu quando você confirmar.</p>
         </div>
         <Link to={`/cliente/${slugNormalizado}/cadastro`} className={`${botaoFoto} mt-6`}>
           <UserPlus className="h-5 w-5" />

@@ -485,6 +485,10 @@ model Appointment {
   // Valor combinado deste atendimento. NULL = vale o preco do servico.
   price            Decimal?                  @db.Decimal(10, 2)
   scheduledAt      DateTime                  @map("scheduled_at")
+  // Duracao gravada na marcacao. Antes vinha do servico na hora da consulta:
+  // mudar a duracao do servico mudava o fim dos atendimentos ja marcados.
+  // NULL so nos antigos que o backfill nao alcancou (servico apagado).
+  durationMinutes  Int?                      @map("duration_minutes")
   status           String                    @default("scheduled")
   createdAt        DateTime                  @default(now()) @map("created_at")
   updatedAt        DateTime                  @updatedAt @map("updated_at")

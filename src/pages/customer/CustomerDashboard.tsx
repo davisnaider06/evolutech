@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useAtualizacaoAutomatica } from '@/hooks/useAtualizacaoAutomatica';
+import { RemarcarHorario } from '@/components/agenda/RemarcarHorario';
 import { toast } from 'sonner';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -146,6 +148,7 @@ const CustomerDashboard: React.FC = () => {
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [loading, setLoading] = useState(true);
   const [cancelando, setCancelando] = useState<CustomerAppointment | null>(null);
+  const [alterando, setAlterando] = useState<CustomerAppointment | null>(null);
   const [cancelingId, setCancelingId] = useState<string | null>(null);
   const [creatingAppointment, setCreatingAppointment] = useState(false);
   const [subscribingPlanId, setSubscribingPlanId] = useState<string | null>(null);
@@ -165,8 +168,8 @@ const CustomerDashboard: React.FC = () => {
     window.scrollTo({ top: 0 });
   };
 
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = async (opcoes: { silencioso?: boolean } = {}) => {
+    if (!opcoes.silencioso) setLoading(true);
     const results = await Promise.allSettled([
       customerPortalService.appointments(),
       customerPortalService.subscriptions(),
@@ -187,7 +190,7 @@ const CustomerDashboard: React.FC = () => {
       .catch(() => setFidelidade(null));
 
     const firstError = results.find((result) => result.status === 'rejected');
-    if (firstError?.status === 'rejected') {
+    if (firstError?.status === 'rejected' && !opcoes.silencioso) {
       toast.error(firstError.reason?.message || 'Alguns dados do portal não puderam ser carregados');
     }
     setLoading(false);
@@ -202,6 +205,9 @@ const CustomerDashboard: React.FC = () => {
     }
     loadData();
   }, []);
+
+  // A barbearia confirmou, remarcou ou cancelou: o cliente ve sem recarregar.
+  useAtualizacaoAutomatica(() => loadData({ silencioso: true }), { intervaloMs: 120_000 });
 
   // O push "Como foi o seu atendimento?" abre o portal com ?avaliar=<id>.
   useEffect(() => {
@@ -430,11 +436,11 @@ const CustomerDashboard: React.FC = () => {
         ) : futuro ? (
           <Button
             size="sm"
-            variant="ghost"
-            className="shrink-0 rounded-full text-muted-foreground"
-            onClick={() => setCancelando(item)}
+            variant="outline"
+            className="h-11 shrink-0 rounded-full px-4"
+            onClick={() => setAlterando(item)}
           >
-            Cancelar
+            Alterar
           </Button>
         ) : (
           <Badge variant="outline" className={`shrink-0 ${status.classe}`}>
@@ -939,6 +945,19 @@ const CustomerDashboard: React.FC = () => {
           })}
         </nav>
       </div>
+
+      <RemarcarHorario
+        agendamento={alterando}
+        onFechar={() => setAlterando(null)}
+        onRemarcado={() => {
+          setAlterando(null);
+          void loadData({ silencioso: true });
+        }}
+        onCancelar={(item) => {
+          setAlterando(null);
+          setCancelando(item);
+        }}
+      />
 
       <Dialog open={!!cancelando} onOpenChange={(open) => !open && !cancelingId && setCancelando(null)}>
         <DialogContent className="max-w-sm rounded-3xl">

@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { requisitar } from '@/lib/rede';
+import { useAtualizacaoAutomatica } from '@/hooks/useAtualizacaoAutomatica';
 import { useAuth } from '@/contexts/AuthContext';
 import { StatsCard } from '@/components/dashboard/StatsCard';
 import { RecentActivity } from '@/components/dashboard/RecentActivity';
@@ -100,11 +102,13 @@ const EmpresaDashboard: React.FC = () => {
     [],
   );
 
+  const [recarga, setRecarga] = useState(0);
+
   useEffect(() => {
     const fetchMetrics = async () => {
       try {
         const token = localStorage.getItem('evolutech_token');
-        const response = await fetch(`${API_COMPANY_URL}/dashboard/metrics`, {
+        const response = await requisitar(`${API_COMPANY_URL}/dashboard/metrics`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -146,14 +150,18 @@ const EmpresaDashboard: React.FC = () => {
             .map(({ sortDate, ...item }) => item)
         );
       } catch (error: any) {
-        toast.error(error.message || 'Erro ao carregar métricas');
+        // Na atualizacao automatica, falha de rede nao vira toast a cada minuto.
+        if (recarga === 0) toast.error(error.message || 'Erro ao carregar métricas');
       } finally {
         setLoading(false);
       }
     };
 
     fetchMetrics();
-  }, []);
+  }, [recarga]);
+
+  // Numeros e "ultimos agendamentos" acompanham o que o cliente marca pelo link.
+  useAtualizacaoAutomatica(() => setRecarga((n) => n + 1));
 
   return (
     <div className="space-y-6">

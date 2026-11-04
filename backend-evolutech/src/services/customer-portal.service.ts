@@ -9,6 +9,14 @@ import { appointmentNotificationService } from './appointment-notification.servi
 import { podeAvaliar, reviewService } from './review.service';
 import { nomePublicoProfissional } from '../utils/nome-publico.util';
 import { decidirBarbeiro, ehQualquerBarbeiro, horariosDeQualquerBarbeiro } from '../utils/escolha-barbeiro.util';
+import {
+  HorarioOcupadoError,
+  agendamentoRepetido,
+  duracaoDoAgendamento,
+  duracoesDosServicosSemDuracao,
+  reservarHorario,
+  STATUS_QUE_LIBERAM,
+} from '../utils/reserva-horario.util';
 
 class CustomerPortalError extends Error {
   statusCode: number;
@@ -299,6 +307,150 @@ export class CustomerPortalService {
     }));
   }
 
+  /**
+   * O horario esta dentro do que o link oferece? Mesma faixa da casa e mesmos
+   * bloqueios do barbeiro que listAvailableSlots usa. Sem isto o cliente
+   * forjaria um horario fora dela mandando o payload na mao.
+   */
+  private async garantirHorarioOfertavel(
+    companyId: string,
+    professionalId: string,
+    scheduledAt: Date,
+    duracaoMinutos: number
+  ) {
+    const inicioMinutos = scheduledAt.getHours() * 60 + scheduledAt.getMinutes();
+    const casa = await resolverHorarioDaCasa(prisma as any, companyId, {
+      inicioMinutos: CLIENTE_INICIO_MINUTOS,
+      fimMinutos: CLIENTE_FIM_MINUTOS,
+    });
+    if (inicioMinutos < casa.inicioMinutos || inicioMinutos + duracaoMinutos > casa.fimMinutos) {
+      throw new CustomerPortalError('Horario fora da janela de agendamento', 409);
+    }
+
+    const dayStart = new Date(scheduledAt);
+    dayStart.setHours(0, 0, 0, 0);
+    const blockedIntervals = await getBlockedIntervals(companyId, professionalId, dayStart);
+    const inicioMs = scheduledAt.getTime();
+    if (isIntervalBlocked(blockedIntervals, inicioMs, inicioMs + duracaoMinutos * 60 * 1000)) {
+      throw new CustomerPortalError('Horario indisponivel: o profissional bloqueou esse periodo', 409);
+    }
+  }
+
+  /**
+   * Cliente troca o dia/hora do proprio agendamento, com o mesmo servico e o
+   * mesmo barbeiro. Antes ele precisava cancelar e marcar de novo, e no meio
+   * do caminho podia perder os dois horarios.
+   */
+  async rescheduleMyAppointment(
+    auth: AuthenticatedCustomer,
+    appointmentId: string,
+    payload: { scheduled_at?: string }
+  ) {
+    const context = await this.getCustomerContext(auth);
+    const id = String(appointmentId || '').trim();
+    if (!id) throw new CustomerPortalError('appointmentId obrigatorio', 400);
+
+    const atual = await (prisma as any).appointment.findFirst({
+      where: { id, ...this.escopoDoCliente(context) },
+      select: {
+        id: true,
+        scheduledAt: true,
+        status: true,
+        serviceId: true,
+        professionalId: true,
+        durationMinutes: true,
+      },
+    });
+    if (!atual) throw new CustomerPortalError('Agendamento nao encontrado', 404);
+    const status = this.normalizeAppointmentStatus(atual.status);
+    if (!['pendente', 'confirmado'].includes(status)) {
+      throw new CustomerPortalError('Esse agendamento nao pode mais ser remarcado', 400);
+    }
+    if (new Date(atual.scheduledAt).getTime() <= Date.now()) {
+      throw new CustomerPortalError('Esse horario ja passou. Fale com a barbearia.', 400);
+    }
+    if (!atual.professionalId || !atual.serviceId) {
+      throw new CustomerPortalError('Esse agendamento precisa ser remarcado pela barbearia', 400);
+    }
+
+    const novo = interpretarDataHora(String(payload?.scheduled_at || '').trim());
+    if (!novo || novo.getTime() < Date.now()) {
+      throw new CustomerPortalError('Data/hora invalida para agendamento', 400);
+    }
+
+    const bloqueioPlano = await this.getPlanDayBlock(context.companyId, context.customerId, novo);
+    if (bloqueioPlano) throw new CustomerPortalError(bloqueioPlano.message, 409);
+
+    const servico = await (prisma as any).appointmentService.findFirst({
+      where: { id: atual.serviceId, companyId: context.companyId },
+      select: { durationMinutes: true },
+    });
+    const duracao = Number(atual.durationMinutes || servico?.durationMinutes || 30);
+    await this.garantirHorarioOfertavel(context.companyId, atual.professionalId, novo, duracao);
+
+    let atualizado: any;
+    try {
+      atualizado = await reservarHorario(
+        {
+          companyId: context.companyId,
+          professionalId: atual.professionalId,
+          inicio: novo,
+          duracaoMinutos: duracao,
+          ignorarId: atual.id,
+        },
+        async (tx) => {
+          // Confere o status de novo dentro da trava: a barbearia pode ter
+          // cancelado enquanto o cliente escolhia o horario.
+          const aindaValido = await (tx as any).appointment.findFirst({
+            where: { id: atual.id, status: { notIn: [...STATUS_QUE_LIBERAM, 'concluido', 'completed'] } },
+            select: { id: true },
+          });
+          if (!aindaValido) {
+            throw new CustomerPortalError('Esse agendamento foi alterado pela barbearia. Atualize a tela.', 409);
+          }
+          return (tx as any).appointment.update({
+            where: { id: atual.id },
+            data: { scheduledAt: novo, durationMinutes: duracao },
+            select: { id: true, scheduledAt: true, status: true, serviceName: true, professionalName: true },
+          });
+        }
+      );
+    } catch (error) {
+      if (error instanceof HorarioOcupadoError) {
+        throw new CustomerPortalError('Horario ja reservado. Escolha outro horario', 409);
+      }
+      throw error;
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        companyId: context.companyId,
+        action: 'CUSTOMER_APPOINTMENT_RESCHEDULED',
+        resource: 'appointments',
+        details: {
+          appointmentId: atual.id,
+          customerId: context.customerId,
+          de: new Date(atual.scheduledAt).toISOString(),
+          para: novo.toISOString(),
+        },
+      },
+    });
+
+    void appointmentNotificationService.avisarMudanca(atual.id, {
+      tipo: 'remarcado',
+      autor: 'cliente',
+      horarioAnterior: new Date(atual.scheduledAt),
+    });
+
+    return {
+      id: atualizado.id,
+      scheduled_at: atualizado.scheduledAt,
+      status: this.normalizeAppointmentStatus(atualizado.status),
+      service_name: atualizado.serviceName,
+      professional_name: nomePublicoProfissional(atualizado.professionalName),
+    };
+  }
+
   async cancelMyAppointment(auth: AuthenticatedCustomer, appointmentId: string) {
     const context = await this.getCustomerContext(auth);
     const id = String(appointmentId || '').trim();
@@ -321,6 +473,11 @@ export class CustomerPortalService {
     if (normalizedStatus === 'cancelado' || normalizedStatus === 'concluido') {
       throw new CustomerPortalError('Agendamento nao pode mais ser cancelado', 400);
     }
+    // Depois do horario, cancelar apagaria um "nao veio" que a barbearia ainda
+    // vai registrar. Quem ja passou do horario fala com a barbearia.
+    if (new Date(appointment.scheduledAt).getTime() <= Date.now()) {
+      throw new CustomerPortalError('Esse horario ja passou. Fale com a barbearia.', 400);
+    }
 
     const updated = await (prisma as any).appointment.update({
       where: { id },
@@ -341,6 +498,9 @@ export class CustomerPortalService {
         },
       },
     });
+
+    // O barbeiro e o dono precisam saber: senao ficam esperando quem nao vem.
+    void appointmentNotificationService.avisarMudanca(updated.id, { tipo: 'cancelado', autor: 'cliente' });
 
     return {
       id: updated.id,
@@ -608,108 +768,64 @@ export class CustomerPortalService {
       throw new CustomerPortalError('Servico ou profissional invalido', 400);
     }
 
-    // Espelha a faixa que listAvailableSlots oferece. Sem esta checagem o
-    // cliente poderia forjar um horario fora dela mandando o payload na mao.
-    const slotStartMinutes = scheduledAt.getHours() * 60 + scheduledAt.getMinutes();
-    const slotEndMinutes = slotStartMinutes + Number(service.durationMinutes || 30);
-    const casa = await resolverHorarioDaCasa(prisma as any, context.companyId, {
-      inicioMinutos: CLIENTE_INICIO_MINUTOS,
-      fimMinutos: CLIENTE_FIM_MINUTOS,
-    });
-    if (slotStartMinutes < casa.inicioMinutos || slotEndMinutes > casa.fimMinutos) {
-      throw new CustomerPortalError('Horario fora da janela de agendamento', 409);
-    }
+    await this.garantirHorarioOfertavel(context.companyId, professional.userId, scheduledAt, Number(service.durationMinutes || 30));
 
-    const dayStart = new Date(scheduledAt);
-    dayStart.setHours(0, 0, 0, 0);
-
-    // O horario pode estar dentro da janela semanal mas bloqueado pontualmente.
-    const blockedIntervals = await getBlockedIntervals(
-      context.companyId,
-      professional.userId,
-      dayStart
-    );
-    const requestedStartMs = scheduledAt.getTime();
-    const requestedEndMs = requestedStartMs + Number(service.durationMinutes || 30) * 60 * 1000;
-    if (isIntervalBlocked(blockedIntervals, requestedStartMs, requestedEndMs)) {
-      throw new CustomerPortalError(
-        'Horario indisponivel: o profissional bloqueou esse periodo',
-        409
+    const duracao = Number(service.durationMinutes || 30);
+    let created: any;
+    try {
+      created = await reservarHorario(
+        {
+          companyId: context.companyId,
+          professionalId: professional.userId,
+          inicio: scheduledAt,
+          duracaoMinutos: duracao,
+        },
+        (tx) =>
+          (tx as any).appointment.create({
+            data: {
+              companyId: context.companyId,
+              customerId: context.customerId,
+              serviceId: service.id,
+              professionalId: professional.userId,
+              customerName: context.customer.name,
+              serviceName: service.name,
+              professionalName: professional.user.fullName,
+              scheduledAt,
+              durationMinutes: duracao,
+              status: 'pendente',
+            },
+            select: {
+              id: true,
+              scheduledAt: true,
+              status: true,
+              serviceName: true,
+              professionalName: true,
+            },
+          })
       );
+    } catch (error) {
+      if (error instanceof HorarioOcupadoError) {
+        // Pedido repetido depois de queda de rede: o "conflito" e o proprio
+        // agendamento que ele acabou de criar. Devolve o que ja esta gravado.
+        const repetido = await agendamentoRepetido(
+          context.companyId,
+          context.customerId,
+          scheduledAt,
+          service.id
+        );
+        if (repetido) {
+          return {
+            id: repetido.id,
+            scheduled_at: repetido.scheduledAt,
+            status: repetido.status,
+            service_name: repetido.serviceName,
+            professional_name: nomePublicoProfissional(repetido.professionalName),
+          };
+        }
+        throw new CustomerPortalError('Horario ja reservado. Escolha outro horario', 409);
+      }
+      throw error;
     }
-    const dayEnd = new Date(scheduledAt);
-    dayEnd.setHours(23, 59, 59, 999);
-    const booked = await (prisma as any).appointment.findMany({
-      where: {
-        companyId: context.companyId,
-        professionalId: professional.userId,
-        scheduledAt: { gte: dayStart, lte: dayEnd },
-        status: { notIn: ['cancelado', 'cancelled', 'no_show', 'no-show'] },
-      },
-      select: { id: true, scheduledAt: true, serviceId: true },
-    });
-    const bookedServiceIds = Array.from(
-      new Set(booked.map((item: any) => item.serviceId).filter((id: any) => typeof id === 'string'))
-    );
-    const bookedServices = bookedServiceIds.length
-      ? await (prisma as any).appointmentService.findMany({
-          where: { id: { in: bookedServiceIds } },
-          select: { id: true, durationMinutes: true },
-        })
-      : [];
-    const durationMap = new Map<string, number>(
-      bookedServices.map((item: any) => [item.id, Number(item.durationMinutes || 30)])
-    );
-    const overlaps = (aStart: number, aEnd: number, bStart: number, bEnd: number) =>
-      aStart < bEnd && bStart < aEnd;
-    const hasConflict = booked.some((item: any) => {
-      const bookedStart = new Date(item.scheduledAt).getTime();
-      const bookedDuration = Number(durationMap.get(item.serviceId || '') || service.durationMinutes || 30);
-      const bookedEnd = bookedStart + bookedDuration * 60 * 1000;
-      return overlaps(
-        scheduledAt.getTime(),
-        scheduledAt.getTime() + Number(service.durationMinutes || 30) * 60 * 1000,
-        bookedStart,
-        bookedEnd
-      );
-    });
-    if (hasConflict) {
-      throw new CustomerPortalError('Horario ja reservado. Escolha outro horario', 409);
-    }
-
-    const conflict = await (prisma as any).appointment.findFirst({
-      where: {
-        companyId: context.companyId,
-        professionalId: professional.userId,
-        scheduledAt,
-        status: { in: ['pendente', 'confirmado'] },
-      },
-      select: { id: true },
-    });
-    if (conflict) {
-      throw new CustomerPortalError('Horario ja reservado. Escolha outro horario', 409);
-    }
-
-    const created = await (prisma as any).appointment.create({
-      data: {
-        companyId: context.companyId,
-        customerId: context.customerId,
-        serviceId: service.id,
-        professionalId: professional.userId,
-        customerName: context.customer.name,
-        serviceName: service.name,
-        professionalName: professional.user.fullName,
-        scheduledAt,
-        status: 'pendente',
-      },
-      select: {
-        id: true,
-        scheduledAt: true,
-        status: true,
-        serviceName: true,
-        professionalName: true,
-      },
-    });
 
     // Depois de gravar e sem await: aviso fora do ar nao desfaz a marcacao.
     void appointmentNotificationService.avisarCriacao(created.id, 'portal do cliente');
@@ -725,9 +841,11 @@ export class CustomerPortalService {
 
   async listAvailableSlots(
     auth: AuthenticatedCustomer,
-    params: { date?: string; service_id?: string; professional_id?: string }
+    params: { date?: string; service_id?: string; professional_id?: string; ignorar_id?: string }
   ) {
     const context = await this.getCustomerContext(auth);
+    // Na remarcacao, o horario atual do proprio cliente nao conta como ocupado.
+    const ignorarId = String(params.ignorar_id || '').trim();
     const dateRaw = String(params.date || '').trim();
     const serviceId = String(params.service_id || '').trim();
     const professionalId = String(params.professional_id || '').trim();
@@ -794,24 +912,14 @@ export class CustomerPortalService {
         companyId: context.companyId,
         professionalId: professional.userId,
         scheduledAt: { gte: startDate, lte: endDate },
-        status: { notIn: ['cancelado', 'cancelled', 'no_show', 'no-show'] },
+        status: { notIn: STATUS_QUE_LIBERAM },
+        ...(ignorarId ? { NOT: { id: ignorarId, customerId: context.customerId } } : {}),
       },
-      select: { scheduledAt: true, serviceId: true },
+      select: { scheduledAt: true, serviceId: true, durationMinutes: true },
       orderBy: { scheduledAt: 'asc' },
     });
 
-    const bookedServiceIds = Array.from(
-      new Set(booked.map((item: any) => item.serviceId).filter((id: any) => typeof id === 'string'))
-    );
-    const bookedServices = bookedServiceIds.length
-      ? await (prisma as any).appointmentService.findMany({
-          where: { id: { in: bookedServiceIds } },
-          select: { id: true, durationMinutes: true },
-        })
-      : [];
-    const durationMap = new Map<string, number>(
-      bookedServices.map((item: any) => [item.id, Number(item.durationMinutes || 30)])
-    );
+    const durationMap = await duracoesDosServicosSemDuracao(prisma, booked);
 
     // Bloqueios de agenda do barbeiro neste dia (almoco, folga, medico).
     const blockedIntervals = await getBlockedIntervals(
@@ -839,7 +947,7 @@ export class CustomerPortalService {
 
         const blocked = booked.some((item: any) => {
           const bookedStart = new Date(item.scheduledAt);
-          const bookedDuration = Number(durationMap.get(item.serviceId || '') || slotDuration);
+          const bookedDuration = duracaoDoAgendamento(item, durationMap, slotDuration);
           const bookedEnd = new Date(bookedStart);
           bookedEnd.setMinutes(bookedEnd.getMinutes() + bookedDuration);
           return overlaps(slotStart.getTime(), slotEnd.getTime(), bookedStart.getTime(), bookedEnd.getTime());

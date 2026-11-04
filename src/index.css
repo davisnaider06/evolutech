@@ -179,3 +179,29 @@
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+/*
+ * iPhone da zoom na tela inteira ao tocar num campo com fonte menor que 16px,
+ * e nao desfaz sozinho. Varios campos do app usam 14-15px; no celular todos
+ * passam a 16px. O !important e de proposito: precisa vencer as classes de
+ * tamanho de texto de cada campo.
+ */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Quem pediu menos movimento no sistema nao ve animacao decorativa. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
