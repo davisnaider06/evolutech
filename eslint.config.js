@@ -21,6 +21,10 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "@typescript-eslint/no-unused-vars": "off",
+      // ~900 usos antigos de `any`, quase todos em respostas da API. Fica como
+      // aviso para nao crescer; tipar tudo de uma vez mudaria muito codigo sem
+      // ganho para quem usa o app.
+      "@typescript-eslint/no-explicit-any": "warn",
     },
   },
 );

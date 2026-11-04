@@ -69,7 +69,7 @@ async function ensureSuperAdmin() {
 async function ensureBaseCatalog() {
   // A definicao da barbearia mora em prisma/barbearia-modulos.js, junto com o
   // script que aplica ela numa empresa. Aqui ela so e materializada no catalogo.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- arquivo .js compartilhado com script CommonJS
   const { MODULOS_BARBEARIA } = require('./barbearia-modulos');
 
   // 'vendas' e 'courses' nao fazem parte da barbearia, mas seguem no catalogo:

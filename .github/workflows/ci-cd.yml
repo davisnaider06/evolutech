@@ -1,5 +1,6 @@
 # CI: a cada push e pull request confere tipos e build do front e do backend.
-# CD: na main, só depois de todo o CI passar, dispara o deploy do backend no Render.
+# CD: o Render faz o deploy da main sozinho, com Auto-Deploy = "After CI Checks Pass"
+#     (espera estes jobs passarem). Sem deploy hook nem secret.
 # O front sobe pela integração Git da Vercel (vercel.json), fora deste workflow.
 name: CI/CD
 
@@ -29,10 +30,8 @@ jobs:
         run: npx tsc -p tsconfig.app.json --noEmit
       - name: Build
         run: npm run build
-      # Ainda há ~900 erros de lint antigos. Roda para dar visibilidade, mas não
-      # barra o deploy; quando zerar, tirar o continue-on-error.
-      - name: Lint (informativo)
-        continue-on-error: true
+      # Erros barram o deploy. `any` e dependencias de hooks ficam como aviso.
+      - name: Lint
         run: npm run lint
 
   backend:
@@ -59,21 +58,3 @@ jobs:
       - run: npx prisma generate
       - name: Build
         run: npm run build
-
-  deploy:
-    name: Deploy do backend (main)
-    runs-on: ubuntu-latest
-    needs: [frontend, backend]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    environment: producao
-    steps:
-      - name: Dispara o deploy no Render
-        env:
-          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
-        run: |
-          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
-            echo "::warning::Secret RENDER_DEPLOY_HOOK_URL não configurado; deploy não disparado."
-            exit 0
-          fi
-          curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL"
-          echo "Deploy disparado para ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"

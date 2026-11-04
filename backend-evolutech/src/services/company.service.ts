@@ -32,6 +32,7 @@ import { CustomerAuthError, CustomerAuthService } from './customer-auth.service'
 import { reviewService } from './review.service';
 import { decidirBarbeiro, ehQualquerBarbeiro, horariosDeQualquerBarbeiro } from '../utils/escolha-barbeiro.util';
 import { pushService } from './push.service';
+import { enviarEmail, provedorDeEmail } from '../utils/email.util';
 import {
   HorarioOcupadoError,
   agendamentoRepetido,
@@ -2258,12 +2259,10 @@ export class CompanyService {
     company?: { id: string; name: string; slug: string } | null;
     createdByUser?: { id: string; fullName: string; email: string } | null;
   }) {
-    const apiKey = String(process.env.RESEND_API_KEY || '').trim();
     const toEmail = String(process.env.SUPPORT_NOTIFICATION_EMAIL || '').trim();
-    const fromEmail = String(process.env.SUPPORT_FROM_EMAIL || 'iBarber <onboarding@resend.dev>').trim();
 
-    if (!apiKey || !toEmail) {
-      console.info('[support-email] skipped: missing RESEND_API_KEY or SUPPORT_NOTIFICATION_EMAIL');
+    if (!provedorDeEmail() || !toEmail) {
+      console.info('[support-email] skipped: sem provedor de e-mail ou SUPPORT_NOTIFICATION_EMAIL');
       return;
     }
 
@@ -2282,15 +2281,9 @@ export class CompanyService {
       ? ticket.createdAt.toLocaleString('pt-BR')
       : String(ticket.createdAt || '');
 
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: fromEmail,
-        to: [toEmail],
+    const resultado = await enviarEmail({
+        contexto: 'suporte',
+        to: toEmail,
         subject: `[Suporte] ${companyName} - ${ticket.title}`,
         html: `
           <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #111827;">
@@ -2305,12 +2298,10 @@ export class CompanyService {
             <p style="white-space: pre-wrap;">${escapeHtml(ticket.description)}</p>
           </div>
         `,
-      }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      throw new Error(`Falha ao enviar email de suporte: ${response.status} ${errorText}`.trim());
+    if (!resultado.sent) {
+      throw new Error(`Falha ao enviar email de suporte: ${resultado.error || resultado.skipped || ''}`.trim());
     }
   }
 
