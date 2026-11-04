@@ -1,6 +1,7 @@
 # CI: a cada push e pull request confere tipos e build do front e do backend.
-# CD: o Render faz o deploy da main sozinho, com Auto-Deploy = "After CI Checks Pass"
-#     (espera estes jobs passarem). Sem deploy hook nem secret.
+# CD: na main, só depois de todo o CI passar, dispara o deploy do backend no
+#     Render pelo deploy hook (secret RENDER_DEPLOY_HOOK_URL). O Auto-Deploy do
+#     Render fica OFF, senão cada merge sobe duas vezes.
 # O front sobe pela integração Git da Vercel (vercel.json), fora deste workflow.
 name: CI/CD
 
@@ -58,3 +59,23 @@ jobs:
       - run: npx prisma generate
       - name: Build
         run: npm run build
+
+  deploy:
+    name: Deploy do backend (main)
+    runs-on: ubuntu-latest
+    needs: [frontend, backend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: producao
+    steps:
+      - name: Dispara o deploy no Render
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          # Sem o secret o job FALHA: antes ele so avisava e aparecia como
+          # "success" sem ter feito deploy nenhum.
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::error::Secret RENDER_DEPLOY_HOOK_URL nao configurado; deploy nao disparado."
+            exit 1
+          fi
+          curl -fsS --retry 3 --retry-delay 5 -X POST "$RENDER_DEPLOY_HOOK_URL" > /dev/null
+          echo "Deploy do backend disparado no Render para ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
