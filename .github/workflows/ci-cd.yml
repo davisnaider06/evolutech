@@ -1,5 +1,7 @@
 # CI: a cada push e pull request confere tipos e build do front e do backend.
-# CD: na main, só depois de todo o CI passar, dispara o deploy do backend no Render.
+# CD: na main, só depois de todo o CI passar, dispara o deploy do backend no
+#     Render pelo deploy hook (secret RENDER_DEPLOY_HOOK_URL). O Auto-Deploy do
+#     Render fica OFF, senão cada merge sobe duas vezes.
 # O front sobe pela integração Git da Vercel (vercel.json), fora deste workflow.
 name: CI/CD
 
@@ -29,10 +31,8 @@ jobs:
         run: npx tsc -p tsconfig.app.json --noEmit
       - name: Build
         run: npm run build
-      # Ainda há ~900 erros de lint antigos. Roda para dar visibilidade, mas não
-      # barra o deploy; quando zerar, tirar o continue-on-error.
-      - name: Lint (informativo)
-        continue-on-error: true
+      # Erros barram o deploy. `any` e dependencias de hooks ficam como aviso.
+      - name: Lint
         run: npm run lint
 
   backend:
@@ -71,9 +71,11 @@ jobs:
         env:
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
+          # Sem o secret o job FALHA: antes ele so avisava e aparecia como
+          # "success" sem ter feito deploy nenhum.
           if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
-            echo "::warning::Secret RENDER_DEPLOY_HOOK_URL não configurado; deploy não disparado."
-            exit 0
+            echo "::error::Secret RENDER_DEPLOY_HOOK_URL nao configurado; deploy nao disparado."
+            exit 1
           fi
-          curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL"
-          echo "Deploy disparado para ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
+          curl -fsS --retry 3 --retry-delay 5 -X POST "$RENDER_DEPLOY_HOOK_URL" > /dev/null
+          echo "Deploy do backend disparado no Render para ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"

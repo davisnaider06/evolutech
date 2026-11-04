@@ -1,13 +1,13 @@
 /**
  * Envio de e-mail para o cliente final da barbearia.
  *
- * Usa o Resend, o mesmo provedor que o modulo de suporte ja usava. Todo envio
- * e best-effort: se a chave nao estiver configurada, ou o provedor recusar,
+ * O envio em si (Gmail via SMTP ou Resend) fica em utils/email.util. Todo envio
+ * e best-effort: se nenhum provedor estiver configurado, ou ele recusar,
  * o erro e registrado e a operacao que chamou segue adiante. Cobranca e
  * assinatura nunca podem quebrar porque um e-mail falhou.
  */
 
-const RESEND_ENDPOINT = 'https://api.resend.com/emails';
+import { enviarEmail } from '../utils/email.util';
 
 const escapeHtml = (value: unknown) =>
   String(value ?? '').replace(/[<>&"]/g, (char) => {
@@ -70,56 +70,8 @@ function montarLayout(params: {
 }
 
 export class NotificationService {
-  private get apiKey() {
-    return String(process.env.RESEND_API_KEY || '').trim();
-  }
-
-  private get fromEmail() {
-    return String(process.env.SUPPORT_FROM_EMAIL || 'iBarber <onboarding@resend.dev>').trim();
-  }
-
-  private async enviar(params: {
-    to: string;
-    subject: string;
-    html: string;
-    contexto: string;
-  }): Promise<EmailResult> {
-    const destino = String(params.to || '').trim();
-    if (!this.apiKey) {
-      console.info(`[email] ${params.contexto}: ignorado, RESEND_API_KEY nao configurada`);
-      return { sent: false, skipped: 'sem RESEND_API_KEY' };
-    }
-    if (!destino || !destino.includes('@')) {
-      console.info(`[email] ${params.contexto}: ignorado, cliente sem e-mail valido`);
-      return { sent: false, skipped: 'cliente sem e-mail' };
-    }
-
-    try {
-      const response = await fetch(RESEND_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: this.fromEmail,
-          to: [destino],
-          subject: params.subject,
-          html: params.html,
-        }),
-      });
-
-      if (!response.ok) {
-        const detalhe = await response.text().catch(() => '');
-        console.error(`[email] ${params.contexto}: provedor recusou (${response.status}) ${detalhe.slice(0, 200)}`);
-        return { sent: false, error: `HTTP ${response.status}` };
-      }
-      console.info(`[email] ${params.contexto}: enviado para ${destino}`);
-      return { sent: true };
-    } catch (error: any) {
-      console.error(`[email] ${params.contexto}: falhou -`, error?.message);
-      return { sent: false, error: String(error?.message || 'erro desconhecido') };
-    }
+  private enviar(params: { to: string; subject: string; html: string; contexto: string }): Promise<EmailResult> {
+    return enviarEmail(params);
   }
 
   /** Pagamento confirmado: a mensalidade esta valendo. */
