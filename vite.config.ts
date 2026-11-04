@@ -12,7 +12,8 @@ export default defineConfig(() => ({
   plugins: [
     react(),
     VitePWA({
-      registerType: "autoUpdate",
+      // "prompt": a versao nova espera a pessoa tocar em Atualizar (ver main.tsx).
+      registerType: "prompt",
       injectRegister: "auto",
       workbox: {
         navigateFallback: "/index.html",
@@ -25,10 +26,23 @@ export default defineConfig(() => ({
         // inteiro. Nao compensa o risco para dois listeners.
         importScripts: ["/push-sw.js"],
         // Ja e carregado via importScripts; precachear de novo so duplicaria.
-        globIgnores: ["**/push-sw.js"],
+        // Os pedacos pesados que so o dono usa (Excel, graficos, painel admin
+        // legado) ficam fora do precache: sem isto o celular do cliente baixava
+        // 2,6 MB em segundo plano so por abrir o link de agendamento. Eles vem
+        // da rede quando a tela abre e ficam no cache de runtime abaixo.
+        globIgnores: ["**/push-sw.js", "**/xlsx-*.js", "**/PieChart-*.js", "**/client-*.js"],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         globPatterns: ["**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,woff2}"],
         runtimeCaching: [
+          {
+            // Arquivos com hash no nome nunca mudam: o que veio uma vez serve.
+            urlPattern: ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith("/assets/"),
+            handler: "CacheFirst",
+            options: {
+              cacheName: "assets-sob-demanda",
+              expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 60 },
+            },
+          },
           {
             urlPattern: ({ url }) => url.pathname.startsWith("/api/"),
             handler: "NetworkOnly",
@@ -45,12 +59,13 @@ export default defineConfig(() => ({
         background_color: "#fafafa",
         theme_color: "#a3822a",
         lang: "pt-BR",
+        // 192 e 512 sao o minimo para o Chrome oferecer "Instalar app"; o
+        // maskable preenche o formato do icone no Android sem borda branca.
         icons: [
-          {
-            src: "/favicon.ico",
-            sizes: "64x64 32x32 24x24 16x16",
-            type: "image/x-icon",
-          },
+          { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          { src: "/icons/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+          { src: "/favicon.ico", sizes: "64x64 32x32 24x24 16x16", type: "image/x-icon" },
         ],
       },
     }),

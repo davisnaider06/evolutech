@@ -12,6 +12,7 @@
  * "Concluir e receber" da agenda, para o dinheiro entrar no caixa.
  */
 import React, { useCallback, useEffect, useState } from 'react';
+import { useAtualizacaoAutomatica } from '@/hooks/useAtualizacaoAutomatica';
 import { toast } from 'sonner';
 import { CheckCircle2, UserX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -63,6 +64,8 @@ export const AtendimentosSemBaixa: React.FC<{ onAlterado?: () => void; mostrarBa
   useEffect(() => {
     buscar();
   }, [buscar]);
+
+  useAtualizacaoAutomatica(buscar, { intervaloMs: 120_000 });
 
   const depois = () => {
     buscar();

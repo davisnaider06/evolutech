@@ -171,6 +171,118 @@ class AppointmentNotificationService {
     }
   }
 
+  /**
+   * Algo mudou num agendamento que ja existia (ou a equipe criou um).
+   *
+   * Antes so a criacao pelo link/portal avisava alguem. Cancelamento do
+   * cliente nao chegava ao barbeiro, e o que a equipe mudava nao chegava ao
+   * cliente nem ao barbeiro designado.
+   *
+   * Regras: quem fez a mudanca nao recebe o proprio aviso. Mudanca do cliente
+   * avisa a equipe (push) e o dono (e-mail). Mudanca da equipe avisa o
+   * barbeiro do horario (e o anterior, se trocou) e o cliente (push).
+   * Chamar sem await, depois de gravar.
+   */
+  async avisarMudanca(
+    appointmentId: string,
+    opcoes: {
+      tipo: 'criado' | 'alterado' | 'remarcado' | 'cancelado';
+      autor: 'cliente' | 'equipe';
+      autorUserId?: string;
+      horarioAnterior?: Date | null;
+      barbeiroAnteriorId?: string | null;
+    }
+  ) {
+    try {
+      const agendamento = await this.carregar(appointmentId);
+      if (!agendamento) return;
+
+      const destinatarios = await this.destinatarios(agendamento);
+      const quando = horario(agendamento.scheduledAt);
+      const antes = opcoes.horarioAnterior ? horario(opcoes.horarioAnterior) : null;
+      const cliente = agendamento.customerName || agendamento.customer?.name || 'Cliente';
+      const profissional = agendamento.professionalName || 'A definir';
+      const tag = `agendamento-${agendamento.id}`;
+      const envios: Promise<unknown>[] = [];
+
+      if (opcoes.autor === 'cliente') {
+        const titulo = opcoes.tipo === 'cancelado' ? `Cancelou: ${cliente}` : `Remarcou: ${cliente}`;
+        const corpo =
+          opcoes.tipo === 'cancelado'
+            ? `${agendamento.serviceName} - ${quando}. O horario ficou livre.`
+            : `${agendamento.serviceName}: ${antes ? `${antes} -> ` : ''}${quando}`;
+        envios.push(
+          pushService.enviarParaUsuarios(destinatarios.equipeUserIds, {
+            title: titulo,
+            body: corpo,
+            url: '/empresa/agendamentos',
+            tag,
+          })
+        );
+        for (const to of destinatarios.donoEmails) {
+          envios.push(
+            notificationService.mudancaDeAgendamento({
+              to,
+              companyName: agendamento.company.name,
+              titulo: opcoes.tipo === 'cancelado' ? 'Agendamento cancelado' : 'Agendamento remarcado',
+              customerName: cliente,
+              serviceName: agendamento.serviceName,
+              professionalName: profissional,
+              texto: corpo,
+            })
+          );
+        }
+      } else {
+        // Equipe: avisa o barbeiro do horario (e o anterior, se mudou),
+        // menos quem fez a alteracao. O dono ja esta olhando a tela.
+        const barbeiros = new Set<string>();
+        if (agendamento.professionalId) barbeiros.add(agendamento.professionalId);
+        if (opcoes.barbeiroAnteriorId) barbeiros.add(opcoes.barbeiroAnteriorId);
+        if (opcoes.autorUserId) barbeiros.delete(opcoes.autorUserId);
+
+        const tituloEquipe =
+          opcoes.tipo === 'criado'
+            ? `Novo agendamento: ${cliente}`
+            : opcoes.tipo === 'cancelado'
+              ? `Cancelado: ${cliente}`
+              : `Agendamento alterado: ${cliente}`;
+        if (barbeiros.size > 0) {
+          envios.push(
+            pushService.enviarParaUsuarios(Array.from(barbeiros), {
+              title: tituloEquipe,
+              body: `${agendamento.serviceName} com ${profissional} - ${quando}`,
+              url: '/empresa/agendamentos',
+              tag,
+            })
+          );
+        }
+
+        if (destinatarios.clienteAccountId) {
+          const paraCliente =
+            opcoes.tipo === 'criado'
+              ? { title: 'Agendamento marcado', body: `${agendamento.serviceName} com ${profissional} - ${quando}` }
+              : opcoes.tipo === 'cancelado'
+                ? {
+                    title: 'Seu horario foi cancelado',
+                    body: `${agendamento.serviceName} - ${quando}. Fale com a barbearia para remarcar.`,
+                  }
+                : { title: 'Seu horario mudou', body: `${agendamento.serviceName} com ${profissional} - ${quando}` };
+          envios.push(
+            pushService.enviarParaClientes([destinatarios.clienteAccountId], {
+              ...paraCliente,
+              url: '/cliente/dashboard',
+              tag,
+            })
+          );
+        }
+      }
+
+      await Promise.allSettled(envios);
+    } catch (error: any) {
+      console.warn(`[agendamento] falha ao avisar ${opcoes.tipo} de ${appointmentId}:`, error?.message);
+    }
+  }
+
   /** Um ciclo do job de lembretes. */
   async executarLembretes(agora = new Date()) {
     const resultado = { lembretes: 0, erros: 0 };

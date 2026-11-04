@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { requisitar } from '@/lib/rede';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,7 +19,7 @@ type Tipo = 'equipe' | 'cliente';
 const SENHA_MINIMA = 6;
 
 const postar = async (caminho: string, corpo: Record<string, unknown>) => {
-  const resposta = await fetch(`${API_URL}${caminho}`, {
+  const resposta = await requisitar(`${API_URL}${caminho}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(corpo),

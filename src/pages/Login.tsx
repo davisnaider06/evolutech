@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { requisitar } from '@/lib/rede';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { LogoMarca } from '@/components/Logo';
@@ -59,7 +60,7 @@ const Login: React.FC = () => {
 
     try {
       // Bate no nosso backend local na nova rota de auth
-      const response = await fetch(`${API_URL}/auth/login`, {
+      const response = await requisitar(`${API_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -87,7 +88,7 @@ const Login: React.FC = () => {
           ? data.user.modules
           : data.company?.modules || [];
         if (modulos.length === 0) {
-          const me = await fetch(`${API_URL}/auth/me`, {
+          const me = await requisitar(`${API_URL}/auth/me`, {
             headers: { Authorization: `Bearer ${data.token}` },
           })
             .then((resposta) => (resposta.ok ? resposta.json() : null))

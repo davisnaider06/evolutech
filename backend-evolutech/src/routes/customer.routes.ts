@@ -17,6 +17,7 @@ router.get('/appointments', controller.listMyAppointments.bind(controller));
 router.get('/appointments/slots', controller.listAvailableSlots.bind(controller));
 router.post('/appointments', controller.createMyAppointment.bind(controller));
 router.patch('/appointments/:appointmentId/cancel', controller.cancelMyAppointment.bind(controller));
+router.patch('/appointments/:appointmentId/reschedule', controller.rescheduleMyAppointment.bind(controller));
 router.post('/appointments/:appointmentId/review', reviewController.avaliar.bind(reviewController));
 router.get('/plans', controller.listAvailablePlans.bind(controller));
 router.get('/subscriptions', controller.listMySubscriptions.bind(controller));

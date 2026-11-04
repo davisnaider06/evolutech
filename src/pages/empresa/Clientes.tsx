@@ -862,16 +862,19 @@ const Clientes: React.FC = () => {
               </Button>
               {/* O cliente se cadastra so com WhatsApp: sem e-mail, o
                   "esqueci a senha" nao tem para onde mandar o link. Quem
-                  atende gera aqui e manda pela conversa. */}
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={gerandoLinkSenha || !historyTarget?.id}
-                onClick={() => gerarLinkSenha(historyTarget)}
-              >
-                {gerandoLinkSenha ? 'Gerando...' : 'Link de nova senha'}
-              </Button>
+                  atende gera aqui e manda pela conversa. So o dono: quem tem
+                  o link entra na conta do cliente. */}
+              {!isEmployee && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={gerandoLinkSenha || !historyTarget?.id}
+                  onClick={() => gerarLinkSenha(historyTarget)}
+                >
+                  {gerandoLinkSenha ? 'Gerando...' : 'Link de nova senha'}
+                </Button>
+              )}
             </div>
             {linkSenha && (
               <div className="mt-2 space-y-2 rounded-md border bg-muted/40 p-3 text-sm">

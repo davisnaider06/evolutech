@@ -2,7 +2,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
+import { AvisoDeConexao } from "@/components/AvisoDeConexao";
 
 import { AuthProvider } from "@/contexts/AuthContext"; 
 import { CustomerAuthProvider } from "@/contexts/CustomerAuthContext";
@@ -14,62 +16,66 @@ import { RoleRedirect } from "@/components/guards/RoleRedirect";
 import { AdminEvolutechLayout } from "@/components/layouts/AdminEvolutechLayout";
 import { EmpresaLayout } from "@/components/layouts/EmpresaLayout";
 
+// Cada tela vira um arquivo proprio, baixado so quando aberta. Antes era um
+// JS unico de 2,3 MB: o cliente que so queria marcar um corte baixava junto o
+// leitor de Excel, os graficos e o painel do admin.
+
 // Public pages
-import Index from "./pages/Index";
-import Login from "./pages/Login";
-import RedefinirSenha from "./pages/RedefinirSenha";
-import AcceptInvite from "./pages/AcceptInvite";
-import NotFound from "./pages/NotFound";
-import Landing from "./pages/Landing";
-import CustomerLogin from "./pages/customer/CustomerLogin";
-import CustomerRegister from "./pages/customer/CustomerRegister";
-import CustomerDashboard from "./pages/customer/CustomerDashboard";
+const Index = lazy(() => import("./pages/Index"));
+const Login = lazy(() => import("./pages/Login"));
+const RedefinirSenha = lazy(() => import("./pages/RedefinirSenha"));
+const AcceptInvite = lazy(() => import("./pages/AcceptInvite"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const Landing = lazy(() => import("./pages/Landing"));
+const CustomerLogin = lazy(() => import("./pages/customer/CustomerLogin"));
+const CustomerRegister = lazy(() => import("./pages/customer/CustomerRegister"));
+const CustomerDashboard = lazy(() => import("./pages/customer/CustomerDashboard"));
 
 // Admin Evolutech pages
-import AdminDashboard from "./pages/admin/AdminDashboard";
-import GestaoSistemasBase from "./pages/admin/GestaoSistemasBase";
-import GatewaysPagamento from "./pages/admin/GatewaysPagamento";
-import WhatsAppAutomacao from "./pages/admin/WhatsAppAutomacao";
-import GerenciarUsuarios from "./pages/admin/GerenciarUsuarios";
-import ChatbotsManager from "./pages/admin/ChatbotsManager";
-import SystemVerification from "./pages/admin/SystemVerification";
-import TemaGlobal from "./pages/admin/TemaGlobal";
-import Empresas from "./pages/Empresas";
-import Usuarios from "./pages/Usuarios";
-import Configuracoes from "./pages/Configuracoes";
-import Modulos from "./pages/Modulos";
-import Suporte from "./pages/Suporte";
-import Evolucoes from "./pages/Evolucoes";
-import Treinamentos from "./pages/Treinamentos";
-import MetricasGlobais from "./pages/MetricasGlobais";
-import Financeiro from "./pages/Financeiro";
-import Logs from "./pages/Logs";
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
+const GestaoSistemasBase = lazy(() => import("./pages/admin/GestaoSistemasBase"));
+const GatewaysPagamento = lazy(() => import("./pages/admin/GatewaysPagamento"));
+const WhatsAppAutomacao = lazy(() => import("./pages/admin/WhatsAppAutomacao"));
+const GerenciarUsuarios = lazy(() => import("./pages/admin/GerenciarUsuarios"));
+const ChatbotsManager = lazy(() => import("./pages/admin/ChatbotsManager"));
+const SystemVerification = lazy(() => import("./pages/admin/SystemVerification"));
+const TemaGlobal = lazy(() => import("./pages/admin/TemaGlobal"));
+const Empresas = lazy(() => import("./pages/Empresas"));
+const Usuarios = lazy(() => import("./pages/Usuarios"));
+const Configuracoes = lazy(() => import("./pages/Configuracoes"));
+const Modulos = lazy(() => import("./pages/Modulos"));
+const Suporte = lazy(() => import("./pages/Suporte"));
+const Evolucoes = lazy(() => import("./pages/Evolucoes"));
+const Treinamentos = lazy(() => import("./pages/Treinamentos"));
+const MetricasGlobais = lazy(() => import("./pages/MetricasGlobais"));
+const Financeiro = lazy(() => import("./pages/Financeiro"));
+const Logs = lazy(() => import("./pages/Logs"));
 
 // Public chatbot page
-import ChatbotPublic from "./pages/ChatbotPublic";
+const ChatbotPublic = lazy(() => import("./pages/ChatbotPublic"));
 
 // Empresa pages
-import EmpresaDashboard from "./pages/empresa/EmpresaDashboard";
-import EmpresaApp from "./pages/empresa/EmpresaApp";
-import ConvitesEquipe from "./pages/empresa/ConvitesEquipe";
-import PermissoesEquipe from "./pages/empresa/PermissoesEquipe";
-import Clientes from "./pages/empresa/Clientes";
-import Produtos from "./pages/empresa/Produtos";
-import Agendamentos from "./pages/empresa/Agendamentos";
-import ServicosAgendamento from "./pages/empresa/ServicosAgendamento";
-import AgendamentoCliente from "./pages/empresa/AgedamentoCliente";
-import ConfirmarAgendamento from "./pages/customer/ConfirmarAgendamento";
-import Pedidos from "./pages/empresa/Pedidos";
-import Pdv from "./pages/empresa/Pdv";
-import Caixa from "./pages/empresa/Caixa";
-import Relatorios from "./pages/empresa/Relatorios";
-import GatewaysEmpresa from "./pages/empresa/Gateways";
-import Cobrancas from "./pages/empresa/Cobrancas";
-import Comissoes from "./pages/empresa/Comissoes";
-import Fidelidade from "./pages/empresa/Fidelidade";
-import Assinaturas from "./pages/empresa/Assinaturas";
-import Cursos from "./pages/empresa/Cursos";
-import Avaliacoes from "./pages/empresa/Avaliacoes";
+const EmpresaDashboard = lazy(() => import("./pages/empresa/EmpresaDashboard"));
+const EmpresaApp = lazy(() => import("./pages/empresa/EmpresaApp"));
+const ConvitesEquipe = lazy(() => import("./pages/empresa/ConvitesEquipe"));
+const PermissoesEquipe = lazy(() => import("./pages/empresa/PermissoesEquipe"));
+const Clientes = lazy(() => import("./pages/empresa/Clientes"));
+const Produtos = lazy(() => import("./pages/empresa/Produtos"));
+const Agendamentos = lazy(() => import("./pages/empresa/Agendamentos"));
+const ServicosAgendamento = lazy(() => import("./pages/empresa/ServicosAgendamento"));
+const AgendamentoCliente = lazy(() => import("./pages/empresa/AgedamentoCliente"));
+const ConfirmarAgendamento = lazy(() => import("./pages/customer/ConfirmarAgendamento"));
+const Pedidos = lazy(() => import("./pages/empresa/Pedidos"));
+const Pdv = lazy(() => import("./pages/empresa/Pdv"));
+const Caixa = lazy(() => import("./pages/empresa/Caixa"));
+const Relatorios = lazy(() => import("./pages/empresa/Relatorios"));
+const GatewaysEmpresa = lazy(() => import("./pages/empresa/Gateways"));
+const Cobrancas = lazy(() => import("./pages/empresa/Cobrancas"));
+const Comissoes = lazy(() => import("./pages/empresa/Comissoes"));
+const Fidelidade = lazy(() => import("./pages/empresa/Fidelidade"));
+const Assinaturas = lazy(() => import("./pages/empresa/Assinaturas"));
+const Cursos = lazy(() => import("./pages/empresa/Cursos"));
+const Avaliacoes = lazy(() => import("./pages/empresa/Avaliacoes"));
 
 /** /cliente/:slug abre a escolha do horario, nao o login. */
 const PortaDoCliente = () => {
@@ -79,6 +85,12 @@ const PortaDoCliente = () => {
 
 const queryClient = new QueryClient();
 
+const CarregandoTela = () => (
+  <div className="flex min-h-screen items-center justify-center bg-background" role="status" aria-label="Carregando">
+    <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+  </div>
+);
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -87,7 +99,9 @@ const App = () => (
           <ThemeProvider>
             <Toaster />
             <Sonner />
+            <AvisoDeConexao />
             <BrowserRouter>
+              <Suspense fallback={<CarregandoTela />}>
               <Routes>
                 {/* Public Routes */}
                 {/* "/" e a vitrine do iBarber; o app (redireciona por perfil) e /app. */}
@@ -429,6 +443,7 @@ const App = () => (
                 {/* 404 */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
+              </Suspense>
             </BrowserRouter>
           </ThemeProvider>
         </CustomerAuthProvider>

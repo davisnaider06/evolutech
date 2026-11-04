@@ -8,10 +8,15 @@
     <meta name="author" content="iBarber" />
     <meta name="theme-color" content="#a3822a" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- "default" e nao "black-translucent": o translucido desenha a pagina por
+         baixo do relogio e da bateria no iPhone, e nenhum cabecalho do app
+         reserva esse espaco. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="iBarber" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/favicon.ico" />
+    <!-- Sem isto o iPhone usa um print da tela como icone do app instalado. -->
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <!-- Fonte pelo <link>: o @import no index.css vinha depois do @tailwind e
          o navegador descartava, entao a fonte nunca carregava. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />

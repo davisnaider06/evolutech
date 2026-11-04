@@ -57,25 +57,45 @@ export const TituloFoto: React.FC<{ linha: string; destaque: string; descricao?:
   </div>
 );
 
-/** As bolinhas do prototipo: a ativa e um traco dourado. */
+/**
+ * As bolinhas do prototipo: a ativa e um traco dourado.
+ *
+ * Sem `onEscolher` sao so enfeite: nao viram botao (antes eram botoes de
+ * 6x6 px que nao faziam nada). Com ele, cada bolinha tem area de toque de
+ * 24x24, o minimo da WCAG 2.5.8, mesmo desenhada pequena.
+ */
 export const PontosFoto: React.FC<{ total: number; ativo: number; onEscolher?: (indice: number) => void }> = ({
   total,
   ativo,
   onEscolher,
 }) => (
-  <div className="mt-5 flex items-center justify-center gap-1.5">
-    {Array.from({ length: total }).map((_, indice) => (
-      <button
-        key={indice}
-        type="button"
-        aria-label={`Mensagem ${indice + 1} de ${total}`}
-        onClick={() => onEscolher?.(indice)}
-        className={cn(
-          'h-1.5 rounded-full transition-all',
-          indice === ativo ? 'w-6 bg-primary' : 'w-1.5 bg-white/50'
-        )}
-      />
-    ))}
+  <div className="mt-5 flex items-center justify-center" aria-hidden={onEscolher ? undefined : true}>
+    {Array.from({ length: total }).map((_, indice) => {
+      const ponto = (
+        <span
+          className={cn(
+            'block h-1.5 rounded-full transition-all',
+            indice === ativo ? 'w-6 bg-primary' : 'w-1.5 bg-white/50'
+          )}
+        />
+      );
+      return onEscolher ? (
+        <button
+          key={indice}
+          type="button"
+          aria-label={`Mensagem ${indice + 1} de ${total}`}
+          aria-current={indice === ativo ? 'true' : undefined}
+          onClick={() => onEscolher(indice)}
+          className="flex h-6 min-w-6 items-center justify-center px-0.5"
+        >
+          {ponto}
+        </button>
+      ) : (
+        <span key={indice} className="flex h-6 items-center px-[3px]">
+          {ponto}
+        </span>
+      );
+    })}
   </div>
 );
 
@@ -89,11 +109,12 @@ export const botaoFotoContorno =
 
 /** Campo de texto sobre a foto: vidro escuro, texto branco. */
 export const campoFoto =
-  'h-12 w-full rounded-full border border-white/20 bg-white/10 px-5 text-[15px] text-white placeholder:text-white/50 backdrop-blur-md outline-none transition-colors focus:border-primary focus:bg-white/15';
+  'h-12 w-full rounded-full border border-white/20 bg-white/10 px-5 text-base text-white placeholder:text-white/50 backdrop-blur-md outline-none transition-colors focus:border-primary focus:bg-white/15';
 
 export const rotuloFoto = 'mb-1.5 block pl-4 text-xs font-medium uppercase tracking-wide text-white/70';
 
 /** "Ja tem conta? Entrar" — texto claro com o link em dourado. */
 // Dourado mais claro que o --primary: no fundo quase preto o tom do botao
 // fica apagado como texto.
-export const linkFoto = 'font-semibold text-[#d9b65f] hover:underline';
+// inline-flex com 44px de altura: o link era um alvo de 43x19 px.
+export const linkFoto = 'inline-flex min-h-11 items-center px-1 font-semibold text-[#d9b65f] hover:underline';

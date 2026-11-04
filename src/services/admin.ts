@@ -1,5 +1,14 @@
 import { API_URL } from '@/config/api';
 
+import { avisarSessaoExpirada, requisitar } from '@/lib/rede';
+
+/** fetch com tempo limite e aviso de sessao vencida (ver lib/rede). */
+const chamarApi = async (url: string, init?: RequestInit) => {
+  const resposta = await requisitar(url, init);
+  if (resposta.status === 401 && localStorage.getItem('evolutech_token')) avisarSessaoExpirada('equipe');
+  return resposta;
+};
+
 const API_ADMIN_URL = `${API_URL}/admin`;
 
 const getHeaders = () => {
@@ -11,7 +20,7 @@ const getHeaders = () => {
 };
 
 const request = async (path: string, init?: RequestInit) => {
-  const response = await fetch(`${API_ADMIN_URL}${path}`, {
+  const response = await chamarApi(`${API_ADMIN_URL}${path}`, {
     ...init,
     headers: {
       ...getHeaders(),

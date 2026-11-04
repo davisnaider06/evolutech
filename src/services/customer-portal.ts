@@ -1,4 +1,5 @@
 import { API_URL } from '@/config/api';
+import { avisarSessaoExpirada, requisitar } from '@/lib/rede';
 import {
   CustomerAppointment,
   CustomerAuthResponse,
@@ -59,7 +60,7 @@ export const rotaEntradaCliente = () => {
 
 const customerRequest = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const token = localStorage.getItem(CUSTOMER_TOKEN_KEY);
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await requisitar(`${API_URL}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
@@ -67,6 +68,12 @@ const customerRequest = async <T>(path: string, init?: RequestInit): Promise<T> 
       ...(init?.headers || {}),
     },
   });
+
+  // Token recusado no meio do uso. As rotas de /customer-auth ficam de fora:
+  // la o 401 e senha errada, e o proprio contexto trata a sessao.
+  if (response.status === 401 && token && !path.startsWith('/customer-auth/')) {
+    avisarSessaoExpirada('cliente');
+  }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
@@ -130,11 +137,18 @@ export const customerPortalService = {
   sendPushTest: () => customerRequest('/customer/push/test', { method: 'POST' }),
   bookingOptions: () => customerRequest<CustomerBookingOptionsResponse>('/customer/booking-options'),
   appointments: () => customerRequest<CustomerAppointment[]>('/customer/appointments'),
-  appointmentSlots: (params: { date: string; service_id: string; professional_id: string }) => {
+  appointmentSlots: (params: {
+    date: string;
+    service_id: string;
+    professional_id: string;
+    /** Na remarcacao: o horario atual do proprio cliente nao conta como ocupado. */
+    ignorar_id?: string;
+  }) => {
     const search = new URLSearchParams({
       date: params.date,
       service_id: params.service_id,
       professional_id: params.professional_id,
+      ...(params.ignorar_id ? { ignorar_id: params.ignorar_id } : {}),
     }).toString();
     return customerRequest<CustomerAvailableSlotsResponse>(`/customer/appointments/slots?${search}`);
   },
@@ -148,6 +162,18 @@ export const customerPortalService = {
     }>('/customer/appointments', {
       method: 'POST',
       body: JSON.stringify(payload),
+    }),
+  /** Troca dia/hora, mesmo servico e mesmo barbeiro. */
+  rescheduleAppointment: (appointmentId: string, scheduledAt: string) =>
+    customerRequest<{
+      id: string;
+      scheduled_at: string;
+      status: string;
+      service_name: string;
+      professional_name: string;
+    }>(`/customer/appointments/${encodeURIComponent(appointmentId)}/reschedule`, {
+      method: 'PATCH',
+      body: JSON.stringify({ scheduled_at: scheduledAt }),
     }),
   cancelAppointment: (appointmentId: string) =>
     customerRequest<{ id: string; status: string; scheduled_at: string }>(

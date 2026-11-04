@@ -1,4 +1,5 @@
 ﻿import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { EVENTO_SESSAO_EXPIRADA, requisitar } from '@/lib/rede';
 import { UserRole, AuthState, Company } from '@/types/auth';
 import { toast } from 'sonner';
 import { API_URL } from '@/config/api';
@@ -80,6 +81,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCompany(null);
   }, []);
 
+  // Token recusado no meio do uso (lib/rede): derruba a sessao e o guard leva
+  // para o login, em vez de a tela ficar mostrando "Erro 401".
+  useEffect(() => {
+    const aoExpirar = (evento: Event) => {
+      if ((evento as CustomEvent).detail?.tipo === 'equipe') encerrarSessao();
+    };
+    window.addEventListener(EVENTO_SESSAO_EXPIRADA, aoExpirar);
+    return () => window.removeEventListener(EVENTO_SESSAO_EXPIRADA, aoExpirar);
+  }, [encerrarSessao]);
+
   /** Monta o estado a partir do payload de /auth/me (fresco ou em cache). */
   const aplicarPayload = useCallback(
     (data: any) => {
@@ -148,7 +159,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Revalida em segundo plano e atualiza o cache.
     try {
-      const response = await fetch(`${API_URL}/auth/me`, {
+      const response = await requisitar(`${API_URL}/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -189,7 +200,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const token = localStorage.getItem('evolutech_token');
     if (!token) return;
 
-    const response = await fetch(`${API_URL}/auth/me`, {
+    const response = await requisitar(`${API_URL}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!response.ok) return;

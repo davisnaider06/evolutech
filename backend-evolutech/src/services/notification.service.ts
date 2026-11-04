@@ -495,6 +495,37 @@ export class NotificationService {
     });
   }
 
+  /** O cliente cancelou ou remarcou pelo portal: o dono fica sabendo. */
+  async mudancaDeAgendamento(params: {
+    to: string;
+    companyName: string;
+    titulo: string;
+    customerName: string;
+    serviceName: string;
+    professionalName: string;
+    texto: string;
+  }) {
+    return this.enviar({
+      to: params.to,
+      contexto: 'mudanca de agendamento',
+      subject: `${params.titulo}: ${params.customerName}`,
+      html: montarLayout({
+        companyName: params.companyName,
+        title: params.titulo,
+        body: `
+          <table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:12px;">
+            <tr><td style="padding:8px 0;border-bottom:1px solid #E4E4E7;color:#71717A;">Cliente</td>
+                <td style="padding:8px 0;border-bottom:1px solid #E4E4E7;text-align:right;">${escapeHtml(params.customerName)}</td></tr>
+            <tr><td style="padding:8px 0;border-bottom:1px solid #E4E4E7;color:#71717A;">Servico</td>
+                <td style="padding:8px 0;border-bottom:1px solid #E4E4E7;text-align:right;">${escapeHtml(params.serviceName)}</td></tr>
+            <tr><td style="padding:8px 0;border-bottom:1px solid #E4E4E7;color:#71717A;">Profissional</td>
+                <td style="padding:8px 0;border-bottom:1px solid #E4E4E7;text-align:right;">${escapeHtml(params.professionalName)}</td></tr>
+          </table>`,
+        callout: { tone: 'info', text: escapeHtml(params.texto) },
+      }),
+    });
+  }
+
   async redefinicaoDeSenha(params: {
     to: string;
     companyName: string;

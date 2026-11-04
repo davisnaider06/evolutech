@@ -60,6 +60,19 @@ export class CustomerPortalController {
     }
   }
 
+  async rescheduleMyAppointment(req: AuthedCustomerRequest, res: Response) {
+    try {
+      const result = await service.rescheduleMyAppointment(
+        req.customer!,
+        req.params.appointmentId,
+        req.body || {}
+      );
+      return res.json(result);
+    } catch (error: unknown) {
+      return this.handleError(error, res);
+    }
+  }
+
   async cancelMyAppointment(req: AuthedCustomerRequest, res: Response) {
     try {
       const result = await service.cancelMyAppointment(req.customer!, req.params.appointmentId);

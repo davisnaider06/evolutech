@@ -11,6 +11,7 @@
  * abaixo continua sendo a fonte da verdade.
  */
 import React, { useCallback, useEffect, useState } from 'react';
+import { useAtualizacaoAutomatica } from '@/hooks/useAtualizacaoAutomatica';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -66,6 +67,14 @@ export const PainelPendencias: React.FC = () => {
   useEffect(() => {
     buscar();
   }, [buscar]);
+
+  useAtualizacaoAutomatica(async () => {
+    try {
+      setDados(await companyService.getPendencias());
+    } catch (_erro) {
+      // Mantem o que estava na tela.
+    }
+  });
 
   if (!dados) return null;
 
