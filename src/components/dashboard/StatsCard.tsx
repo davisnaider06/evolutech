@@ -30,7 +30,7 @@ export const StatsCard: React.FC<StatsCardProps> = ({
 
   return (
     <div className={cn(
-      'group relative overflow-hidden rounded-xl glass p-6 transition-all duration-300 hover:shadow-elevated hover:border-primary/30',
+      'group relative overflow-hidden rounded-2xl glass p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-elevated hover:border-primary/30',
       className
     )}>
       {/* Background glow on hover */}
@@ -40,7 +40,12 @@ export const StatsCard: React.FC<StatsCardProps> = ({
         <div className="flex items-start justify-between">
           <div>
             <p className="text-sm font-medium text-muted-foreground">{title}</p>
-            <p className="mt-2 text-3xl font-bold tracking-tight">{value}</p>
+            {/* "..." era o carregando: virou placa com brilho no lugar do numero. */}
+            {value === '...' ? (
+              <div role="status" aria-label="Carregando" className="esqueleto-vidro mt-3 h-8 w-28 rounded-lg" />
+            ) : (
+              <p className="mt-2 text-3xl font-bold tracking-tight animate-fade-in">{value}</p>
+            )}
             {change && (
               <div className="mt-2 flex items-center gap-1">
                 {temVariacao && (
@@ -56,7 +61,7 @@ export const StatsCard: React.FC<StatsCardProps> = ({
             )}
           </div>
           <div className={cn(
-            'flex h-12 w-12 items-center justify-center rounded-xl bg-secondary',
+            'flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/10',
             iconColor
           )}>
             <Icon className="h-6 w-6" />
