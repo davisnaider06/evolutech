@@ -39,10 +39,94 @@ export class ErroDeRede extends Error {
   }
 }
 
+/*
+ * Cache curto de leituras (GET).
+ *
+ * Cada tela busca os proprios dados ao montar. Sem cache, ir do Painel para a
+ * Agenda e voltar refazia todas as consultas (1-3 s cada com o Neon), e a tela
+ * voltava a mostrar "..." para dados que tinham acabado de chegar. Com ele:
+ *  - voltar a uma tela em ate CACHE_MS mostra os dados na hora;
+ *  - duas partes da tela pedindo a mesma coisa ao mesmo tempo viram uma
+ *    requisicao so.
+ * Qualquer escrita (POST/PUT/PATCH/DELETE) limpa tudo, entao quem acabou de
+ * salvar nunca ve o dado antigo. A chave inclui o token: outro usuario no
+ * mesmo aparelho nao enxerga o cache do anterior. As atualizacoes automaticas
+ * (60 s) passam do prazo e sempre vao ao servidor.
+ */
+const CACHE_MS = 20000;
+const cacheLeituras = new Map<string, { em: number; resposta: Promise<Response> }>();
+
+export function limparCacheDeLeituras() {
+  cacheLeituras.clear();
+}
+
 export async function requisitar(
   url: string,
   init: RequestInit = {},
   opcoes: { tempoLimiteMs?: number } = {}
+): Promise<Response> {
+  const metodo = (init.method || 'GET').toUpperCase();
+  if (metodo !== 'GET' || init.cache === 'no-store') {
+    if (metodo !== 'GET') cacheLeituras.clear();
+    return buscar(url, init, opcoes);
+  }
+
+  const chave = `${new Headers(init.headers).get('authorization') || ''} ${url}`;
+  const guardada = cacheLeituras.get(chave);
+  if (guardada && Date.now() - guardada.em < CACHE_MS) {
+    try {
+      return (await guardada.resposta).clone();
+    } catch (_erro) {
+      // a requisicao compartilhada falhou: tenta de novo abaixo
+    }
+  }
+
+  const resposta = buscarComNovaTentativa(url, init, opcoes);
+  // Com signal, quem chamou pode cancelar: nao divide essa requisicao com
+  // ninguem enquanto ela esta no ar, so guarda depois que der certo.
+  if (!init.signal) cacheLeituras.set(chave, { em: Date.now(), resposta });
+
+  try {
+    const final = await resposta;
+    if (final.ok) {
+      if (init.signal) cacheLeituras.set(chave, { em: Date.now(), resposta });
+      return final.clone();
+    }
+    cacheLeituras.delete(chave);
+    return final;
+  } catch (erro) {
+    cacheLeituras.delete(chave);
+    throw erro;
+  }
+}
+
+/*
+ * Leitura que volta 500/502/503 tenta mais uma vez, depois de 1,5 s.
+ *
+ * O Neon desliga o banco quando fica parado e as primeiras consultas ao
+ * acordar caem com 500 ("Server has closed the connection"). Sem isto o
+ * Painel ficava com zeros ate a proxima atualizacao automatica (60 s). So
+ * vale para GET, que pode repetir sem efeito colateral; escrita nunca e
+ * repetida sozinha.
+ */
+const ESPERA_NOVA_TENTATIVA_MS = 1500;
+
+async function buscarComNovaTentativa(
+  url: string,
+  init: RequestInit,
+  opcoes: { tempoLimiteMs?: number }
+): Promise<Response> {
+  const primeira = await buscar(url, init, opcoes);
+  if (![500, 502, 503].includes(primeira.status) || init.signal?.aborted) return primeira;
+  await new Promise((pronto) => setTimeout(pronto, ESPERA_NOVA_TENTATIVA_MS));
+  if (init.signal?.aborted) return primeira;
+  return buscar(url, init, opcoes);
+}
+
+async function buscar(
+  url: string,
+  init: RequestInit,
+  opcoes: { tempoLimiteMs?: number }
 ): Promise<Response> {
   const controle = new AbortController();
   let estourou = false;

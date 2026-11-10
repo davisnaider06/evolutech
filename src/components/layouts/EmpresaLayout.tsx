@@ -1,10 +1,14 @@
 ﻿import React, { useState } from 'react';
-import { useNavigate, useLocation, Outlet } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCompanyModules } from '@/hooks/useCompanyModules';
 import { RoleBadge } from '@/components/RoleBadge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { FundoVidro } from '@/components/layouts/FundoVidro';
+import { ConteudoDaRota } from '@/components/layouts/ConteudoDaRota';
+import { useTemaVidro } from '@/hooks/useTemaVidro';
+import { precarregarTelas } from '@/lib/telas';
 import {
   LayoutDashboard,
   Users,
@@ -116,7 +120,7 @@ const navItems: NavItem[] = [
 
 export const EmpresaLayout: React.FC = () => {
   const { user, logout, company } = useAuth();
-  const { hasModuleForCurrentRole } = useCompanyModules();
+  const { hasModuleForCurrentRole, isLoading: carregandoModulos } = useCompanyModules();
   const navigate = useNavigate();
   const location = useLocation();
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -128,6 +132,10 @@ export const EmpresaLayout: React.FC = () => {
   );
 
   const isOwner = user?.role === 'DONO_EMPRESA';
+  useTemaVidro();
+  // Baixa o codigo das outras telas com o navegador ocioso: a proxima troca
+  // de tela nao espera rede para montar.
+  React.useEffect(() => precarregarTelas(), []);
 
   if (!user) return null;
 
@@ -178,32 +186,36 @@ export const EmpresaLayout: React.FC = () => {
   const sidebarTitle = user.name || companyName;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="relative isolate flex h-screen overflow-hidden text-foreground lg:gap-3 lg:p-3">
+      <FundoVidro />
+
       {/* Mobile menu overlay */}
       {isMobileMenuOpen && (
         <div 
-          className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
 
       {/* Sidebar */}
       <aside className={cn(
-        'fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border bg-sidebar transition-all duration-300 lg:relative',
+        // Painel de vidro solto da borda no computador (como no Glassy
+        // Dashboard); no celular e a gaveta, com vidro mais fechado.
+        'fixed inset-y-0 left-0 z-50 flex flex-col vidro-denso rounded-r-3xl transition-all duration-300 lg:relative lg:rounded-3xl lg:animar-entrada-lado',
         isCollapsed ? 'w-20' : 'w-72',
         isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       )}>
         {/* User Name / Avatar */}
-        <div className="flex h-16 items-center justify-between border-b border-border px-4">
+        <div className="flex h-16 items-center justify-between border-b border-white/10 px-4">
           <div className={cn('flex items-center gap-3', isCollapsed && 'justify-center w-full')}>
             {companyLogo ? (
               <img 
                 src={companyLogo} 
                 alt={sidebarTitle} 
-                className="h-8 w-8 rounded-lg object-cover"
+                className="h-8 w-8 rounded-full object-cover ring-1 ring-white/20"
               />
             ) : (
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold shadow-lg shadow-primary/30">
                 {sidebarTitle.charAt(0).toUpperCase()}
               </div>
             )}
@@ -232,13 +244,23 @@ export const EmpresaLayout: React.FC = () => {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto p-4">
-          {GROUP_ORDER.map((group) => {
+        <nav className="flex-1 overflow-y-auto p-3">
+          {/* No primeiro login os modulos ainda nao chegaram: em vez de um
+              menu so com "Configuracoes" que depois "pula" para o completo,
+              mostra o lugar dos itens com brilho. */}
+          {carregandoModulos && (
+            <div role="status" aria-label="Carregando menu" className="space-y-2">
+              {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+                <div key={i} className="esqueleto-vidro h-9 rounded-full" style={{ opacity: 1 - i * 0.1 }} />
+              ))}
+            </div>
+          )}
+          {!carregandoModulos && GROUP_ORDER.map((group) => {
             const items = filteredNavItems.filter((item) => item.group === group);
             if (items.length === 0) return null;
             const recolhivel = group === 'mais' && !isCollapsed;
             return (
-              <div key={group} className="mb-4 last:mb-0">
+              <div key={group} className="mb-4 last:mb-0 animate-fade-in">
                 {recolhivel ? (
                   <button
                     type="button"
@@ -269,10 +291,10 @@ export const EmpresaLayout: React.FC = () => {
                           title={isCollapsed ? item.label : undefined}
                           aria-current={isActive ? 'page' : undefined}
                           className={cn(
-                            'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200',
+                            'flex w-full items-center gap-3 rounded-full px-3 py-2 text-sm font-medium transition-all duration-200',
                             isActive
-                              ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25'
-                              : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                              ? 'bg-white/90 text-neutral-900 shadow-lg shadow-black/30'
+                              : 'text-white/65 hover:bg-white/10 hover:text-white'
                           )}
                         >
                           <item.icon className={cn('h-5 w-5 flex-shrink-0', isCollapsed && 'mx-auto')} />
@@ -289,7 +311,7 @@ export const EmpresaLayout: React.FC = () => {
         </nav>
 
         {/* User section */}
-        <div className="border-t border-border p-4">
+        <div className="border-t border-white/10 p-4">
           <div className={cn(
             'flex items-center gap-3',
             isCollapsed && 'justify-center'
@@ -328,8 +350,8 @@ export const EmpresaLayout: React.FC = () => {
 
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Top bar */}
-        <header className="flex h-16 items-center justify-between border-b border-border bg-card/50 px-4 lg:px-6">
+        {/* Top bar: barra de vidro solta no topo */}
+        <header className="vidro animar-entrada-topo mx-3 mt-3 flex h-14 shrink-0 items-center justify-between rounded-full px-3 lg:mx-0 lg:mt-0 lg:px-4">
           <div className="flex items-center gap-4">
             <Button
               variant="ghost"
@@ -339,7 +361,7 @@ export const EmpresaLayout: React.FC = () => {
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <div className="hidden sm:flex items-center gap-2 rounded-lg bg-secondary px-3 py-1.5">
+            <div className="hidden sm:flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1.5">
               {companyLogo ? (
                 <img
                   src={companyLogo}
@@ -370,13 +392,13 @@ export const EmpresaLayout: React.FC = () => {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 pb-24 lg:p-6">
-          <Outlet />
+        <main className="flex-1 overflow-y-auto p-4 pb-28 lg:px-3 lg:pb-6 lg:pt-6">
+          <ConteudoDaRota />
         </main>
 
         <nav
           aria-label="Atalhos"
-          className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-border bg-card pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_24px_-8px_hsl(0_0%_0%/0.12)] lg:hidden"
+          className="vidro-denso animar-entrada-baixo fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-30 grid grid-cols-4 rounded-full px-1 lg:hidden"
         >
           {atalhosMobile.map((item) => {
             const ativo = estaEm(item.path);
@@ -388,7 +410,7 @@ export const EmpresaLayout: React.FC = () => {
                 aria-current={ativo ? 'page' : undefined}
                 className={cn(
                   'flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium',
-                  ativo ? 'text-primary' : 'text-muted-foreground'
+                  ativo ? 'text-primary' : 'text-white/60'
                 )}
               >
                 <item.icon className="h-5 w-5" />
@@ -401,7 +423,7 @@ export const EmpresaLayout: React.FC = () => {
             onClick={() => setIsMobileMenuOpen(true)}
             className={cn(
               'flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium',
-              isMobileMenuOpen ? 'text-primary' : 'text-muted-foreground'
+              isMobileMenuOpen ? 'text-primary' : 'text-white/60'
             )}
           >
             <Menu className="h-5 w-5" />

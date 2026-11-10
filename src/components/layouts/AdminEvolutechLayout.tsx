@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
-import { useNavigate, useLocation, Outlet } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Logo } from '@/components/Logo';
 import { RoleBadge } from '@/components/RoleBadge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { FundoVidro } from '@/components/layouts/FundoVidro';
+import { ConteudoDaRota } from '@/components/layouts/ConteudoDaRota';
+import { useTemaVidro } from '@/hooks/useTemaVidro';
+import { precarregarTelas } from '@/lib/telas';
 import {
   LayoutDashboard,
   Building2,
@@ -67,6 +71,10 @@ export const AdminEvolutechLayout: React.FC = () => {
   const location = useLocation();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  useTemaVidro();
+  // Baixa o codigo das outras telas com o navegador ocioso: a proxima troca
+  // de tela nao espera rede para montar.
+  React.useEffect(() => precarregarTelas(), []);
 
   if (!user) return null;
 
@@ -84,23 +92,24 @@ export const AdminEvolutechLayout: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="relative isolate flex h-screen overflow-hidden text-foreground lg:gap-3 lg:p-3">
+      <FundoVidro />
       {/* Mobile menu overlay */}
       {isMobileMenuOpen && (
         <div 
-          className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
 
       {/* Sidebar */}
       <aside className={cn(
-        'fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border bg-sidebar transition-all duration-300 lg:relative',
+        'fixed inset-y-0 left-0 z-50 flex flex-col vidro-denso rounded-r-3xl transition-all duration-300 lg:relative lg:rounded-3xl lg:animar-entrada-lado',
         isCollapsed ? 'w-20' : 'w-72',
         isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       )}>
         {/* Logo - Always Evolutech for admin */}
-        <div className="flex h-16 items-center justify-between border-b border-border px-4">
+        <div className="flex h-16 items-center justify-between border-b border-white/10 px-4">
           <Logo size="sm" showText={!isCollapsed} />
           <Button
             variant="ghost"
@@ -122,7 +131,7 @@ export const AdminEvolutechLayout: React.FC = () => {
 
         {/* Admin Badge */}
         {!isCollapsed && (
-          <div className="px-4 py-3 border-b border-border">
+          <div className="px-4 py-3 border-b border-white/10">
             <div className="flex items-center gap-2 text-xs font-medium text-primary">
               <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
               Painel Administrativo Evolutech
@@ -144,10 +153,10 @@ export const AdminEvolutechLayout: React.FC = () => {
                       setIsMobileMenuOpen(false);
                     }}
                     className={cn(
-                      'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
+                      'flex w-full items-center gap-3 rounded-full px-3 py-2.5 text-sm font-medium transition-all duration-200',
                       isActive
-                        ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25'
-                        : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                        ? 'bg-white/90 text-neutral-900 shadow-lg shadow-black/30'
+                        : 'text-white/65 hover:bg-white/10 hover:text-white'
                     )}
                   >
                     <item.icon className={cn('h-5 w-5 flex-shrink-0', isCollapsed && 'mx-auto')} />
@@ -160,7 +169,7 @@ export const AdminEvolutechLayout: React.FC = () => {
         </nav>
 
         {/* User section */}
-        <div className="border-t border-border p-4">
+        <div className="border-t border-white/10 p-4">
           <div className={cn(
             'flex items-center gap-3',
             isCollapsed && 'justify-center'
@@ -192,7 +201,7 @@ export const AdminEvolutechLayout: React.FC = () => {
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Top bar */}
-        <header className="flex h-16 items-center justify-between border-b border-border bg-card/50 px-4 lg:px-6">
+        <header className="vidro animar-entrada-topo mx-3 mt-3 flex h-14 shrink-0 items-center justify-between rounded-full px-3 lg:mx-0 lg:mt-0 lg:px-4">
           <div className="flex items-center gap-4">
             <Button
               variant="ghost"
@@ -202,7 +211,7 @@ export const AdminEvolutechLayout: React.FC = () => {
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <div className="hidden sm:flex items-center gap-2 rounded-lg bg-primary/10 px-3 py-1.5">
+            <div className="hidden sm:flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1.5">
               <span className="text-sm font-medium text-primary">iBarber</span>
             </div>
           </div>
@@ -219,8 +228,8 @@ export const AdminEvolutechLayout: React.FC = () => {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-          <Outlet />
+        <main className="flex-1 overflow-y-auto p-4 lg:px-3 lg:pb-6 lg:pt-6">
+          <ConteudoDaRota />
         </main>
       </div>
     </div>

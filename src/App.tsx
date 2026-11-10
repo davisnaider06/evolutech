@@ -2,7 +2,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
+import { lazyTela } from "@/lib/telas";
 import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { AvisoDeConexao } from "@/components/AvisoDeConexao";
 
@@ -21,61 +22,61 @@ import { EmpresaLayout } from "@/components/layouts/EmpresaLayout";
 // leitor de Excel, os graficos e o painel do admin.
 
 // Public pages
-const Index = lazy(() => import("./pages/Index"));
-const Login = lazy(() => import("./pages/Login"));
-const RedefinirSenha = lazy(() => import("./pages/RedefinirSenha"));
-const AcceptInvite = lazy(() => import("./pages/AcceptInvite"));
-const NotFound = lazy(() => import("./pages/NotFound"));
-const Landing = lazy(() => import("./pages/Landing"));
-const CustomerLogin = lazy(() => import("./pages/customer/CustomerLogin"));
-const CustomerRegister = lazy(() => import("./pages/customer/CustomerRegister"));
-const CustomerDashboard = lazy(() => import("./pages/customer/CustomerDashboard"));
+const Index = lazyTela(() => import("./pages/Index"));
+const Login = lazyTela(() => import("./pages/Login"));
+const RedefinirSenha = lazyTela(() => import("./pages/RedefinirSenha"));
+const AcceptInvite = lazyTela(() => import("./pages/AcceptInvite"));
+const NotFound = lazyTela(() => import("./pages/NotFound"));
+const Landing = lazyTela(() => import("./pages/Landing"));
+const CustomerLogin = lazyTela(() => import("./pages/customer/CustomerLogin"));
+const CustomerRegister = lazyTela(() => import("./pages/customer/CustomerRegister"));
+const CustomerDashboard = lazyTela(() => import("./pages/customer/CustomerDashboard"));
 
 // Admin Evolutech pages
-const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
-const GestaoSistemasBase = lazy(() => import("./pages/admin/GestaoSistemasBase"));
-const GatewaysPagamento = lazy(() => import("./pages/admin/GatewaysPagamento"));
-const WhatsAppAutomacao = lazy(() => import("./pages/admin/WhatsAppAutomacao"));
-const GerenciarUsuarios = lazy(() => import("./pages/admin/GerenciarUsuarios"));
-const ChatbotsManager = lazy(() => import("./pages/admin/ChatbotsManager"));
-const SystemVerification = lazy(() => import("./pages/admin/SystemVerification"));
-const TemaGlobal = lazy(() => import("./pages/admin/TemaGlobal"));
-const Empresas = lazy(() => import("./pages/Empresas"));
-const Usuarios = lazy(() => import("./pages/Usuarios"));
-const Configuracoes = lazy(() => import("./pages/Configuracoes"));
-const Modulos = lazy(() => import("./pages/Modulos"));
-const Suporte = lazy(() => import("./pages/Suporte"));
-const Evolucoes = lazy(() => import("./pages/Evolucoes"));
-const Treinamentos = lazy(() => import("./pages/Treinamentos"));
-const MetricasGlobais = lazy(() => import("./pages/MetricasGlobais"));
-const Financeiro = lazy(() => import("./pages/Financeiro"));
-const Logs = lazy(() => import("./pages/Logs"));
+const AdminDashboard = lazyTela(() => import("./pages/admin/AdminDashboard"));
+const GestaoSistemasBase = lazyTela(() => import("./pages/admin/GestaoSistemasBase"));
+const GatewaysPagamento = lazyTela(() => import("./pages/admin/GatewaysPagamento"));
+const WhatsAppAutomacao = lazyTela(() => import("./pages/admin/WhatsAppAutomacao"));
+const GerenciarUsuarios = lazyTela(() => import("./pages/admin/GerenciarUsuarios"));
+const ChatbotsManager = lazyTela(() => import("./pages/admin/ChatbotsManager"));
+const SystemVerification = lazyTela(() => import("./pages/admin/SystemVerification"));
+const TemaGlobal = lazyTela(() => import("./pages/admin/TemaGlobal"));
+const Empresas = lazyTela(() => import("./pages/Empresas"));
+const Usuarios = lazyTela(() => import("./pages/Usuarios"));
+const Configuracoes = lazyTela(() => import("./pages/Configuracoes"));
+const Modulos = lazyTela(() => import("./pages/Modulos"));
+const Suporte = lazyTela(() => import("./pages/Suporte"));
+const Evolucoes = lazyTela(() => import("./pages/Evolucoes"));
+const Treinamentos = lazyTela(() => import("./pages/Treinamentos"));
+const MetricasGlobais = lazyTela(() => import("./pages/MetricasGlobais"));
+const Financeiro = lazyTela(() => import("./pages/Financeiro"));
+const Logs = lazyTela(() => import("./pages/Logs"));
 
 // Public chatbot page
-const ChatbotPublic = lazy(() => import("./pages/ChatbotPublic"));
+const ChatbotPublic = lazyTela(() => import("./pages/ChatbotPublic"));
 
 // Empresa pages
-const EmpresaDashboard = lazy(() => import("./pages/empresa/EmpresaDashboard"));
-const EmpresaApp = lazy(() => import("./pages/empresa/EmpresaApp"));
-const ConvitesEquipe = lazy(() => import("./pages/empresa/ConvitesEquipe"));
-const PermissoesEquipe = lazy(() => import("./pages/empresa/PermissoesEquipe"));
-const Clientes = lazy(() => import("./pages/empresa/Clientes"));
-const Produtos = lazy(() => import("./pages/empresa/Produtos"));
-const Agendamentos = lazy(() => import("./pages/empresa/Agendamentos"));
-const ServicosAgendamento = lazy(() => import("./pages/empresa/ServicosAgendamento"));
-const AgendamentoCliente = lazy(() => import("./pages/empresa/AgedamentoCliente"));
-const ConfirmarAgendamento = lazy(() => import("./pages/customer/ConfirmarAgendamento"));
-const Pedidos = lazy(() => import("./pages/empresa/Pedidos"));
-const Pdv = lazy(() => import("./pages/empresa/Pdv"));
-const Caixa = lazy(() => import("./pages/empresa/Caixa"));
-const Relatorios = lazy(() => import("./pages/empresa/Relatorios"));
-const GatewaysEmpresa = lazy(() => import("./pages/empresa/Gateways"));
-const Cobrancas = lazy(() => import("./pages/empresa/Cobrancas"));
-const Comissoes = lazy(() => import("./pages/empresa/Comissoes"));
-const Fidelidade = lazy(() => import("./pages/empresa/Fidelidade"));
-const Assinaturas = lazy(() => import("./pages/empresa/Assinaturas"));
-const Cursos = lazy(() => import("./pages/empresa/Cursos"));
-const Avaliacoes = lazy(() => import("./pages/empresa/Avaliacoes"));
+const EmpresaDashboard = lazyTela(() => import("./pages/empresa/EmpresaDashboard"));
+const EmpresaApp = lazyTela(() => import("./pages/empresa/EmpresaApp"));
+const ConvitesEquipe = lazyTela(() => import("./pages/empresa/ConvitesEquipe"));
+const PermissoesEquipe = lazyTela(() => import("./pages/empresa/PermissoesEquipe"));
+const Clientes = lazyTela(() => import("./pages/empresa/Clientes"));
+const Produtos = lazyTela(() => import("./pages/empresa/Produtos"));
+const Agendamentos = lazyTela(() => import("./pages/empresa/Agendamentos"));
+const ServicosAgendamento = lazyTela(() => import("./pages/empresa/ServicosAgendamento"));
+const AgendamentoCliente = lazyTela(() => import("./pages/empresa/AgedamentoCliente"));
+const ConfirmarAgendamento = lazyTela(() => import("./pages/customer/ConfirmarAgendamento"));
+const Pedidos = lazyTela(() => import("./pages/empresa/Pedidos"));
+const Pdv = lazyTela(() => import("./pages/empresa/Pdv"));
+const Caixa = lazyTela(() => import("./pages/empresa/Caixa"));
+const Relatorios = lazyTela(() => import("./pages/empresa/Relatorios"));
+const GatewaysEmpresa = lazyTela(() => import("./pages/empresa/Gateways"));
+const Cobrancas = lazyTela(() => import("./pages/empresa/Cobrancas"));
+const Comissoes = lazyTela(() => import("./pages/empresa/Comissoes"));
+const Fidelidade = lazyTela(() => import("./pages/empresa/Fidelidade"));
+const Assinaturas = lazyTela(() => import("./pages/empresa/Assinaturas"));
+const Cursos = lazyTela(() => import("./pages/empresa/Cursos"));
+const Avaliacoes = lazyTela(() => import("./pages/empresa/Avaliacoes"));
 
 /** /cliente/:slug abre a escolha do horario, nao o login. */
 const PortaDoCliente = () => {

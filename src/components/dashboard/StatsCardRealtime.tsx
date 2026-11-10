@@ -54,7 +54,7 @@ export const StatsCardRealtime: React.FC<StatsCardRealtimeProps> = ({
   if (loading) {
     return (
       <div className={cn(
-        'group relative overflow-hidden rounded-xl glass p-6',
+        'group relative overflow-hidden rounded-2xl glass p-6',
         className
       )}>
         <div className="flex items-start justify-between">
@@ -71,7 +71,7 @@ export const StatsCardRealtime: React.FC<StatsCardRealtimeProps> = ({
 
   return (
     <div className={cn(
-      'group relative overflow-hidden rounded-xl glass p-6 transition-all duration-300 hover:shadow-elevated hover:border-primary/30',
+      'group relative overflow-hidden rounded-2xl glass p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-elevated hover:border-primary/30',
       className
     )}>
       {/* Background glow on hover */}
@@ -102,7 +102,7 @@ export const StatsCardRealtime: React.FC<StatsCardRealtimeProps> = ({
             )}
           </div>
           <div className={cn(
-            'flex h-12 w-12 items-center justify-center rounded-xl bg-secondary',
+            'flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/10',
             iconColor
           )}>
             <Icon className="h-6 w-6" />

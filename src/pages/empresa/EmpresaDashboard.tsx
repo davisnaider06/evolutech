@@ -195,7 +195,7 @@ const EmpresaDashboard: React.FC = () => {
         <StatsCard
           title="Agendamentos hoje"
           value={loading ? '...' : metrics.appointmentsToday}
-          change={{ label: `${metrics.upcomingAppointments} ainda por vir` }}
+          change={{ label: loading ? 'contando os horários…' : `${metrics.upcomingAppointments} ainda por vir` }}
           icon={CalendarClock}
         />
         <StatsCard
@@ -207,7 +207,7 @@ const EmpresaDashboard: React.FC = () => {
         <StatsCard
           title="Clientes ativos"
           value={loading ? '...' : metrics.customersActive}
-          change={{ label: `de ${metrics.customersTotal} cadastrados` }}
+          change={{ label: loading ? 'contando os clientes…' : `de ${metrics.customersTotal} cadastrados` }}
           icon={UserCheck}
         />
         {isOwner && (
