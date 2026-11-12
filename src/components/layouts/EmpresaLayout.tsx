@@ -19,6 +19,9 @@ import {
   HelpCircle,
   Menu,
   X,
+  Bell,
+  Moon,
+  Sun,
   HeadphonesIcon,
   GraduationCap,
   CreditCard,
@@ -118,6 +121,35 @@ const navItems: NavItem[] = [
   { icon: GraduationCap, label: 'Tutoriais', path: '/empresa/treinamentos', moduleCode: 'training', group: 'mais' },
 ];
 
+const MobileDockItem: React.FC<{
+  icon: React.ElementType;
+  label: string;
+  path: string;
+  active: boolean;
+  central?: boolean;
+  onClick: (path: string) => void;
+}> = ({ icon: Icon, label, path, active, central = false, onClick }) => (
+  <button
+    type="button"
+    onClick={() => onClick(path)}
+    aria-current={active ? 'page' : undefined}
+    className={cn(
+      'flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl text-[10px] font-medium transition-colors',
+      active ? 'text-primary' : 'text-white/65 hover:text-white',
+      central && 'relative -translate-y-3',
+    )}
+  >
+    <span className={cn(
+      'flex h-9 w-9 items-center justify-center rounded-xl',
+      central && 'h-12 w-12 rounded-2xl border border-primary/25 bg-primary text-primary-foreground shadow-lg shadow-primary/35',
+      active && !central && 'bg-white/10',
+    )}>
+      <Icon className={central ? 'h-5 w-5' : 'h-5 w-5'} />
+    </span>
+    <span>{label}</span>
+  </button>
+);
+
 export const EmpresaLayout: React.FC = () => {
   const { user, logout, company } = useAuth();
   const { hasModuleForCurrentRole, isLoading: carregandoModulos } = useCompanyModules();
@@ -125,6 +157,7 @@ export const EmpresaLayout: React.FC = () => {
   const location = useLocation();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [modoClaro, setModoClaro] = useState(() => localStorage.getItem('evolutech_modo') !== 'escuro');
   // Abre sozinho quando a tela atual mora em "Mais opcoes", para o item ativo
   // nao ficar escondido.
   const [maisAberto, setMaisAberto] = useState(() =>
@@ -133,6 +166,11 @@ export const EmpresaLayout: React.FC = () => {
 
   const isOwner = user?.role === 'DONO_EMPRESA';
   useTemaVidro();
+  React.useEffect(() => {
+    document.body.classList.toggle('modo-claro', modoClaro);
+    localStorage.setItem('evolutech_modo', modoClaro ? 'claro' : 'escuro');
+    return () => document.body.classList.remove('modo-claro');
+  }, [modoClaro]);
   // Baixa o codigo das outras telas com o navegador ocioso: a proxima troca
   // de tela nao espera rede para montar.
   React.useEffect(() => precarregarTelas(), []);
@@ -171,23 +209,13 @@ export const EmpresaLayout: React.FC = () => {
     null;
   const companyName = company?.name || user.tenantName || 'Minha Empresa';
 
-  // Menu de baixo no celular, como no app do cliente: as tres telas que cada
-  // perfil abre todo dia, mais "Menu" para o resto. Antes tudo ficava atras
-  // do icone de tres tracos, que o barbeiro nao reconhecia como menu.
-  const prioridade = isOwner
-    ? ['/empresa/dashboard', '/empresa/agendamentos', '/empresa/caixa', '/empresa/clientes']
-    : ['/empresa/agendamentos', '/empresa/clientes', '/empresa/caixa', '/empresa/app'];
-  const atalhosMobile = prioridade
-    .map((path) => filteredNavItems.find((item) => item.path === path))
-    .filter((item): item is NavItem => Boolean(item))
-    .slice(0, 3);
   const estaEm = (path: string) =>
     location.pathname === path || (path !== '/empresa/dashboard' && location.pathname.startsWith(path));
   const sidebarTitle = user.name || companyName;
 
   return (
     <div className="relative isolate flex h-screen overflow-hidden text-foreground lg:gap-3 lg:p-3">
-      <FundoVidro />
+      <FundoVidro claro={modoClaro} />
 
       {/* Mobile menu overlay */}
       {isMobileMenuOpen && (
@@ -350,18 +378,17 @@ export const EmpresaLayout: React.FC = () => {
 
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Top bar: barra de vidro solta no topo */}
-        <header className="vidro animar-entrada-topo mx-3 mt-3 flex h-14 shrink-0 items-center justify-between rounded-full px-3 lg:mx-0 lg:mt-0 lg:px-4">
-          <div className="flex items-center gap-4">
+        <header className="animar-entrada-topo mx-4 mt-4 flex h-14 shrink-0 items-center justify-between lg:mx-0 lg:mt-0 lg:rounded-2xl lg:border lg:border-border/70 lg:bg-card/80 lg:px-4 lg:shadow-card">
+          <div className="flex items-center gap-3">
             <Button
               variant="ghost"
               size="icon"
-              className="lg:hidden"
+              className="rounded-full lg:hidden"
               onClick={() => setIsMobileMenuOpen(true)}
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <div className="hidden sm:flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1.5">
+            <div className="hidden items-center gap-2 sm:flex">
               {companyLogo ? (
                 <img
                   src={companyLogo}
@@ -371,64 +398,54 @@ export const EmpresaLayout: React.FC = () => {
               ) : (
                 <Building2 className="h-4 w-4 text-muted-foreground" />
               )}
-              <span className="text-sm font-medium">{companyName}</span>
+              <span className="text-sm font-semibold">{companyName}</span>
             </div>
           </div>
 
-          {/* O sino com bolinha vermelha fixa saiu: nao estava ligado a nada e
-              dizia "voce tem aviso" o tempo todo. Os avisos reais ficam no
-              painel de pendencias. */}
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
               size="icon"
-              title="Ajuda e suporte"
-              aria-label="Ajuda e suporte"
-              onClick={() => navigate('/empresa/suporte')}
+              className="rounded-full"
+              title={modoClaro ? 'Ativar modo escuro' : 'Ativar modo claro'}
+              aria-label={modoClaro ? 'Ativar modo escuro' : 'Ativar modo claro'}
+              onClick={() => setModoClaro((atual) => !atual)}
             >
-              <HelpCircle className="h-5 w-5" />
+              {modoClaro ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
             </Button>
+            <Button variant="ghost" size="icon" className="rounded-full" title="Notificações" aria-label="Notificações">
+              <Bell className="h-5 w-5" />
+            </Button>
+            <button type="button" onClick={() => setIsMobileMenuOpen(true)} className="hidden h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground sm:flex lg:hidden">
+              {user.name.charAt(0).toUpperCase()}
+            </button>
           </div>
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 pb-28 lg:px-3 lg:pb-6 lg:pt-6">
+        <main className="flex-1 overflow-y-auto px-4 pb-32 pt-5 lg:px-3 lg:pb-6 lg:pt-6">
           <ConteudoDaRota />
         </main>
 
         <nav
           aria-label="Atalhos"
-          className="animar-entrada-baixo fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-30 grid grid-cols-4 rounded-[2rem] border border-white/10 bg-zinc-950/95 px-1.5 shadow-[0_14px_34px_-12px_rgba(0,0,0,0.72)] backdrop-blur-xl lg:hidden"
+          className="animar-entrada-baixo fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-30 grid h-[72px] grid-cols-5 rounded-[2rem] border border-white/10 bg-zinc-950 px-1.5 shadow-[0_14px_34px_-12px_rgba(0,0,0,0.72)] lg:hidden"
         >
-          {atalhosMobile.map((item) => {
-            const ativo = estaEm(item.path);
-            return (
-              <button
-                key={item.path}
-                type="button"
-                onClick={() => navigate(item.path)}
-                aria-current={ativo ? 'page' : undefined}
-                className={cn(
-                  'flex min-w-0 flex-col items-center gap-1 rounded-2xl py-2.5 text-[11px] font-medium transition-colors',
-                  ativo ? 'bg-white/10 text-primary' : 'text-white/60 hover:text-white'
-                )}
-              >
-                <item.icon className="h-5 w-5" />
-                {item.label}
-              </button>
-            );
-          })}
           <button
             type="button"
             onClick={() => setIsMobileMenuOpen(true)}
             className={cn(
-              'flex flex-col items-center gap-1 rounded-2xl py-2.5 text-[11px] font-medium transition-colors',
-              isMobileMenuOpen ? 'bg-white/10 text-primary' : 'text-white/60 hover:text-white'
+              'flex flex-col items-center justify-center gap-1 rounded-2xl text-[10px] font-medium transition-colors',
+              isMobileMenuOpen ? 'bg-white/10 text-primary' : 'text-white/65 hover:text-white'
             )}
           >
             <Menu className="h-5 w-5" />
             Menu
           </button>
+          <MobileDockItem icon={Calendar} label="Agenda" path="/empresa/agendamentos" active={estaEm('/empresa/agendamentos')} onClick={navigate} />
+          <MobileDockItem icon={LayoutDashboard} label="Início" path="/empresa/dashboard" active={estaEm('/empresa/dashboard')} onClick={navigate} central />
+          <MobileDockItem icon={TrendingUp} label="Financeiro" path={hasModuleForCurrentRole('finance') ? '/empresa/financeiro' : '/empresa/caixa'} active={estaEm('/empresa/financeiro') || estaEm('/empresa/caixa')} onClick={navigate} />
+          <MobileDockItem icon={Users} label="Equipe" path={isOwner && hasModuleForCurrentRole('users') ? '/empresa/equipe' : '/empresa/clientes'} active={estaEm('/empresa/equipe') || estaEm('/empresa/clientes')} onClick={navigate} />
         </nav>
       </div>
     </div>

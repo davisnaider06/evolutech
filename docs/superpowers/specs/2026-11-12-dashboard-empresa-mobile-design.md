@@ -1,40 +1,44 @@
-# Dashboard da Empresa — design mobile-first
+# Dashboard da Empresa — reprodução mobile-first
 
 ## Objetivo
 
-Refatorar `/empresa/dashboard` para usar a composição da referência aprovada: painel claro e compacto, cartões de métricas, gráfico de barras arredondadas e navegação inferior fixa no celular. A identidade visual da empresa continua sendo a origem de cores; não serão introduzidas cores de marca externas.
+Reconstruir `/empresa/dashboard` a partir da referência aprovada, em vez de apenas adaptar o painel existente. A tela deve reproduzir sua hierarquia, escala, espaçamento, cartões compactos, barras arredondadas e dock inferior. As cores de destaque continuam a vir dos tokens de aparência da empresa.
 
-## Estrutura
+## Tela do dashboard
 
-O conteúdo do painel terá, nesta ordem:
+O painel ocupa uma coluna central compacta em celular e um conteúdo com largura controlada no desktop. O topo contém marca/nome da empresa, sino, avatar e um toggle explícito de modo claro/escuro. Abaixo ficam a saudação, um seletor de período (`Hoje`, `Semana`, `Mês`) e uma grade fixa de quatro métricas.
 
-1. Cabeçalho com saudação, nome da empresa e ações de notificação/perfil já disponíveis no layout.
-2. Seletor de período com opções de hoje, semana e mês. Nesta primeira entrega ele controla a apresentação do gráfico quando houver série correspondente; as métricas atuais permanecem alimentadas pelo endpoint de dashboard.
-3. Grade de quatro cartões: agendamentos de hoje, faturamento do mês, clientes ativos e equipe. O cartão de equipe é exclusivo para dono, como hoje.
-4. Cartão principal de gráfico, “Movimento do dia”, com barras verticais de cantos totalmente arredondados, eixo discreto, tooltip acessível e alternativa vazia para dias sem dados.
-5. Blocos preservados de pendências, primeiros passos, atendimentos sem baixa, link de agendamento, atividade recente e atalhos diários. Eles serão reorganizados para não competir com as métricas no topo.
+Cada métrica tem ícone Lucide no canto superior esquerdo, selo de tendência no direito, legenda curta, valor de alto contraste e descrição complementar. A ordem é Agendamentos hoje, Faturamento do mês, Clientes ativos e Equipe (ou Próximos horários para funcionário).
 
-## Dados e estados
+O gráfico principal vem imediatamente depois: título, selo de período, e barras verticais altas com raios máximos, eixos discretos, grade horizontal suave e tooltip. Ele exibe atividade real dos agendamentos retornados pelo dashboard; se não houver dados, apresenta estado vazio sem fabricar números.
 
-O dashboard continuará a consumir `GET /company/dashboard/metrics`. A resposta atual fornece os totais e os itens recentes; o gráfico será derivado dos horários dos agendamentos recentes enquanto uma série agregada não estiver disponível. Essa limitação será explícita na interface como “atividade recente”, sem sugerir um total histórico inexistente.
+Pendências, primeiros passos, atendimentos sem baixa, link de agenda, atividade recente e atalhos existentes continuam disponíveis abaixo da área principal, sem substituir dados ou permissões atuais.
 
-No carregamento, cartões e gráfico exibem esqueletos. Em falha, o conteúdo útil já carregado continua visível e o aviso existente é mantido. Ausência de dados renderiza uma mensagem curta no gráfico, em vez de barras artificiais.
+## Modo claro e escuro
 
-## Responsividade e navegação
+O toggle alterna uma classe no documento e persiste a escolha em `localStorage`. Claro usa fundo neutro e cartões brancos; escuro usa fundo grafite e cartões escuros. A cor primária configurada pela empresa permanece o destaque em ambos os modos. O controle tem rótulo acessível e ícones de sol/lua.
 
-Em telas `lg` ou maiores, a barra lateral atual permanece a navegação principal. Em telas menores, a navegação torna-se um dock fixo inferior preto/denso, com cantos arredondados, ícones Lucide e quatro entradas: Painel, Agenda, Caixa e Menu. O conteúdo receberá espaço inferior suficiente para não ficar encoberto pelo dock. A entrada ativa usa a cor primária da empresa e possui nome legível.
+## Navegação
 
-Os cartões usam duas colunas a partir de telas pequenas; em telefones estreitos, podem cair para uma coluna sem cortar valores monetários. O gráfico ocupa toda a largura disponível, com barras e rótulos reduzidos proporcionalmente.
+Em `lg` ou maior, a barra lateral atual é a navegação primária. Em telas menores, ela só abre pela gaveta; a navegação persistente é um dock inferior fixo, preto, com cantos amplamente arredondados e cinco itens nesta ordem:
 
-## Componentes e limites
+1. Menu — abre a gaveta lateral existente.
+2. Agendamentos — abre a agenda.
+3. Início — fica no centro, é o dashboard e recebe destaque visual de item ativo.
+4. Financeiro — abre a página financeira ou Caixa quando Financeiro não estiver habilitado.
+5. Equipe — abre equipe ou Clientes quando o módulo/e a permissão de equipe não estiverem disponíveis.
 
-- `EmpresaDashboard` coordena dados, filtro de período e composição da página.
-- `DashboardMetricCard` recebe título, valor, ícone, tendência e variação sem conhecer a API.
-- `DashboardActivityChart` recebe pontos normalizados, estado de carregamento e estado vazio; não faz requisições.
-- `EmpresaLayout` contém exclusivamente a variação desktop/mobile da navegação.
+Cada item usa ícone Lucide, legenda e área de toque de no mínimo 44 px. O conteúdo da página tem recuo inferior suficiente para nunca ficar sob o dock.
 
-Os componentes visuais usam as variáveis CSS existentes (`--primary`, `--card`, `--muted` e tokens de tema), permitindo a personalização já oferecida em Aparência.
+## Componentes e dados
 
-## Qualidade e verificação
+- `EmpresaDashboard` busca métricas, normaliza pontos de gráfico e compõe o conteúdo.
+- `DashboardMetricCard` é puramente visual e recebe título, valor, detalhe, ícone e tendência.
+- `DashboardActivityChart` recebe pontos normalizados, carregamento e estado vazio; não consulta a API.
+- `EmpresaLayout` decide a navegação desktop/mobile e contém o toggle de tema.
 
-Executar verificação de tipos/build e lint após a alteração. Validar manualmente os pontos de quebra mobile e desktop, navegação pelo dock, valores longos de faturamento, carregamento, vazio e erro de rede.
+O endpoint continua `GET /company/dashboard/metrics`. Falhas preservam o último conteúdo útil e informam o usuário pelo mecanismo de aviso existente; carregamento usa esqueletos.
+
+## Verificação
+
+Validar build e lint. Testar a 375 px e 768 px: grade 2×2, valores monetários, seletor de período, modo claro/escuro, os cinco atalhos e a abertura da gaveta. Testar desktop para confirmar que não há dock e que a barra lateral continua funcional.
