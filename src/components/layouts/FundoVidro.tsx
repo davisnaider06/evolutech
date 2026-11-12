@@ -13,10 +13,12 @@ const FOTO_PADRAO = '/imagens/fundo-painel.jpg';
  * para nao rolar junto com o conteudo. Aparece com fade quando a imagem
  * carrega, em vez de "estourar" na tela.
  */
-export const FundoVidro: React.FC<{ foto?: string | null }> = ({ foto }) => {
+export const FundoVidro: React.FC<{ foto?: string | null; claro?: boolean }> = ({ foto, claro = false }) => {
   const [carregou, setCarregou] = useState(false);
   return (
-    <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-[hsl(24_14%_7%)]">
+    <div aria-hidden className={claro ? 'pointer-events-none fixed inset-0 -z-10 bg-background' : 'pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-[hsl(24_14%_7%)]'}>
+      {!claro && (
+        <>
       <img
         src={foto || FOTO_PADRAO}
         alt=""
@@ -29,6 +31,8 @@ export const FundoVidro: React.FC<{ foto?: string | null }> = ({ foto }) => {
       />
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,hsl(var(--primary)/0.22),transparent_55%)]" />
       <div className="absolute inset-0 bg-gradient-to-b from-black/45 via-black/55 to-black/70" />
+        </>
+      )}
     </div>
   );
 };

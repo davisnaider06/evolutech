@@ -15,7 +15,6 @@ import {
   ArrowRight,
   CalendarClock,
   Calendar,
-  Clock3,
   Store,
   Repeat,
   Link2,
@@ -93,6 +92,7 @@ const EmpresaDashboard: React.FC = () => {
     user: string;
   }>>([]);
   const [chartAppointments, setChartAppointments] = useState<Array<{ scheduledAt: string }>>([]);
+  const [period, setPeriod] = useState<'Hoje' | 'Semana' | 'Mês'>('Hoje');
 
   const isOwner = user?.role === 'DONO_EMPRESA';
 
@@ -198,30 +198,23 @@ const EmpresaDashboard: React.FC = () => {
             : 'Acesse suas tarefas e ferramentas disponíveis'}
           </p>
         </div>
-        <div className="flex w-fit items-center gap-2 rounded-full border border-white/10 bg-card/80 px-3 py-2 text-sm shadow-card">
-          <Clock3 className="h-4 w-4 text-primary" />
-          <span className="font-medium">Hoje</span>
+        <div className="rounded-[1.25rem] border border-border/70 bg-card/90 p-1.5 shadow-card">
+          <div className="flex items-center gap-1" role="group" aria-label="Período do dashboard">
+            {(['Hoje', 'Semana', 'Mês'] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setPeriod(option)}
+                className={`rounded-xl px-3 py-2 text-xs font-semibold transition-colors ${period === option ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* O que pede acao agora (agendamento novo pelo link, mensalidade em
-          aberto, agenda de hoje) vem antes dos numeros. Antes este painel so
-          existia em "Minhas tarefas" e o dono nao via. */}
-      {/* Barbearia nova: o que falta para o link de agendamento funcionar.
-          Some sozinho quando tudo estiver feito. */}
-      {isOwner && <PrimeirosPassos />}
-
-      <PainelPendencias />
-
-      {hasModuleForCurrentRole('appointments') && <AtendimentosSemBaixa mostrarBarbeiro />}
-
-      {/* O link do cliente fica a vista do dono: e o que ele divulga para
-          a agenda encher. Antes so aparecia escondido em Agendamentos. */}
-      {isOwner && hasModuleForCurrentRole('appointments') && (
-        <LinkDosClientes slug={user?.tenantSlug || company?.slug} nomeEmpresa={company?.name} />
-      )}
-
-      <section className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 lg:grid-cols-4 lg:gap-4">
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
         <DashboardMetricCard
           title="Agendamentos hoje"
           value={loading ? '...' : metrics.appointmentsToday}
@@ -254,7 +247,16 @@ const EmpresaDashboard: React.FC = () => {
         />
       </section>
 
-      <DashboardActivityChart data={activityByHour} loading={loading} />
+      <DashboardActivityChart data={activityByHour} loading={loading} period={period} />
+
+      <div className="space-y-5">
+        {isOwner && <PrimeirosPassos />}
+        <PainelPendencias />
+        {hasModuleForCurrentRole('appointments') && <AtendimentosSemBaixa mostrarBarbeiro />}
+        {isOwner && hasModuleForCurrentRole('appointments') && (
+          <LinkDosClientes slug={user?.tenantSlug || company?.slug} nomeEmpresa={company?.name} />
+        )}
+      </div>
 
       <div className="grid gap-5 lg:grid-cols-2 lg:gap-6">
         <RecentActivity items={recentItems} title="Movimento recente" />

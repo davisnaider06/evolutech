@@ -10,11 +10,12 @@ export interface DashboardActivityPoint {
 interface DashboardActivityChartProps {
   data: DashboardActivityPoint[];
   loading?: boolean;
+  period?: 'Hoje' | 'Semana' | 'Mês';
 }
 
 const chartConfig = { activity: { label: 'Atendimentos', color: 'hsl(var(--primary))' } };
 
-export const DashboardActivityChart: React.FC<DashboardActivityChartProps> = ({ data, loading }) => {
+export const DashboardActivityChart: React.FC<DashboardActivityChartProps> = ({ data, loading, period = 'Hoje' }) => {
   const hasActivity = data.some((point) => point.value > 0);
 
   return (
@@ -24,7 +25,7 @@ export const DashboardActivityChart: React.FC<DashboardActivityChartProps> = ({ 
           <h2 className="text-lg font-bold tracking-tight sm:text-xl">Movimento do dia</h2>
           <p className="mt-1 text-xs text-muted-foreground">Atendimentos registrados por horário</p>
         </div>
-        <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-500">Hoje</span>
+        <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-500">{period}</span>
       </div>
 
       {loading ? (
