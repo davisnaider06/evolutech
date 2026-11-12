@@ -398,7 +398,7 @@ export const EmpresaLayout: React.FC = () => {
 
         <nav
           aria-label="Atalhos"
-          className="vidro-denso animar-entrada-baixo fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-30 grid grid-cols-4 rounded-full px-1 lg:hidden"
+          className="animar-entrada-baixo fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-30 grid grid-cols-4 rounded-[2rem] border border-white/10 bg-zinc-950/95 px-1.5 shadow-[0_14px_34px_-12px_rgba(0,0,0,0.72)] backdrop-blur-xl lg:hidden"
         >
           {atalhosMobile.map((item) => {
             const ativo = estaEm(item.path);
@@ -409,8 +409,8 @@ export const EmpresaLayout: React.FC = () => {
                 onClick={() => navigate(item.path)}
                 aria-current={ativo ? 'page' : undefined}
                 className={cn(
-                  'flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium',
-                  ativo ? 'text-primary' : 'text-white/60'
+                  'flex min-w-0 flex-col items-center gap-1 rounded-2xl py-2.5 text-[11px] font-medium transition-colors',
+                  ativo ? 'bg-white/10 text-primary' : 'text-white/60 hover:text-white'
                 )}
               >
                 <item.icon className="h-5 w-5" />
@@ -422,8 +422,8 @@ export const EmpresaLayout: React.FC = () => {
             type="button"
             onClick={() => setIsMobileMenuOpen(true)}
             className={cn(
-              'flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium',
-              isMobileMenuOpen ? 'text-primary' : 'text-white/60'
+              'flex flex-col items-center gap-1 rounded-2xl py-2.5 text-[11px] font-medium transition-colors',
+              isMobileMenuOpen ? 'bg-white/10 text-primary' : 'text-white/60 hover:text-white'
             )}
           >
             <Menu className="h-5 w-5" />

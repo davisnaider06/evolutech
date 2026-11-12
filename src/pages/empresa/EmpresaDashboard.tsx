@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { requisitar } from '@/lib/rede';
 import { useAtualizacaoAutomatica } from '@/hooks/useAtualizacaoAutomatica';
 import { useAuth } from '@/contexts/AuthContext';
-import { StatsCard } from '@/components/dashboard/StatsCard';
+import { DashboardMetricCard } from '@/components/dashboard/DashboardMetricCard';
+import { DashboardActivityChart } from '@/components/dashboard/DashboardActivityChart';
 import { RecentActivity } from '@/components/dashboard/RecentActivity';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,7 @@ import {
   ArrowRight,
   CalendarClock,
   Calendar,
+  Clock3,
   Store,
   Repeat,
   Link2,
@@ -90,6 +92,7 @@ const EmpresaDashboard: React.FC = () => {
     timestamp: string;
     user: string;
   }>>([]);
+  const [chartAppointments, setChartAppointments] = useState<Array<{ scheduledAt: string }>>([]);
 
   const isOwner = user?.role === 'DONO_EMPRESA';
 
@@ -121,6 +124,11 @@ const EmpresaDashboard: React.FC = () => {
 
         const data = (await response.json()) as DashboardMetricsResponse;
         setMetrics(data.summary);
+        setChartAppointments(
+          Array.isArray(data.recentAppointments)
+            ? data.recentAppointments.map(({ scheduledAt }) => ({ scheduledAt }))
+            : [],
+        );
         const appointmentItems = Array.isArray(data.recentAppointments)
           ? data.recentAppointments.map((item) => ({
               id: `appointment-${item.id}`,
@@ -163,16 +171,38 @@ const EmpresaDashboard: React.FC = () => {
   // Numeros e "ultimos agendamentos" acompanham o que o cliente marca pelo link.
   useAtualizacaoAutomatica(() => setRecarga((n) => n + 1));
 
+  const activityByHour = useMemo(() => {
+    const buckets = [8, 10, 12, 14, 16, 18, 20].map((hour) => ({
+      label: `${String(hour).padStart(2, '0')}:00`,
+      value: 0,
+    }));
+
+    chartAppointments.forEach(({ scheduledAt }) => {
+      const hour = new Date(scheduledAt).getHours();
+      const index = Math.max(0, Math.min(buckets.length - 1, Math.floor((hour - 8) / 2)));
+      buckets[index].value += 1;
+    });
+
+    return buckets;
+  }, [chartAppointments]);
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Olá, {user?.name?.split(' ')[0]}</h1>
-        <p className="text-muted-foreground">
+    <div className="mx-auto max-w-7xl space-y-6 pb-3 sm:space-y-8">
+      <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Visão geral</p>
+          <h1 className="mt-1 text-2xl font-bold tracking-[-0.045em] sm:text-3xl">Olá, {user?.name?.split(' ')[0]}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
           {isOwner
             ? `Gerencie ${company?.name || 'sua empresa'} e acompanhe os resultados`
             : 'Acesse suas tarefas e ferramentas disponíveis'}
-        </p>
-      </div>
+          </p>
+        </div>
+        <div className="flex w-fit items-center gap-2 rounded-full border border-white/10 bg-card/80 px-3 py-2 text-sm shadow-card">
+          <Clock3 className="h-4 w-4 text-primary" />
+          <span className="font-medium">Hoje</span>
+        </div>
+      </section>
 
       {/* O que pede acao agora (agendamento novo pelo link, mensalidade em
           aberto, agenda de hoje) vem antes dos numeros. Antes este painel so
@@ -191,36 +221,42 @@ const EmpresaDashboard: React.FC = () => {
         <LinkDosClientes slug={user?.tenantSlug || company?.slug} nomeEmpresa={company?.name} />
       )}
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatsCard
+      <section className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 lg:grid-cols-4 lg:gap-4">
+        <DashboardMetricCard
           title="Agendamentos hoje"
           value={loading ? '...' : metrics.appointmentsToday}
-          change={{ label: loading ? 'contando os horários…' : `${metrics.upcomingAppointments} ainda por vir` }}
+          detail={loading ? 'Contando horários...' : `${metrics.upcomingAppointments} ainda por vir`}
           icon={CalendarClock}
+          trend={metrics.appointmentsToday > 0 ? 'up' : 'neutral'}
+          trendLabel={metrics.appointmentsToday > 0 ? 'em andamento' : undefined}
         />
-        <StatsCard
+        <DashboardMetricCard
           title="Faturamento do mês"
           value={loading ? '...' : currency.format(metrics.revenueMonth || 0)}
-          change={{ label: 'vendas pagas no mês' }}
+          detail="Vendas pagas no mês"
           icon={Wallet}
+          trend={metrics.revenueMonth > 0 ? 'up' : 'neutral'}
+          trendLabel={metrics.revenueMonth > 0 ? 'mês atual' : undefined}
         />
-        <StatsCard
+        <DashboardMetricCard
           title="Clientes ativos"
           value={loading ? '...' : metrics.customersActive}
-          change={{ label: loading ? 'contando os clientes…' : `de ${metrics.customersTotal} cadastrados` }}
+          detail={loading ? 'Contando clientes...' : `De ${metrics.customersTotal} cadastrados`}
           icon={UserCheck}
+          trend={metrics.customersActive > 0 ? 'up' : 'neutral'}
+          trendLabel={metrics.customersActive > 0 ? 'cadastros' : undefined}
         />
-        {isOwner && (
-          <StatsCard
-            title="Equipe"
-            value={loading ? '...' : metrics.employeesTotal}
-            change={{ label: 'profissionais ativos' }}
-            icon={Users}
-          />
-        )}
-      </div>
+        <DashboardMetricCard
+          title={isOwner ? 'Equipe' : 'Próximos horários'}
+          value={loading ? '...' : isOwner ? metrics.employeesTotal : metrics.upcomingAppointments}
+          detail={isOwner ? 'Profissionais ativos' : 'Agendamentos por atender'}
+          icon={isOwner ? Users : Calendar}
+        />
+      </section>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <DashboardActivityChart data={activityByHour} loading={loading} />
+
+      <div className="grid gap-5 lg:grid-cols-2 lg:gap-6">
         <RecentActivity items={recentItems} title="Movimento recente" />
 
         {/* Atalhos para o que o dono faz todo dia — antes eram suporte,
