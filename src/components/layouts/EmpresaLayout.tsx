@@ -9,6 +9,8 @@ import { FundoVidro } from '@/components/layouts/FundoVidro';
 import { ConteudoDaRota } from '@/components/layouts/ConteudoDaRota';
 import { useTemaVidro } from '@/hooks/useTemaVidro';
 import { precarregarTelas } from '@/lib/telas';
+import { BotaoIconeCircular } from '@/components/visual/BotaoIconeCircular';
+import { BarraNavegacaoMobile } from '@/components/visual/BarraNavegacaoMobile';
 import {
   LayoutDashboard,
   Users,
@@ -25,7 +27,6 @@ import {
   HeadphonesIcon,
   GraduationCap,
   CreditCard,
-  Building2,
   UserPlus,
   Calendar,
   Package,
@@ -121,35 +122,6 @@ const navItems: NavItem[] = [
   { icon: GraduationCap, label: 'Tutoriais', path: '/empresa/treinamentos', moduleCode: 'training', group: 'mais' },
 ];
 
-const MobileDockItem: React.FC<{
-  icon: React.ElementType;
-  label: string;
-  path: string;
-  active: boolean;
-  central?: boolean;
-  onClick: (path: string) => void;
-}> = ({ icon: Icon, label, path, active, central = false, onClick }) => (
-  <button
-    type="button"
-    onClick={() => onClick(path)}
-    aria-current={active ? 'page' : undefined}
-    className={cn(
-      'flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl text-[10px] font-medium transition-colors',
-      active ? 'text-primary' : 'text-white/65 hover:text-white',
-      central && 'relative -translate-y-3',
-    )}
-  >
-    <span className={cn(
-      'flex h-9 w-9 items-center justify-center rounded-xl',
-      central && 'h-12 w-12 rounded-2xl border border-primary/25 bg-primary text-primary-foreground shadow-lg shadow-primary/35',
-      active && !central && 'bg-white/10',
-    )}>
-      <Icon className={central ? 'h-5 w-5' : 'h-5 w-5'} />
-    </span>
-    <span>{label}</span>
-  </button>
-);
-
 export const EmpresaLayout: React.FC = () => {
   const { user, logout, company } = useAuth();
   const { hasModuleForCurrentRole, isLoading: carregandoModulos } = useCompanyModules();
@@ -234,13 +206,13 @@ export const EmpresaLayout: React.FC = () => {
         isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       )}>
         {/* User Name / Avatar */}
-        <div className="flex h-16 items-center justify-between border-b border-white/10 px-4">
+        <div className="flex h-16 items-center justify-between border-b border-border/60 px-4">
           <div className={cn('flex items-center gap-3', isCollapsed && 'justify-center w-full')}>
             {companyLogo ? (
               <img 
                 src={companyLogo} 
                 alt={sidebarTitle} 
-                className="h-8 w-8 rounded-full object-cover ring-1 ring-white/20"
+                className="h-8 w-8 rounded-full object-cover ring-1 ring-border"
               />
             ) : (
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold shadow-lg shadow-primary/30">
@@ -321,8 +293,8 @@ export const EmpresaLayout: React.FC = () => {
                           className={cn(
                             'flex w-full items-center gap-3 rounded-full px-3 py-2 text-sm font-medium transition-all duration-200',
                             isActive
-                              ? 'bg-white/90 text-neutral-900 shadow-lg shadow-black/30'
-                              : 'text-white/65 hover:bg-white/10 hover:text-white'
+                              ? 'bg-foreground text-background'
+                              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                           )}
                         >
                           <item.icon className={cn('h-5 w-5 flex-shrink-0', isCollapsed && 'mx-auto')} />
@@ -339,7 +311,7 @@ export const EmpresaLayout: React.FC = () => {
         </nav>
 
         {/* User section */}
-        <div className="border-t border-white/10 p-4">
+        <div className="border-t border-border/60 p-4">
           <div className={cn(
             'flex items-center gap-3',
             isCollapsed && 'justify-center'
@@ -362,10 +334,20 @@ export const EmpresaLayout: React.FC = () => {
               </div>
             )}
           </div>
+          {/* No celular o topo so tem sino e avatar, como na referencia: a
+              troca de tema mora aqui na gaveta. */}
+          <Button
+            variant="ghost"
+            className="mt-4 min-h-11 w-full justify-start gap-3 text-muted-foreground lg:hidden"
+            onClick={() => setModoClaro((atual) => !atual)}
+          >
+            {modoClaro ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+            <span>{modoClaro ? 'Modo escuro' : 'Modo claro'}</span>
+          </Button>
           <Button
             variant="ghost"
             className={cn(
-              'mt-4 w-full justify-start gap-3 text-muted-foreground hover:text-destructive',
+              'mt-2 min-h-11 w-full justify-start gap-3 text-muted-foreground hover:text-destructive lg:mt-4',
               isCollapsed && 'justify-center'
             )}
             onClick={handleLogout}
@@ -378,75 +360,57 @@ export const EmpresaLayout: React.FC = () => {
 
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="animar-entrada-topo mx-4 mt-4 flex h-14 shrink-0 items-center justify-between lg:mx-0 lg:mt-0 lg:rounded-2xl lg:border lg:border-border/70 lg:bg-card/80 lg:px-4 lg:shadow-card">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="rounded-full lg:hidden"
-              onClick={() => setIsMobileMenuOpen(true)}
-            >
-              <Menu className="h-5 w-5" />
-            </Button>
-            <div className="hidden items-center gap-2 sm:flex">
-              {companyLogo ? (
-                <img
-                  src={companyLogo}
-                  alt={companyName}
-                  className="h-5 w-5 rounded object-cover"
-                />
-              ) : (
-                <Building2 className="h-4 w-4 text-muted-foreground" />
-              )}
-              <span className="text-sm font-semibold">{companyName}</span>
-            </div>
+        <header className="animar-entrada-topo flex h-[4.5rem] shrink-0 items-center justify-between gap-3 px-gutter lg:px-1">
+          {/* Marca da barbearia a esquerda, como o wordmark da referencia. */}
+          <div className="flex min-w-0 items-center gap-2.5">
+            {companyLogo && (
+              <img src={companyLogo} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" />
+            )}
+            <span className="truncate text-xl font-bold tracking-tight">{companyName}</span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="rounded-full"
-              title={modoClaro ? 'Ativar modo escuro' : 'Ativar modo claro'}
-              aria-label={modoClaro ? 'Ativar modo escuro' : 'Ativar modo claro'}
+          <div className="flex shrink-0 items-center gap-2.5">
+            <BotaoIconeCircular
+              rotulo={modoClaro ? 'Ativar modo escuro' : 'Ativar modo claro'}
+              className="hidden lg:inline-flex"
               onClick={() => setModoClaro((atual) => !atual)}
             >
-              {modoClaro ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-            </Button>
-            <Button variant="ghost" size="icon" className="rounded-full" title="Notificações" aria-label="Notificações">
-              <Bell className="h-5 w-5" />
-            </Button>
-            <button type="button" onClick={() => setIsMobileMenuOpen(true)} className="hidden h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground sm:flex lg:hidden">
+              {modoClaro ? <Moon strokeWidth={1.5} /> : <Sun strokeWidth={1.5} />}
+            </BotaoIconeCircular>
+            <BotaoIconeCircular rotulo="Notificações">
+              <Bell strokeWidth={1.5} />
+            </BotaoIconeCircular>
+            {/* Avatar: no celular abre a gaveta com a conta e o menu completo. */}
+            <button
+              type="button"
+              onClick={() => setIsMobileMenuOpen(true)}
+              aria-label="Abrir menu da conta"
+              className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary text-base font-semibold text-primary-foreground shadow-card lg:hidden"
+            >
               {user.name.charAt(0).toUpperCase()}
             </button>
           </div>
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto px-4 pb-32 pt-5 lg:px-3 lg:pb-6 lg:pt-6">
+        <main className="pb-nav-seguro flex-1 overflow-y-auto px-gutter pt-1 lg:px-1">
           <ConteudoDaRota />
         </main>
 
-        <nav
-          aria-label="Atalhos"
-          className="animar-entrada-baixo fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-30 grid h-[72px] grid-cols-5 rounded-[2rem] border border-white/10 bg-zinc-950 px-1.5 shadow-[0_14px_34px_-12px_rgba(0,0,0,0.72)] lg:hidden"
-        >
-          <button
-            type="button"
-            onClick={() => setIsMobileMenuOpen(true)}
-            className={cn(
-              'flex flex-col items-center justify-center gap-1 rounded-2xl text-[10px] font-medium transition-colors',
-              isMobileMenuOpen ? 'bg-white/10 text-primary' : 'text-white/65 hover:text-white'
-            )}
-          >
-            <Menu className="h-5 w-5" />
-            Menu
-          </button>
-          <MobileDockItem icon={Calendar} label="Agenda" path="/empresa/agendamentos" active={estaEm('/empresa/agendamentos')} onClick={navigate} />
-          <MobileDockItem icon={LayoutDashboard} label="Início" path="/empresa/dashboard" active={estaEm('/empresa/dashboard')} onClick={navigate} central />
-          <MobileDockItem icon={TrendingUp} label="Financeiro" path={hasModuleForCurrentRole('finance') ? '/empresa/financeiro' : '/empresa/caixa'} active={estaEm('/empresa/financeiro') || estaEm('/empresa/caixa')} onClick={navigate} />
-          <MobileDockItem icon={Users} label="Equipe" path={isOwner && hasModuleForCurrentRole('users') ? '/empresa/equipe' : '/empresa/clientes'} active={estaEm('/empresa/equipe') || estaEm('/empresa/clientes')} onClick={navigate} />
-        </nav>
+        {/* Quatro destinos fixos; o resto do menu fica em "Menu" (a gaveta).
+            O barbeiro nao tem Painel: o Inicio dele e Minhas tarefas. */}
+        <BarraNavegacaoMobile
+          itens={[
+            isOwner
+              ? { id: 'inicio', rotulo: 'Início', icone: LayoutDashboard, ativo: estaEm('/empresa/dashboard'), onClick: () => navigate('/empresa/dashboard') }
+              : { id: 'inicio', rotulo: 'Início', icone: ListTodo, ativo: estaEm('/empresa/app'), onClick: () => navigate('/empresa/app') },
+            { id: 'agenda', rotulo: 'Agenda', icone: Calendar, ativo: estaEm('/empresa/agendamentos'), onClick: () => navigate('/empresa/agendamentos') },
+            hasModuleForCurrentRole('finance')
+              ? { id: 'dinheiro', rotulo: 'Financeiro', icone: Wallet, ativo: estaEm('/empresa/financeiro') || estaEm('/empresa/caixa'), onClick: () => navigate('/empresa/financeiro') }
+              : { id: 'dinheiro', rotulo: 'Caixa', icone: Wallet, ativo: estaEm('/empresa/caixa'), onClick: () => navigate('/empresa/caixa') },
+            { id: 'menu', rotulo: 'Menu', icone: Menu, ativo: isMobileMenuOpen, onClick: () => setIsMobileMenuOpen(true) },
+          ]}
+        />
       </div>
     </div>
   );

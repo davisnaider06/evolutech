@@ -21,7 +21,7 @@ interface Tenant {
 
 const planColors = {
   starter: 'bg-muted text-muted-foreground',
-  professional: 'bg-blue-500/20 text-blue-600 border-blue-500/30',
+  professional: 'bg-info/10 text-info-foreground border-transparent',
   enterprise: 'bg-purple-500/20 text-purple-600 border-purple-500/30',
 };
 
@@ -66,7 +66,7 @@ export const TenantsListRealtime: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="glass rounded-xl p-6">
+      <div className="rounded-card bg-card p-card-pad text-card-foreground shadow-card">
         <div className="flex items-center justify-between mb-4">
           <Skeleton className="h-6 w-40" />
           <Skeleton className="h-8 w-24" />
@@ -90,9 +90,9 @@ export const TenantsListRealtime: React.FC = () => {
   }
 
   return (
-    <div className="glass rounded-xl p-6">
+    <div className="rounded-card bg-card p-card-pad text-card-foreground shadow-card">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold">Empresas Recentes</h3>
+        <h3 className="text-secao">Empresas Recentes</h3>
         <Button 
           variant="ghost" 
           size="sm" 
@@ -128,7 +128,7 @@ export const TenantsListRealtime: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <p className="font-medium">{tenant.name}</p>
                     {tenant.status !== 'active' && (
-                      <span className="h-2 w-2 rounded-full bg-amber-500" title="Inativo" />
+                      <span className="h-2 w-2 rounded-full bg-warning" title="Inativo" />
                     )}
                   </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">

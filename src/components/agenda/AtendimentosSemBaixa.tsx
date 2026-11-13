@@ -114,7 +114,7 @@ export const AtendimentosSemBaixa: React.FC<{ onAlterado?: () => void; mostrarBa
   if (itens.length === 0) return dialogo;
 
   return (
-    <section className="rounded-2xl border border-amber-500/40 bg-amber-500/5 p-4">
+    <section className="rounded-card bg-card p-card-pad shadow-card">
       <h2 className="font-semibold">
         {total === 1 ? '1 atendimento' : `${total} atendimentos`} sem baixa
       </h2>
@@ -123,7 +123,7 @@ export const AtendimentosSemBaixa: React.FC<{ onAlterado?: () => void; mostrarBa
       </p>
       <ul className="mt-3 space-y-2">
         {itens.map((item) => (
-          <li key={item.id} className="flex flex-col gap-2 rounded-xl bg-card p-3 shadow-card sm:flex-row sm:items-center">
+          <li key={item.id} className="flex flex-col gap-2 rounded-2xl bg-muted/60 p-3 sm:flex-row sm:items-center">
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium">{item.customer_name || 'Sem cadastro'}</p>
               <p className="truncate text-xs text-muted-foreground">

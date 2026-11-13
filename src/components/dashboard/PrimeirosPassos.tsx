@@ -106,7 +106,7 @@ export const PrimeirosPassos: React.FC = () => {
   const proximo = itens.findIndex((item) => !item.feito);
 
   return (
-    <section className="rounded-2xl border border-primary/30 bg-primary/5 p-4">
+    <section className="rounded-card bg-card p-card-pad shadow-card">
       <div className="flex items-center justify-between gap-3">
         <h2 className="font-semibold">Primeiros passos</h2>
         <span className="text-xs font-medium text-muted-foreground">
@@ -135,7 +135,7 @@ export const PrimeirosPassos: React.FC = () => {
                     {item.para && item.acao ? (
                       <Link
                         to={item.para}
-                        className="inline-flex h-9 items-center gap-1 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground"
+                        className="inline-flex min-h-11 items-center gap-1 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground"
                       >
                         {item.acao}
                         <ChevronRight className="h-4 w-4" />

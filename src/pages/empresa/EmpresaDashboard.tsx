@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { requisitar } from '@/lib/rede';
 import { useAtualizacaoAutomatica } from '@/hooks/useAtualizacaoAutomatica';
 import { useAuth } from '@/contexts/AuthContext';
-import { DashboardMetricCard } from '@/components/dashboard/DashboardMetricCard';
+import { CardMetrica } from '@/components/visual/CardMetrica';
+import { SeletorPilula } from '@/components/visual/SeletorPilula';
 import { DashboardActivityChart } from '@/components/dashboard/DashboardActivityChart';
 import { RecentActivity } from '@/components/dashboard/RecentActivity';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -187,69 +188,68 @@ const EmpresaDashboard: React.FC = () => {
   }, [chartAppointments]);
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 pb-3 sm:space-y-8">
-      <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Visão geral</p>
-          <h1 className="mt-1 text-2xl font-bold tracking-[-0.045em] sm:text-3xl">Olá, {user?.name?.split(' ')[0]}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-          {isOwner
-            ? `Gerencie ${company?.name || 'sua empresa'} e acompanhe os resultados`
-            : 'Acesse suas tarefas e ferramentas disponíveis'}
+    <div className="mx-auto max-w-7xl space-y-card-gap pb-3 lg:space-y-5">
+      {/* Linha de filtro: titulo da secao a esquerda, periodo em pilula a direita. */}
+      <section className="flex items-center justify-between gap-3 pt-1">
+        <div className="min-w-0">
+          <h1 className="text-secao">Visão geral</h1>
+          <p className="truncate text-legenda text-muted-foreground">
+            Olá, {user?.name?.split(' ')[0]}
+            {isOwner && company?.name ? ` · ${company.name}` : ''}
           </p>
         </div>
-        <div className="rounded-[1.25rem] border border-border/70 bg-card/90 p-1.5 shadow-card">
-          <div className="flex items-center gap-1" role="group" aria-label="Período do dashboard">
-            {(['Hoje', 'Semana', 'Mês'] as const).map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => setPeriod(option)}
-                className={`rounded-xl px-3 py-2 text-xs font-semibold transition-colors ${period === option ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-              >
-                {option}
-              </button>
-            ))}
-          </div>
-        </div>
+        <SeletorPilula<typeof period>
+          valor={period}
+          opcoes={['Hoje', 'Semana', 'Mês'] as const}
+          onChange={setPeriod}
+          rotuloAcessivel="Período do dashboard"
+        />
       </section>
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
-        <DashboardMetricCard
-          title="Agendamentos hoje"
-          value={loading ? '...' : metrics.appointmentsToday}
-          detail={loading ? 'Contando horários...' : `${metrics.upcomingAppointments} ainda por vir`}
-          icon={CalendarClock}
-          trend={metrics.appointmentsToday > 0 ? 'up' : 'neutral'}
-          trendLabel={metrics.appointmentsToday > 0 ? 'em andamento' : undefined}
+      <section className="grid grid-cols-2 gap-card-gap lg:grid-cols-4 lg:gap-4">
+        <CardMetrica
+          rotulo="Agendamentos hoje"
+          valor={metrics.appointmentsToday}
+          carregando={loading}
+          detalhe={`${metrics.upcomingAppointments} ainda por vir`}
+          icone={CalendarClock}
+          tom="primary"
+          tendencia="alta"
+          badge={metrics.appointmentsToday > 0 ? 'em andamento' : undefined}
         />
-        <DashboardMetricCard
-          title="Faturamento do mês"
-          value={loading ? '...' : currency.format(metrics.revenueMonth || 0)}
-          detail="Vendas pagas no mês"
-          icon={Wallet}
-          trend={metrics.revenueMonth > 0 ? 'up' : 'neutral'}
-          trendLabel={metrics.revenueMonth > 0 ? 'mês atual' : undefined}
+        <CardMetrica
+          rotulo="Faturamento do mês"
+          valor={currency.format(metrics.revenueMonth || 0)}
+          carregando={loading}
+          detalhe="Vendas pagas no mês"
+          icone={Wallet}
+          tom="success"
+          tendencia="alta"
+          badge={metrics.revenueMonth > 0 ? 'mês atual' : undefined}
         />
-        <DashboardMetricCard
-          title="Clientes ativos"
-          value={loading ? '...' : metrics.customersActive}
-          detail={loading ? 'Contando clientes...' : `De ${metrics.customersTotal} cadastrados`}
-          icon={UserCheck}
-          trend={metrics.customersActive > 0 ? 'up' : 'neutral'}
-          trendLabel={metrics.customersActive > 0 ? 'cadastros' : undefined}
+        <CardMetrica
+          rotulo="Clientes ativos"
+          valor={metrics.customersActive}
+          carregando={loading}
+          detalhe={`De ${metrics.customersTotal} cadastrados`}
+          icone={UserCheck}
+          tom="info"
+          tendencia="alta"
+          badge={metrics.customersActive > 0 ? 'cadastros' : undefined}
         />
-        <DashboardMetricCard
-          title={isOwner ? 'Equipe' : 'Próximos horários'}
-          value={loading ? '...' : isOwner ? metrics.employeesTotal : metrics.upcomingAppointments}
-          detail={isOwner ? 'Profissionais ativos' : 'Agendamentos por atender'}
-          icon={isOwner ? Users : Calendar}
+        <CardMetrica
+          rotulo={isOwner ? 'Equipe' : 'Próximos horários'}
+          valor={isOwner ? metrics.employeesTotal : metrics.upcomingAppointments}
+          carregando={loading}
+          detalhe={isOwner ? 'Profissionais ativos' : 'Agendamentos por atender'}
+          icone={isOwner ? Users : Calendar}
+          tom="accent"
         />
       </section>
 
       <DashboardActivityChart data={activityByHour} loading={loading} period={period} />
 
-      <div className="space-y-5">
+      <div className="space-y-card-gap lg:space-y-5">
         {isOwner && <PrimeirosPassos />}
         <PainelPendencias />
         {hasModuleForCurrentRole('appointments') && <AtendimentosSemBaixa mostrarBarbeiro />}
@@ -258,7 +258,7 @@ const EmpresaDashboard: React.FC = () => {
         )}
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2 lg:gap-6">
+      <div className="grid gap-card-gap lg:grid-cols-2 lg:gap-5">
         <RecentActivity items={recentItems} title="Movimento recente" />
 
         {/* Atalhos para o que o dono faz todo dia — antes eram suporte,
@@ -279,7 +279,7 @@ const EmpresaDashboard: React.FC = () => {
               { to: '/empresa/agendamentos', icon: Link2, label: 'Link de agendamento para clientes', modulo: 'appointments' },
             ].filter((atalho) => hasModuleForCurrentRole(atalho.modulo)).map((atalho) => (
               <Link key={atalho.label} to={atalho.to} className="block">
-                <Button variant="outline" className="w-full justify-between">
+                <Button variant="outline" className="min-h-11 w-full justify-between rounded-full border-transparent bg-muted/60 hover:bg-muted">
                   <span className="flex items-center gap-2">
                     <atalho.icon className="h-4 w-4" />
                     {atalho.label}

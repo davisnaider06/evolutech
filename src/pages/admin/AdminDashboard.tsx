@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { adminService } from '@/services/admin';
-import { StatsCardRealtime } from '@/components/dashboard/StatsCardRealtime';
+import { CardMetrica } from '@/components/visual/CardMetrica';
 import { RecentActivityRealtime } from '@/components/dashboard/RecentActivityRealtime';
 import { TenantsListRealtime } from '@/components/dashboard/TenantsListRealtime';
 import { 
@@ -80,73 +80,32 @@ const AdminDashboard: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">
-          Olá, {user?.name?.split(' ')[0] || 'Admin'}
-        </h1>
-        <p className="text-muted-foreground">
-          {isSuperAdmin 
-            ? 'Visão geral completa da plataforma iBarber' 
-            : 'Gerencie operações e suporte aos clientes'}
+    <div className="mx-auto max-w-7xl space-y-card-gap pb-3 lg:space-y-5">
+      <section className="pt-1">
+        <h1 className="text-secao">Visão geral</h1>
+        <p className="text-legenda text-muted-foreground">
+          Olá, {user?.name?.split(' ')[0] || 'Admin'} ·{' '}
+          {isSuperAdmin ? 'plataforma iBarber completa' : 'operações e suporte aos clientes'}
         </p>
-      </div>
+      </section>
 
-      {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatsCardRealtime
-          title="Total de Empresas"
-          value={stats.totalCompanies}
-          previousValue={stats.previousCompanies}
-          icon={Building2}
-          loading={loading}
-        />
-        <StatsCardRealtime
-          title="Usuários Ativos"
-          value={stats.activeUsers}
-          previousValue={stats.previousUsers}
-          icon={Users}
-          loading={loading}
-        />
+      {/* Sem badge de tendencia: a API nao manda o periodo anterior, e o
+          "anterior" calculado aqui (total - 2, - 5, - 1500) nao e dado real. */}
+      <section className="grid grid-cols-2 gap-card-gap lg:grid-cols-4 lg:gap-4">
+        <CardMetrica rotulo="Empresas" valor={stats.totalCompanies} icone={Building2} tom="primary" carregando={loading} />
+        <CardMetrica rotulo="Usuários ativos" valor={stats.activeUsers} icone={Users} tom="info" carregando={loading} />
         {isSuperAdmin && (
           <>
-            <StatsCardRealtime
-              title="MRR Total"
-              value={formatCurrency(stats.totalMRR)}
-              change={{ 
-                value: stats.previousMRR > 0 
-                  ? Number(((stats.totalMRR - stats.previousMRR) / stats.previousMRR * 100).toFixed(1))
-                  : 0, 
-                label: 'este mês' 
-              }}
-              icon={CreditCard}
-              loading={loading}
-            />
-            <StatsCardRealtime
-              title="Gateways Ativos"
-              value={stats.gatewaysActive}
-              icon={Wallet}
-              loading={loading}
-            />
+            <CardMetrica rotulo="MRR total" valor={formatCurrency(stats.totalMRR)} icone={CreditCard} tom="success" carregando={loading} />
+            <CardMetrica rotulo="Gateways ativos" valor={stats.gatewaysActive} icone={Wallet} tom="accent" carregando={loading} />
           </>
         )}
-        <StatsCardRealtime
-          title="Tickets Abertos"
-          value={stats.openTickets}
-          icon={HeadphonesIcon}
-          loading={loading}
-        />
-        <StatsCardRealtime
-          title="Módulos Ativos"
-          value={stats.modulesActive}
-          icon={Package}
-          loading={loading}
-        />
-      </div>
+        <CardMetrica rotulo="Tickets abertos" valor={stats.openTickets} icone={HeadphonesIcon} tom="accent" carregando={loading} />
+        <CardMetrica rotulo="Módulos ativos" valor={stats.modulesActive} icone={Package} tom="primary" carregando={loading} />
+      </section>
 
       {/* Main Content */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-card-gap lg:grid-cols-2 lg:gap-5">
         <RecentActivityRealtime />
         <TenantsListRealtime />
       </div>

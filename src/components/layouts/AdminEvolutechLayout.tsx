@@ -9,6 +9,8 @@ import { FundoVidro } from '@/components/layouts/FundoVidro';
 import { ConteudoDaRota } from '@/components/layouts/ConteudoDaRota';
 import { useTemaVidro } from '@/hooks/useTemaVidro';
 import { precarregarTelas } from '@/lib/telas';
+import { BotaoIconeCircular } from '@/components/visual/BotaoIconeCircular';
+import { BarraNavegacaoMobile } from '@/components/visual/BarraNavegacaoMobile';
 import {
   LayoutDashboard,
   Building2,
@@ -20,7 +22,6 @@ import {
   BarChart3,
   FileText,
   Bell,
-  HelpCircle,
   Menu,
   X,
   Blocks,
@@ -35,6 +36,8 @@ import {
   Bot,
   FileCheck,
   Palette,
+  Moon,
+  Sun,
 } from 'lucide-react';
 
 interface NavItem {
@@ -71,7 +74,15 @@ export const AdminEvolutechLayout: React.FC = () => {
   const location = useLocation();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  // Mesmo modo claro/escuro do painel da empresa (mesma chave): claro por
+  // padrao, no visual de cards brancos sobre cinza.
+  const [modoClaro, setModoClaro] = useState(() => localStorage.getItem('evolutech_modo') !== 'escuro');
   useTemaVidro();
+  React.useEffect(() => {
+    document.body.classList.toggle('modo-claro', modoClaro);
+    localStorage.setItem('evolutech_modo', modoClaro ? 'claro' : 'escuro');
+    return () => document.body.classList.remove('modo-claro');
+  }, [modoClaro]);
   // Baixa o codigo das outras telas com o navegador ocioso: a proxima troca
   // de tela nao espera rede para montar.
   React.useEffect(() => precarregarTelas(), []);
@@ -86,6 +97,8 @@ export const AdminEvolutechLayout: React.FC = () => {
     return true;
   });
 
+  const estaEm = (path: string) => location.pathname === path || (path !== '/admin-evolutech' && location.pathname.startsWith(path));
+
   const handleLogout = () => {
     logout();
     navigate('/login');
@@ -93,7 +106,7 @@ export const AdminEvolutechLayout: React.FC = () => {
 
   return (
     <div className="relative isolate flex h-screen overflow-hidden text-foreground lg:gap-3 lg:p-3">
-      <FundoVidro />
+      <FundoVidro claro={modoClaro} />
       {/* Mobile menu overlay */}
       {isMobileMenuOpen && (
         <div 
@@ -109,7 +122,7 @@ export const AdminEvolutechLayout: React.FC = () => {
         isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       )}>
         {/* Logo - Always Evolutech for admin */}
-        <div className="flex h-16 items-center justify-between border-b border-white/10 px-4">
+        <div className="flex h-16 items-center justify-between border-b border-border/60 px-4">
           <Logo size="sm" showText={!isCollapsed} />
           <Button
             variant="ghost"
@@ -131,7 +144,7 @@ export const AdminEvolutechLayout: React.FC = () => {
 
         {/* Admin Badge */}
         {!isCollapsed && (
-          <div className="px-4 py-3 border-b border-white/10">
+          <div className="px-4 py-3 border-b border-border/60">
             <div className="flex items-center gap-2 text-xs font-medium text-primary">
               <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
               Painel Administrativo Evolutech
@@ -155,8 +168,8 @@ export const AdminEvolutechLayout: React.FC = () => {
                     className={cn(
                       'flex w-full items-center gap-3 rounded-full px-3 py-2.5 text-sm font-medium transition-all duration-200',
                       isActive
-                        ? 'bg-white/90 text-neutral-900 shadow-lg shadow-black/30'
-                        : 'text-white/65 hover:bg-white/10 hover:text-white'
+                        ? 'bg-foreground text-background'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                     )}
                   >
                     <item.icon className={cn('h-5 w-5 flex-shrink-0', isCollapsed && 'mx-auto')} />
@@ -169,7 +182,7 @@ export const AdminEvolutechLayout: React.FC = () => {
         </nav>
 
         {/* User section */}
-        <div className="border-t border-white/10 p-4">
+        <div className="border-t border-border/60 p-4">
           <div className={cn(
             'flex items-center gap-3',
             isCollapsed && 'justify-center'
@@ -186,8 +199,16 @@ export const AdminEvolutechLayout: React.FC = () => {
           </div>
           <Button
             variant="ghost"
+            className="mt-4 min-h-11 w-full justify-start gap-3 text-muted-foreground lg:hidden"
+            onClick={() => setModoClaro((atual) => !atual)}
+          >
+            {modoClaro ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+            <span>{modoClaro ? 'Modo escuro' : 'Modo claro'}</span>
+          </Button>
+          <Button
+            variant="ghost"
             className={cn(
-              'mt-4 w-full justify-start gap-3 text-muted-foreground hover:text-destructive',
+              'mt-2 min-h-11 w-full justify-start gap-3 text-muted-foreground hover:text-destructive lg:mt-4',
               isCollapsed && 'justify-center'
             )}
             onClick={handleLogout}
@@ -200,37 +221,42 @@ export const AdminEvolutechLayout: React.FC = () => {
 
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Top bar */}
-        <header className="vidro animar-entrada-topo mx-3 mt-3 flex h-14 shrink-0 items-center justify-between rounded-full px-3 lg:mx-0 lg:mt-0 lg:px-4">
-          <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="lg:hidden"
-              onClick={() => setIsMobileMenuOpen(true)}
+        <header className="animar-entrada-topo flex h-[4.5rem] shrink-0 items-center justify-between gap-3 px-gutter lg:px-1">
+          <Logo size="md" className="[&_span]:text-xl" />
+          <div className="flex shrink-0 items-center gap-2.5">
+            <BotaoIconeCircular
+              rotulo={modoClaro ? 'Ativar modo escuro' : 'Ativar modo claro'}
+              className="hidden lg:inline-flex"
+              onClick={() => setModoClaro((atual) => !atual)}
             >
-              <Menu className="h-5 w-5" />
-            </Button>
-            <div className="hidden sm:flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1.5">
-              <span className="text-sm font-medium text-primary">iBarber</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="h-5 w-5" />
-              <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-destructive" />
-            </Button>
-            <Button variant="ghost" size="icon">
-              <HelpCircle className="h-5 w-5" />
-            </Button>
+              {modoClaro ? <Moon strokeWidth={1.5} /> : <Sun strokeWidth={1.5} />}
+            </BotaoIconeCircular>
+            <BotaoIconeCircular rotulo="Notificações">
+              <Bell strokeWidth={1.5} />
+            </BotaoIconeCircular>
+            <button
+              type="button"
+              onClick={() => setIsMobileMenuOpen(true)}
+              aria-label="Abrir menu da conta"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-base font-semibold text-primary-foreground shadow-card lg:hidden"
+            >
+              {user.name.charAt(0).toUpperCase()}
+            </button>
           </div>
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 lg:px-3 lg:pb-6 lg:pt-6">
+        <main className="pb-nav-seguro flex-1 overflow-y-auto px-gutter pt-1 lg:px-1">
           <ConteudoDaRota />
         </main>
+
+        <BarraNavegacaoMobile
+          itens={[
+            { id: 'inicio', rotulo: 'Início', icone: LayoutDashboard, ativo: estaEm('/admin-evolutech'), onClick: () => navigate('/admin-evolutech') },
+            { id: 'empresas', rotulo: 'Empresas', icone: Building2, ativo: estaEm('/admin-evolutech/empresas'), onClick: () => navigate('/admin-evolutech/empresas') },
+            { id: 'suporte', rotulo: 'Suporte', icone: HeadphonesIcon, ativo: estaEm('/admin-evolutech/suporte'), onClick: () => navigate('/admin-evolutech/suporte') },
+            { id: 'menu', rotulo: 'Menu', icone: Menu, ativo: isMobileMenuOpen, onClick: () => setIsMobileMenuOpen(true) },
+          ]}
+        />
       </div>
     </div>
   );

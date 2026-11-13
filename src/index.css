@@ -82,6 +82,11 @@
     --nav-height: 4.5rem;
     --nav-offset: 1rem;
 
+    /* Barra de navegacao mobile: o tom mais escuro que a paleta ja usa (o
+       fundo do tema escuro). */
+    --nav: 24 14% 7%;
+    --nav-foreground: 0 0% 100%;
+
     /* Status: os mesmos tons que ja estavam espalhados pelo codigo
        (green-500, amber-500, blue-500). O "-foreground" e o mesmo tom mais
        fechado, para o texto do badge passar de 4,5:1 sobre o fundo suave. */
@@ -206,6 +211,17 @@
     animation: slide-up 0.5s ease-out;
   }
 
+  /* Espaco no fim da pagina para a barra de navegacao flutuante nunca cobrir
+     o ultimo elemento. No computador a barra some e o espaco tambem. */
+  .pb-nav-seguro {
+    padding-bottom: calc(var(--nav-height) + var(--nav-offset) * 2 + env(safe-area-inset-bottom));
+  }
+  @media (min-width: 1024px) {
+    .pb-nav-seguro {
+      padding-bottom: 1.5rem;
+    }
+  }
+
   .animate-fade-in {
     animation: fade-in 0.3s ease-out;
   }
@@ -287,7 +303,9 @@
   /* O dashboard pode alternar para o claro sem perder a cor primaria que a
      empresa configurou. Esta regra vem depois da variante de vidro escura. */
   body.tema-vidro.modo-claro {
-    --background: 40 25% 97%;
+    /* Mesmo cinza do --muted do tema padrao: os cards brancos se destacam
+       dele sem precisar de borda. */
+    --background: 40 12% 95%;
     --foreground: 24 14% 10%;
     --card: 0 0% 100%;
     --card-foreground: 24 14% 10%;
@@ -379,12 +397,49 @@ body.tema-vidro .gradient-card {
     0 8px 32px -8px hsl(0 0% 0% / 0.4);
 }
 
+/* Modo claro: card branco chapado, sem borda visivel e com sombra quase
+   imperceptivel. Quem separa o card do fundo e o contraste com o cinza. */
 body.tema-vidro.modo-claro .bg-card,
 body.tema-vidro.modo-claro .glass,
 body.tema-vidro.modo-claro .gradient-card {
-  background: hsl(0 0% 100% / 0.96);
-  border-color: hsl(var(--border));
-  box-shadow: 0 8px 28px -16px hsl(24 14% 10% / 0.16);
+  background: hsl(var(--card));
+  border-color: transparent;
+  box-shadow: var(--shadow-card);
+}
+
+/* Modo claro: barra lateral e paineis flutuantes viram superficie branca
+   chapada. Antes continuavam vidro escuro com o texto escuro do modo claro
+   por cima (texto ilegivel na barra lateral e nos dialogos). */
+body.tema-vidro.modo-claro .vidro,
+body.tema-vidro.modo-claro .vidro-denso {
+  background: hsl(var(--card));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-color: transparent;
+  box-shadow: var(--shadow-card);
+}
+
+body.tema-vidro.modo-claro .bg-popover,
+body.tema-vidro.modo-claro [role='dialog'],
+body.tema-vidro.modo-claro [role='alertdialog'],
+body.tema-vidro.modo-claro [data-sonner-toast] {
+  background: hsl(var(--popover));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-color: transparent;
+  box-shadow: var(--shadow-float);
+}
+
+body.tema-vidro.modo-claro .bg-black\/80 {
+  background-color: hsl(var(--foreground) / 0.35);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Card dentro de card no modo claro: sem sombra, so o tom do trilho. */
+body.tema-vidro.modo-claro :is(.bg-card, .glass) :is(.bg-card, .glass) {
+  background: hsl(var(--muted) / 0.6);
+  box-shadow: none;
 }
 
 /* Card dentro de card nao empilha mais vidro em cima de vidro. */
