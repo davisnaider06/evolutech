@@ -1,6 +1,10 @@
 import { createRoot } from "react-dom/client";
 import { toast } from "sonner";
 import App from "./App.tsx";
+import "@fontsource/outfit/400.css";
+import "@fontsource/outfit/500.css";
+import "@fontsource/outfit/600.css";
+import "@fontsource/outfit/700.css";
 import "./index.css";
 import { registerSW } from "virtual:pwa-register";
 

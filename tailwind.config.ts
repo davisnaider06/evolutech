@@ -58,6 +58,18 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
+        info: {
+          DEFAULT: "hsl(var(--info))",
+          foreground: "hsl(var(--info-foreground))",
+        },
         role: {
           "super-admin": "hsl(var(--super-admin))",
           "admin-evolutech": "hsl(var(--admin-evolutech))",
@@ -69,9 +81,30 @@ export default {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        card: "var(--radius-card)",
+        tooltip: "var(--radius-tooltip)",
+      },
+      spacing: {
+        gutter: "var(--gutter)",
+        "card-pad": "var(--card-padding)",
+        "card-gap": "var(--card-gap)",
+        "nav-h": "var(--nav-height)",
+        "nav-offset": "var(--nav-offset)",
+      },
+      boxShadow: {
+        float: "var(--shadow-float)",
+      },
+      // Escala tipografica da referencia: titulo de secao, rotulo, valor de
+      // metrica e legenda de eixo.
+      fontSize: {
+        secao: ["1.25rem", { lineHeight: "1.3", fontWeight: "600" }],
+        rotulo: ["0.875rem", { lineHeight: "1.25rem", fontWeight: "400" }],
+        valor: ["1.75rem", { lineHeight: "1.1", fontWeight: "700", letterSpacing: "-0.03em" }],
+        "valor-lg": ["2rem", { lineHeight: "1.1", fontWeight: "700", letterSpacing: "-0.03em" }],
+        legenda: ["0.75rem", { lineHeight: "1rem", fontWeight: "400" }],
       },
       fontFamily: {
-        sans: ['Poppins', 'system-ui', 'sans-serif'],
+        sans: ['Outfit', 'Poppins', 'system-ui', 'sans-serif'],
       },
       keyframes: {
         "accordion-down": {

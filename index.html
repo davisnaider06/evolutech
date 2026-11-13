@@ -18,11 +18,7 @@
     <link rel="icon" href="/favicon.ico" />
     <!-- Sem isto o iPhone usa um print da tela como icone do app instalado. -->
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
-    <!-- Fonte pelo <link>: o @import no index.css vinha depois do @tailwind e
-         o navegador descartava, entao a fonte nunca carregava. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <!-- Fonte Outfit self-hosted (@fontsource, importada em main.tsx): sem CDN, entra no precache do PWA. -->
     <link rel="preload" as="image" href="/imagens/barbearia-capa.jpg" />
 
     <meta property="og:title" content="iBarber" />
