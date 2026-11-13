@@ -2,6 +2,38 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Barbearias que salvaram o tema antes da troca de fonte guardaram
+   "Poppins" no banco, e o app aplica esse nome ao <body>. O nome continua
+   existindo, apontando para a Outfit self-hosted, sem tocar nessa logica. */
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../node_modules/@fontsource/outfit/files/outfit-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('../node_modules/@fontsource/outfit/files/outfit-latin-500-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../node_modules/@fontsource/outfit/files/outfit-latin-600-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../node_modules/@fontsource/outfit/files/outfit-latin-700-normal.woff2') format('woff2');
+}
+
 @layer base {
   /* Tema padrao: dourado de barbearia sobre fundo claro, como o prototipo
      em design-references/. A barbearia que personalizou as cores em
@@ -39,6 +71,27 @@
 
     --radius: 0.875rem;
 
+    /* Raios e espacamentos do layout. --radius continua sendo o que a
+       barbearia personaliza (botoes e campos); o card tem raio proprio para
+       a personalizacao nao desmontar o layout. */
+    --radius-card: 1.375rem;
+    --radius-tooltip: 0.75rem;
+    --gutter: 1rem;
+    --card-padding: 1.25rem;
+    --card-gap: 0.75rem;
+    --nav-height: 4.5rem;
+    --nav-offset: 1rem;
+
+    /* Status: os mesmos tons que ja estavam espalhados pelo codigo
+       (green-500, amber-500, blue-500). O "-foreground" e o mesmo tom mais
+       fechado, para o texto do badge passar de 4,5:1 sobre o fundo suave. */
+    --success: 142 71% 45%;
+    --success-foreground: 142 72% 27%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 32 90% 28%;
+    --info: 217 91% 60%;
+    --info-foreground: 217 80% 40%;
+
     /* Custom tokens */
     --gradient-primary: linear-gradient(135deg, hsl(43 60% 42%) 0%, hsl(36 55% 32%) 100%);
     --gradient-dark: linear-gradient(180deg, hsl(0 0% 98%) 0%, hsl(40 12% 94%) 100%);
@@ -46,7 +99,11 @@
     --gradient-glow: radial-gradient(ellipse at center, hsl(43 60% 40% / 0.10) 0%, transparent 70%);
 
     --shadow-glow: 0 0 60px -15px hsl(43 60% 40% / 0.35);
-    --shadow-card: 0 4px 24px -6px hsl(0 0% 10% / 0.08);
+    /* Sombra de card quase imperceptivel: quem separa o card do fundo e o
+       contraste branco/cinza, nao a sombra. */
+    --shadow-card: 0 1px 2px hsl(0 0% 10% / 0.04), 0 6px 20px -10px hsl(0 0% 10% / 0.07);
+    /* Tooltip do grafico e outros elementos que flutuam sobre o card. */
+    --shadow-float: 0 10px 28px -10px hsl(0 0% 10% / 0.2);
     --shadow-elevated: 0 8px 32px -8px hsl(0 0% 10% / 0.16);
 
     --sidebar-background: 0 0% 100%;
@@ -73,7 +130,7 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Poppins', system-ui, sans-serif;
+    font-family: 'Outfit', system-ui, sans-serif;
   }
 
   /* Custom scrollbar */
