@@ -25,8 +25,8 @@ const typeConfig = {
   usuario: { icon: User, color: 'text-role-admin-evolutech bg-role-admin-evolutech/10' },
   config: { icon: Settings, color: 'text-role-employee bg-role-employee/10' },
   seguranca: { icon: Shield, color: 'text-role-super-admin bg-role-super-admin/10' },
-  agendamento: { icon: CalendarClock, color: 'text-sky-500 bg-sky-500/10' },
-  pedido: { icon: ReceiptText, color: 'text-emerald-500 bg-emerald-500/10' },
+  agendamento: { icon: CalendarClock, color: 'text-info-foreground bg-info/10' },
+  pedido: { icon: ReceiptText, color: 'text-success-foreground bg-success/10' },
 };
 
 export const RecentActivity: React.FC<{ items?: RecentActivityItem[]; title?: string }> = ({
@@ -36,8 +36,8 @@ export const RecentActivity: React.FC<{ items?: RecentActivityItem[]; title?: st
   const activities = items && items.length > 0 ? items : fallbackActivities;
 
   return (
-    <div className="glass rounded-xl p-6">
-      <h3 className="mb-4 text-lg font-semibold">{title}</h3>
+    <div className="rounded-card bg-card p-card-pad text-card-foreground shadow-card">
+      <h3 className="mb-4 text-secao">{title}</h3>
       <div className="space-y-4">
         {activities.map((activity, index) => {
           const config = typeConfig[activity.type] || typeConfig.config;
@@ -48,15 +48,15 @@ export const RecentActivity: React.FC<{ items?: RecentActivityItem[]; title?: st
               key={activity.id}
               className={cn(
                 'flex items-start gap-4 animate-fade-in',
-                index !== activities.length - 1 && 'border-b border-border pb-4'
+                index !== activities.length - 1 && 'border-b border-border/70 pb-4'
               )}
               style={{ animationDelay: `${index * 100}ms` }}
             >
-              <div className={cn('flex h-10 w-10 items-center justify-center rounded-lg', config.color)}>
-                <Icon className="h-5 w-5" />
+              <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-full', config.color)}>
+                <Icon className="h-5 w-5" strokeWidth={1.75} />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium">{activity.description}</p>
+                <p className="text-rotulo font-medium">{activity.description}</p>
                 <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                   <span>{activity.user}</span>
                   <span>•</span>

@@ -1,6 +1,8 @@
 import React from 'react';
-import { Bar, BarChart, CartesianGrid, Cell, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from 'recharts';
 import { ChartContainer } from '@/components/ui/chart';
+import { BadgeTendencia } from '@/components/visual/BadgeTendencia';
+import { BarraComPonto, TooltipGrafico } from '@/components/visual/TooltipGrafico';
 
 export interface DashboardActivityPoint {
   label: string;
@@ -15,40 +17,55 @@ interface DashboardActivityChartProps {
 
 const chartConfig = { activity: { label: 'Atendimentos', color: 'hsl(var(--primary))' } };
 
-export const DashboardActivityChart: React.FC<DashboardActivityChartProps> = ({ data, loading, period = 'Hoje' }) => {
-  const hasActivity = data.some((point) => point.value > 0);
+const EIXO = { fill: 'hsl(var(--muted-foreground))', fontSize: 12 };
+
+/**
+ * Barras em capsula (pontas redondas) na cor primaria, cada uma sobre um
+ * trilho cinza de altura total. Grade tracejada discreta e tooltip em card.
+ */
+export const DashboardActivityChart: React.FC<DashboardActivityChartProps> = ({ data, loading }) => {
+  const total = data.reduce((soma, ponto) => soma + ponto.value, 0);
+  const hasActivity = total > 0;
 
   return (
-    <section className="overflow-hidden rounded-[1.7rem] border border-white/10 bg-card/90 p-4 shadow-card sm:p-6">
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-bold tracking-tight sm:text-xl">Movimento do dia</h2>
-          <p className="mt-1 text-xs text-muted-foreground">Atendimentos registrados por horário</p>
-        </div>
-        <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-500">{period}</span>
+    <section className="overflow-hidden rounded-card bg-card p-card-pad text-card-foreground shadow-card">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="text-secao">Movimento do dia</h2>
+        {!loading && hasActivity && (
+          <BadgeTendencia tendencia="alta">
+            {total} atendimento{total === 1 ? '' : 's'}
+          </BadgeTendencia>
+        )}
       </div>
 
       {loading ? (
-        <div role="status" aria-label="Carregando gráfico" className="esqueleto-vidro h-56 rounded-2xl" />
+        <div role="status" aria-label="Carregando gráfico" className="esqueleto-vidro h-60 rounded-2xl" />
       ) : !hasActivity ? (
-        <div className="flex h-56 flex-col items-center justify-center rounded-2xl border border-dashed border-border/80 px-6 text-center">
-          <span className="text-sm font-medium">Ainda não há atendimentos hoje</span>
-          <span className="mt-1 text-xs text-muted-foreground">O movimento aparecerá aqui assim que a agenda começar.</span>
+        <div className="flex h-60 flex-col items-center justify-center rounded-2xl bg-muted/60 px-6 text-center">
+          <span className="text-rotulo font-medium">Ainda não há atendimentos hoje</span>
+          <span className="mt-1 text-legenda text-muted-foreground">O movimento aparecerá aqui assim que a agenda começar.</span>
         </div>
       ) : (
-        <ChartContainer config={chartConfig} className="h-56 w-full aspect-auto sm:h-64">
-          <BarChart data={data} margin={{ top: 10, right: 2, left: -22, bottom: 0 }} barCategoryGap="28%">
+        <ChartContainer config={chartConfig} className="aspect-auto h-60 w-full sm:h-64">
+          <BarChart data={data} margin={{ top: 8, right: 0, left: -18, bottom: 0 }} barCategoryGap="22%">
             <CartesianGrid vertical={false} strokeDasharray="4 4" stroke="hsl(var(--border))" />
-            <XAxis dataKey="label" axisLine={false} tickLine={false} tickMargin={10} fontSize={11} />
-            <YAxis allowDecimals={false} axisLine={false} tickLine={false} tickMargin={8} fontSize={11} width={30} />
+            <XAxis dataKey="label" axisLine={false} tickLine={false} tickMargin={10} tick={EIXO} />
+            <YAxis allowDecimals={false} axisLine={false} tickLine={false} tickMargin={8} tick={EIXO} width={30} />
             <Tooltip
-              cursor={{ fill: 'hsl(var(--primary) / 0.08)', radius: 16 }}
-              contentStyle={{ borderRadius: 14, border: '1px solid hsl(var(--border))', background: 'hsl(var(--popover))', color: 'hsl(var(--popover-foreground))' }}
-              formatter={(value: number) => [`${value} atendimento${value === 1 ? '' : 's'}`, 'Movimento']}
+              cursor={false}
+              content={
+                <TooltipGrafico formatar={(valor) => `Atendimentos: ${valor}`} />
+              }
             />
-            <Bar dataKey="value" radius={[18, 18, 18, 18]} maxBarSize={48}>
-              {data.map((point) => <Cell key={point.label} fill="hsl(var(--primary))" fillOpacity={point.value ? 0.9 : 0.16} />)}
-            </Bar>
+            <Bar
+              dataKey="value"
+              fill="hsl(var(--primary))"
+              radius={999}
+              maxBarSize={44}
+              background={{ fill: 'hsl(var(--muted))', radius: 999 }}
+              activeBar={<BarraComPonto />}
+              isAnimationActive={false}
+            />
           </BarChart>
         </ChartContainer>
       )}

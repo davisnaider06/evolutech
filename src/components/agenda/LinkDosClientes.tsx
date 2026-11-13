@@ -33,13 +33,13 @@ const LinkDosClientes: React.FC<{ slug?: string | null; nomeEmpresa?: string | n
   const mensagem = `Agende seu horário${nomeEmpresa ? ` na ${nomeEmpresa}` : ''} pelo link: ${link}`;
 
   return (
-    <div className="rounded-lg border bg-card p-4">
+    <div className="rounded-card border-transparent bg-card p-card-pad shadow-card">
       <p className="font-medium">Link para seus clientes agendarem</p>
       <p className="mt-1 text-sm text-muted-foreground">
         O cliente escolhe serviço, barbeiro e horário, e só no fim cria a conta. O
         agendamento cai direto na agenda.
       </p>
-      <p className="mt-3 break-all rounded-md bg-muted px-3 py-2 text-sm font-medium">
+      <p className="mt-3 break-all rounded-2xl bg-muted px-3 py-2 text-sm font-medium">
         {link || 'indisponível'}
       </p>
       <div className="mt-3 flex flex-col gap-2 sm:flex-row">

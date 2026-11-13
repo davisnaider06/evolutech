@@ -89,7 +89,7 @@ export const PainelPendencias: React.FC = () => {
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0">
         <div>
-          <CardTitle className="flex items-center gap-2 text-base">
+          <CardTitle className="flex items-center gap-2">
             <CalendarClock className="h-4 w-4" />
             Seu dia
           </CardTitle>
@@ -117,7 +117,7 @@ export const PainelPendencias: React.FC = () => {
           <button
             type="button"
             onClick={() => navigate('/empresa/agendamentos')}
-            className="flex w-full items-center justify-between rounded-md border p-3 text-left transition-colors hover:bg-muted/50"
+            className="flex min-h-11 w-full items-center justify-between rounded-2xl border-transparent bg-muted/60 p-3 text-left transition-colors hover:bg-muted"
           >
             <div>
               <p className="text-xs text-muted-foreground">Próximo</p>
@@ -135,9 +135,9 @@ export const PainelPendencias: React.FC = () => {
           <button
             type="button"
             onClick={() => navigate('/empresa/assinaturas')}
-            className="flex w-full items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-left text-sm transition-colors hover:bg-amber-500/15"
+            className="flex min-h-11 w-full items-center gap-2 rounded-2xl bg-warning/10 p-3 text-left text-sm text-warning-foreground transition-colors hover:bg-warning/15"
           >
-            <CircleAlert className="h-4 w-4 shrink-0 text-amber-600" />
+            <CircleAlert className="h-4 w-4 shrink-0 text-warning-foreground" />
             <span>
               <strong>{dados.mensalidades_em_aberto}</strong>{' '}
               {dados.mensalidades_em_aberto === 1 ? 'mensalidade' : 'mensalidades'} aguardando
@@ -156,7 +156,7 @@ export const PainelPendencias: React.FC = () => {
               {dados.novos.map((item) => (
                 <li
                   key={item.id}
-                  className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm"
+                  className="flex items-center justify-between gap-3 rounded-2xl bg-muted/60 px-3 py-2 text-sm"
                 >
                   <span className="min-w-0">
                     <span className="block truncate font-medium">{item.customer_name}</span>

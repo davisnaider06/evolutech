@@ -16,13 +16,13 @@ interface Activity {
 }
 
 const actionConfig: Record<string, { icon: any; color: string; label: string }> = {
-  create: { icon: Plus, color: 'text-green-500 bg-green-500/10', label: 'Criação' },
-  update: { icon: Edit, color: 'text-blue-500 bg-blue-500/10', label: 'Atualização' },
-  delete: { icon: Trash2, color: 'text-red-500 bg-red-500/10', label: 'Exclusão' },
+  create: { icon: Plus, color: 'text-success-foreground bg-success/10', label: 'Criação' },
+  update: { icon: Edit, color: 'text-info-foreground bg-info/10', label: 'Atualização' },
+  delete: { icon: Trash2, color: 'text-destructive bg-destructive/10', label: 'Exclusão' },
   login: { icon: LogIn, color: 'text-purple-500 bg-purple-500/10', label: 'Login' },
   logout: { icon: LogIn, color: 'text-gray-500 bg-gray-500/10', label: 'Logout' },
-  activate: { icon: Shield, color: 'text-green-500 bg-green-500/10', label: 'Ativação' },
-  deactivate: { icon: Shield, color: 'text-amber-500 bg-amber-500/10', label: 'Desativação' },
+  activate: { icon: Shield, color: 'text-success-foreground bg-success/10', label: 'Ativação' },
+  deactivate: { icon: Shield, color: 'text-warning-foreground bg-warning/10', label: 'Desativação' },
   invite: { icon: User, color: 'text-cyan-500 bg-cyan-500/10', label: 'Convite' },
   role_change: { icon: Shield, color: 'text-orange-500 bg-orange-500/10', label: 'Mudança de Papel' },
 };
@@ -76,7 +76,7 @@ export const RecentActivityRealtime: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="glass rounded-xl p-6">
+      <div className="rounded-card bg-card p-card-pad text-card-foreground shadow-card">
         <Skeleton className="h-6 w-40 mb-4" />
         <div className="space-y-4">
           {[1, 2, 3, 4, 5].map((i) => (
@@ -94,8 +94,8 @@ export const RecentActivityRealtime: React.FC = () => {
   }
 
   return (
-    <div className="glass rounded-xl p-6">
-      <h3 className="text-lg font-semibold mb-4">Atividade Recente</h3>
+    <div className="rounded-card bg-card p-card-pad text-card-foreground shadow-card">
+      <h3 className="mb-4 text-secao">Atividade Recente</h3>
       <div className="space-y-4">
         {activities.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
