@@ -407,6 +407,35 @@ body.tema-vidro.modo-claro .gradient-card {
   box-shadow: var(--shadow-card);
 }
 
+/* Modo claro: barra lateral e paineis flutuantes viram superficie branca
+   chapada. Antes continuavam vidro escuro com o texto escuro do modo claro
+   por cima (texto ilegivel na barra lateral e nos dialogos). */
+body.tema-vidro.modo-claro .vidro,
+body.tema-vidro.modo-claro .vidro-denso {
+  background: hsl(var(--card));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-color: transparent;
+  box-shadow: var(--shadow-card);
+}
+
+body.tema-vidro.modo-claro .bg-popover,
+body.tema-vidro.modo-claro [role='dialog'],
+body.tema-vidro.modo-claro [role='alertdialog'],
+body.tema-vidro.modo-claro [data-sonner-toast] {
+  background: hsl(var(--popover));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-color: transparent;
+  box-shadow: var(--shadow-float);
+}
+
+body.tema-vidro.modo-claro .bg-black\/80 {
+  background-color: hsl(var(--foreground) / 0.35);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 /* Card dentro de card no modo claro: sem sombra, so o tom do trilho. */
 body.tema-vidro.modo-claro :is(.bg-card, .glass) :is(.bg-card, .glass) {
   background: hsl(var(--muted) / 0.6);
