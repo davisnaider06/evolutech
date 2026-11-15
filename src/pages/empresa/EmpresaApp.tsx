@@ -41,15 +41,17 @@ const EmpresaApp: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
 
-  const fetchTasks = async () => {
+  // `silencioso`: confere com o servidor sem trocar a lista pelo carregando
+  // (usado depois de mover um card, que ja foi movido na tela).
+  const fetchTasks = async (silencioso = false) => {
     try {
-      setLoading(true);
+      if (!silencioso) setLoading(true);
       const data = await companyService.listMyTasks();
       setTasks(data || []);
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao carregar tarefas');
+      if (!silencioso) toast.error(error.message || 'Erro ao carregar tarefas');
     } finally {
-      setLoading(false);
+      if (!silencioso) setLoading(false);
     }
   };
 
@@ -90,11 +92,37 @@ const EmpresaApp: React.FC = () => {
     }
   };
 
+  /**
+   * UI otimista (melhoria 14): o card muda de coluna na hora e o servidor
+   * confirma depois. Se ele recusar, a lista volta exatamente como estava.
+   * Vale so para tarefas pessoais; agenda, caixa e cobranca continuam
+   * esperando o servidor, porque ali a tela nao pode mostrar o que nao
+   * aconteceu.
+   */
   const moveTask = async (taskId: string, targetStatus: TaskStatus, targetIndex?: number) => {
+    const antes = tasks;
+    const movida = antes.find((task) => task.id === taskId);
+    if (!movida) return;
+
+    const destino = antes
+      .filter((task) => task.status === targetStatus && task.id !== taskId)
+      .sort((a, b) => a.position - b.position);
+    const indice = targetIndex === undefined ? destino.length : Math.max(0, Math.min(targetIndex, destino.length));
+    destino.splice(indice, 0, { ...movida, status: targetStatus });
+    const novaPosicao = new Map(destino.map((task, posicao) => [task.id, posicao]));
+    setTasks(
+      antes.map((task) =>
+        novaPosicao.has(task.id)
+          ? { ...task, status: task.id === taskId ? targetStatus : task.status, position: novaPosicao.get(task.id)! }
+          : task,
+      ),
+    );
+
     try {
       await companyService.moveMyTask(taskId, { status: targetStatus, targetIndex });
-      fetchTasks();
+      void fetchTasks(true);
     } catch (error: any) {
+      setTasks(antes);
       toast.error(error.message || 'Erro ao mover tarefa');
     }
   };
