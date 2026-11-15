@@ -32,7 +32,7 @@ export default defineConfig(() => ({
         // da rede quando a tela abre e ficam no cache de runtime abaixo.
         globIgnores: ["**/push-sw.js", "**/xlsx-*.js", "**/PieChart-*.js", "**/client-*.js"],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,woff2}"],
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,avif,woff2}"],
         runtimeCaching: [
           {
             // Arquivos com hash no nome nunca mudam: o que veio uma vez serve.

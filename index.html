@@ -19,7 +19,9 @@
     <!-- Sem isto o iPhone usa um print da tela como icone do app instalado. -->
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <!-- Fonte Outfit self-hosted (@fontsource, importada em main.tsx): sem CDN, entra no precache do PWA. -->
-    <link rel="preload" as="image" href="/imagens/barbearia-capa.jpg" />
+    <!-- Mesma foto que o <picture> do TelaComFoto escolhe: AVIF onde houver suporte
+         (o navegador sem AVIF ignora este preload pelo type). -->
+    <link rel="preload" as="image" href="/imagens/barbearia-capa.avif" type="image/avif" fetchpriority="high" />
 
     <meta property="og:title" content="iBarber" />
     <meta property="og:description" content="Sistema para barbearias: agenda online, caixa, comissões e avaliações dos barbeiros" />
