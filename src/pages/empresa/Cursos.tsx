@@ -375,7 +375,7 @@ const Cursos: React.FC = () => {
 
   const renderPreview = (course: Pick<CourseItem, 'title' | 'content_type' | 'content_url' | 'cover_image_url'>) => {
     if (course.cover_image_url) {
-      return <img src={course.cover_image_url} alt={course.title} className="h-36 w-full rounded border object-cover" />;
+      return <img loading="lazy" decoding="async" src={course.cover_image_url} alt={course.title} className="h-36 w-full rounded border object-cover" />;
     }
     if (!course.content_url) {
       return <div className="h-36 w-full rounded border bg-muted/30" />;
@@ -384,7 +384,7 @@ const Cursos: React.FC = () => {
       return <video src={course.content_url} className="h-36 w-full rounded border object-cover" controls />;
     }
     if (course.content_type === 'image') {
-      return <img src={course.content_url} alt={course.title} className="h-36 w-full rounded border object-cover" />;
+      return <img loading="lazy" decoding="async" src={course.content_url} alt={course.title} className="h-36 w-full rounded border object-cover" />;
     }
     return (
       <div className="flex h-36 w-full items-center justify-center rounded border bg-muted/30 text-sm text-muted-foreground">
