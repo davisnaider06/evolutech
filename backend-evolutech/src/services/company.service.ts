@@ -1548,6 +1548,8 @@ export class CompanyService {
           message,
           delayMessage,
         }),
+        // Sem prazo, uma Z-API fora do ar prendia o job de cobranca.
+        signal: AbortSignal.timeout(15000),
       });
 
       responseStatus = response.status;

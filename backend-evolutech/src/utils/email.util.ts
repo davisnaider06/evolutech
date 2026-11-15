@@ -181,6 +181,7 @@ export async function enviarEmail(params: {
         subject: params.subject,
         html: params.html,
       }),
+      signal: AbortSignal.timeout(20000),
     });
     if (!response.ok) {
       const detalhe = await response.text().catch(() => '');

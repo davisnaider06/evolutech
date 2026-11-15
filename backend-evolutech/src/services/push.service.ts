@@ -173,7 +173,10 @@ class PushService {
               endpoint: inscricao.endpoint,
               keys: { p256dh: inscricao.p256dh, auth: inscricao.auth },
             },
-            corpo
+            corpo,
+            // O servico de push do navegador fora do ar nao pode segurar o
+            // envio dos outros aparelhos (o Promise.all espera todos).
+            { timeout: 10000 }
           );
           enviados += 1;
         } catch (error: any) {
