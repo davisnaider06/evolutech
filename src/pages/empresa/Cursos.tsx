@@ -137,7 +137,9 @@ const Cursos: React.FC = () => {
       } else {
         const result = await companyService.list('courses', {
           page: 1,
-          pageSize: 500,
+          // O backend devolve no maximo 200 por pagina; pedir 500 dava a
+          // impressao de trazer tudo.
+          pageSize: 200,
           orderBy: 'createdAt',
         });
         const courses = (result?.data || []).map((course: any) => ({

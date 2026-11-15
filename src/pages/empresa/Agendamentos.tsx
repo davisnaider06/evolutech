@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { SeletorDeCliente } from '@/components/crud/SeletorDeCliente';
 // Toda hora de agendamento passa por aqui: a tela mostra a hora da
 // barbearia, nao a do aparelho de quem esta olhando.
 import {
@@ -59,11 +60,6 @@ interface ProfessionalOption {
   name: string;
 }
 
-interface CustomerOption {
-  id: string;
-  name: string;
-  phone?: string | null;
-}
 
 const statusOptions = [
   { value: 'pendente', label: 'Pendente' },
@@ -90,7 +86,6 @@ const Agendamentos: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<Appointment[]>([]);
   const [services, setServices] = useState<AppointmentServiceItem[]>([]);
-  const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [professionals, setProfessionals] = useState<ProfessionalOption[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -172,26 +167,6 @@ const Agendamentos: React.FC = () => {
     }
   }, [bookingSlug]);
 
-  const fetchCustomers = useCallback(async () => {
-    try {
-      const result = await companyService.list('customers', {
-        page: 1,
-        pageSize: 200,
-        is_active: 'true',
-        orderBy: 'name',
-      });
-      const rows = Array.isArray(result?.data) ? result.data : [];
-      setCustomers(
-        rows.map((item: any) => ({
-          id: item.id,
-          name: item.name,
-          phone: item.phone || null,
-        }))
-      );
-    } catch (error: any) {
-      toast.error(error.message || 'Erro ao carregar clientes');
-    }
-  }, []);
 
   useEffect(() => {
     fetchAppointments();
@@ -204,10 +179,6 @@ const Agendamentos: React.FC = () => {
   useEffect(() => {
     fetchProfessionals();
   }, [fetchProfessionals]);
-
-  useEffect(() => {
-    fetchCustomers();
-  }, [fetchCustomers]);
 
   const columns: Column<Appointment>[] = [
     {
@@ -649,23 +620,20 @@ const Agendamentos: React.FC = () => {
                 </button>
               ) : null}
             </div>
-            <SearchableSelect
+            {/* Busca no servidor: carregar "todos" parava nos 200 primeiros e o
+                cliente nº 201 nao aparecia para marcar horario. */}
+            <SeletorDeCliente
               value={formData.customer_id}
-              onValueChange={(value) =>
+              rotuloSelecionado={formData.customer_id ? formData.customer_name : undefined}
+              onChange={(cliente) =>
                 setFormData({
                   ...formData,
-                  customer_id: value,
+                  customer_id: cliente?.id || '',
                   // O nome acompanha o cadastro escolhido; quem manda e o id.
-                  customer_name: customers.find((item) => item.id === value)?.name || '',
+                  customer_name: cliente?.name || '',
                 })
               }
-              options={customers.map((customer) => ({
-                value: customer.id,
-                label: customer.phone ? `${customer.name} - ${customer.phone}` : customer.name,
-              }))}
               placeholder="Sem cadastro"
-              searchPlaceholder="Buscar por nome ou telefone..."
-              emptyMessage="Nenhum cliente encontrado."
             />
             {/* Agenda antiga tem agendamento com nome escrito e nenhum cadastro
                 atras. O nome continua valendo; so nao da para saber de quem e. */}

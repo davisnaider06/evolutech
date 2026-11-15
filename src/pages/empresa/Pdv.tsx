@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { SearchableSelect } from '@/components/ui/searchable-select';
+import { SeletorDeCliente } from '@/components/crud/SeletorDeCliente';
 import { companyService } from '@/services/company';
 
 interface CatalogItem {
@@ -35,12 +35,6 @@ interface PdvOrder {
   total: number;
   status: string;
   createdAt: string;
-}
-
-interface CustomerOption {
-  id: string;
-  name: string;
-  phone?: string | null;
 }
 
 interface LoyaltyPreview {
@@ -90,7 +84,6 @@ const Pdv: React.FC = () => {
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerName, setCustomerName] = useState('');
-  const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [discount, setDiscount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<'dinheiro' | 'pix' | 'credito' | 'debito'>('dinheiro');
   const [gatewayQrImage, setGatewayQrImage] = useState<string | null>(null);
@@ -126,26 +119,6 @@ const Pdv: React.FC = () => {
     }
   };
 
-  const fetchCustomers = async () => {
-    try {
-      const result = await companyService.list('customers', {
-        page: 1,
-        pageSize: 200,
-        is_active: 'true',
-        orderBy: 'name',
-      });
-      setCustomers(
-        (result?.data || []).map((item: any) => ({
-          id: String(item.id),
-          name: String(item.name || ''),
-          phone: item.phone ? String(item.phone) : null,
-        }))
-      );
-    } catch (_error) {
-      setCustomers([]);
-    }
-  };
-
   useEffect(() => {
     const timeout = setTimeout(() => {
       fetchCatalog();
@@ -155,7 +128,6 @@ const Pdv: React.FC = () => {
 
   useEffect(() => {
     fetchPendingPixOrders();
-    fetchCustomers();
   }, []);
 
   const subtotal = useMemo(
@@ -408,16 +380,11 @@ const Pdv: React.FC = () => {
 
             <div className="space-y-2">
               <Label>Cliente (opcional)</Label>
-              <SearchableSelect
+              <SeletorDeCliente
                 value={customerName}
-                onValueChange={setCustomerName}
-                options={customers.map((customer) => ({
-                  value: customer.name,
-                  label: customer.phone ? `${customer.name} - ${customer.phone}` : customer.name,
-                }))}
-                placeholder="Selecionar cliente"
-                searchPlaceholder="Buscar cliente..."
-                emptyMessage="Nenhum cliente encontrado."
+                compararPor="nome"
+                onChange={(cliente) => setCustomerName(cliente?.name || '')}
+                opcaoVazia="Sem cliente"
               />
             </div>
 

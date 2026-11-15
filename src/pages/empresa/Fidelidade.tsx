@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '@/components/crud/PageHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { SeletorDeCliente } from '@/components/crud/SeletorDeCliente';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -63,7 +64,9 @@ const Fidelidade: React.FC = () => {
     try {
       const [settingsData, customersResult] = await Promise.all([
         companyService.getLoyaltySettings(),
-        companyService.list('customers', { page: 1, pageSize: 200, is_active: 'true' }),
+        // So o primeiro, para abrir com alguem selecionado (como antes). A
+        // escolha dos demais busca no servidor: a lista completa parava em 200.
+        companyService.list('customers', { page: 1, pageSize: 1, is_active: 'true' }),
       ]);
       setSettings({
         points_per_service: Number(settingsData?.points_per_service ?? 1),
@@ -202,18 +205,17 @@ const Fidelidade: React.FC = () => {
         <CardContent className="space-y-4">
           <div className="space-y-2 md:max-w-md">
             <Label>Cliente</Label>
-            <select
+            <SeletorDeCliente
               value={selectedCustomerId}
-              onChange={(e) => setSelectedCustomerId(e.target.value)}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="">Selecione</option>
-              {customers.map((customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.name}
-                </option>
-              ))}
-            </select>
+              rotuloSelecionado={customers.find((item) => item.id === selectedCustomerId)?.name}
+              onChange={(cliente) => {
+                if (cliente && !customers.some((item) => item.id === cliente.id)) {
+                  setCustomers((atual) => [...atual, { id: cliente.id, name: cliente.name }]);
+                }
+                setSelectedCustomerId(cliente?.id || '');
+              }}
+              placeholder="Selecione"
+            />
           </div>
 
           {profileLoading ? <p className="text-sm text-muted-foreground">Carregando perfil...</p> : null}

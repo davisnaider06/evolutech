@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { SeletorDeCliente } from '@/components/crud/SeletorDeCliente';
 import { Company, FinancialMetric } from '@/types/auth';
 import { adminService } from '@/services/admin';
 import { companyService } from '@/services/company';
@@ -77,7 +78,6 @@ const Financeiro: React.FC = () => {
   const [serviceFilter, setServiceFilter] = useState('');
   const [dayFilter, setDayFilter] = useState('');
   const [periodGroup, setPeriodGroup] = useState<'daily' | 'monthly' | 'yearly'>('daily');
-  const [customerOptions, setCustomerOptions] = useState<FilterOption[]>([]);
   const [serviceOptions, setServiceOptions] = useState<FilterOption[]>([]);
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN_EVOLUTECH';
@@ -132,18 +132,12 @@ const Financeiro: React.FC = () => {
 
     const loadFilterOptions = async () => {
       try {
-        const [customersResult, servicesResult] = await Promise.all([
-          companyService.list('customers', { page: 1, pageSize: 200, is_active: 'true', orderBy: 'name' }),
+        // Clientes nao vem mais aqui: o filtro busca no servidor (a lista
+        // "completa" parava nos 200 primeiros).
+        const [servicesResult] = await Promise.all([
           companyService.list('appointment_services', { page: 1, pageSize: 200, is_active: 'true', orderBy: 'name' }),
         ]);
 
-        setCustomerOptions(
-          (customersResult?.data || []).map((item: any) => ({
-            id: String(item.id || item.name),
-            value: String(item.name || ''),
-            label: item.phone ? `${String(item.name || '')} - ${String(item.phone)}` : String(item.name || ''),
-          }))
-        );
         setServiceOptions(
           (servicesResult?.data || []).map((item: any) => ({
             id: String(item.id || item.name),
@@ -152,7 +146,6 @@ const Financeiro: React.FC = () => {
           }))
         );
       } catch (_error) {
-        setCustomerOptions([]);
         setServiceOptions([]);
       }
     };
@@ -255,13 +248,12 @@ const Financeiro: React.FC = () => {
           <div className="grid grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-6">
             <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
             <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
-            <SearchableSelect
+            <SeletorDeCliente
               value={customerFilter}
-              onValueChange={setCustomerFilter}
-              options={customerOptions.map((item) => ({ value: item.value, label: item.label }))}
+              compararPor="nome"
+              onChange={(cliente) => setCustomerFilter(cliente?.name || '')}
               placeholder="Filtrar por cliente"
-              searchPlaceholder="Buscar cliente..."
-              emptyMessage="Nenhum cliente encontrado."
+              opcaoVazia="Todos os clientes"
             />
             <SearchableSelect
               value={serviceFilter}
