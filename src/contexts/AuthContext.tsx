@@ -1,4 +1,4 @@
-﻿import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+﻿import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { EVENTO_SESSAO_EXPIRADA, requisitar } from '@/lib/rede';
 import { UserRole, AuthState, Company } from '@/types/auth';
 import { toast } from 'sonner';
@@ -208,7 +208,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     aplicarPayload(guardarRespostaMe(await response.json()));
   }, [aplicarPayload]);
 
-  const login = (token: string, userData: any, companyData?: any) => {
+  const login = useCallback((token: string, userData: any, companyData?: any) => {
     localStorage.setItem('evolutech_token', token);
     lembrarTipoAcesso('equipe');
     // O cache antigo pode ser de outro usuario; o proximo /auth/me repoe.
@@ -232,12 +232,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (resolvedCompany) {
       setCompany(resolvedCompany);
     }
-  };
+  }, [normalizeCompany]);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     encerrarSessao();
     toast.info('Você saiu do sistema');
-  };
+  }, [encerrarSessao]);
 
   const getRedirectPath = useCallback(() => {
     if (!authState.user) return '/login';
@@ -261,12 +261,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [authState.user, company]);
 
-  const hasPermission = (requiredRoles: UserRole[]) => {
-    return authState.user ? requiredRoles.includes(authState.user.role) : false;
-  };
+  const hasPermission = useCallback(
+    (requiredRoles: UserRole[]) => (authState.user ? requiredRoles.includes(authState.user.role) : false),
+    [authState.user],
+  );
 
-  return (
-    <AuthContext.Provider value={{
+  // Valor estavel: antes era um objeto novo a cada render do provider, e todo
+  // componente com useAuth() (layouts, guards, telas) re-renderizava junto,
+  // mesmo sem nada de autenticacao ter mudado.
+  const valor = useMemo(
+    () => ({
       ...authState,
       login,
       logout,
@@ -276,7 +280,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       refreshUser,
       isEvolutechUser: ['SUPER_ADMIN_EVOLUTECH', 'ADMIN_EVOLUTECH'].includes(authState.user?.role || ''),
       isCompanyUser: ['DONO_EMPRESA', 'FUNCIONARIO_EMPRESA'].includes(authState.user?.role || ''),
-    }}>
+    }),
+    [authState, login, logout, hasPermission, company, getRedirectPath, refreshUser],
+  );
+
+  return (
+    <AuthContext.Provider value={valor}>
       {children}
     </AuthContext.Provider>
   );
