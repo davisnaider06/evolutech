@@ -273,7 +273,10 @@ export class PaymentService {
           sessionId: params.externalPaymentId,
         });
       }
-      await this.avisarAssinaturaAtivada(assinaturaAtivada);
+      // Sem await: o gateway espera a resposta do webhook, e um provedor de
+      // e-mail lento (ate 20 s) fazia ele reenviar o evento. O aviso trata os
+      // proprios erros; o pagamento ja esta confirmado no banco a esta altura.
+      void this.avisarAssinaturaAtivada(assinaturaAtivada);
     }
 
     return { received: true, processed: true };
