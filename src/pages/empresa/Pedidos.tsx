@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { DataTable, Column } from '@/components/crud/DataTable';
 import { PageHeader } from '@/components/crud/PageHeader';
@@ -55,10 +55,15 @@ const Pedidos: React.FC = () => {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<string | undefined>(undefined);
 
+  const buscaAtual = useRef(0);
   const carregar = useCallback(async () => {
+    // Descarta resposta velha: com a busca mudando, a resposta de um texto
+    // antigo pode chegar depois da do texto novo e mostrar a lista errada.
+    const id = ++buscaAtual.current;
     setLoading(true);
     try {
       const result = await companyService.listOrders({ page, pageSize, search: search.trim() || undefined, status });
+      if (id !== buscaAtual.current) return;
       setData(
         (result?.data || []).map((item) => ({
           id: item.id,
@@ -70,9 +75,9 @@ const Pedidos: React.FC = () => {
       );
       setTotalCount(Number(result?.total || 0));
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao carregar vendas');
+      if (id === buscaAtual.current) toast.error(error.message || 'Erro ao carregar vendas');
     } finally {
-      setLoading(false);
+      if (id === buscaAtual.current) setLoading(false);
     }
   }, [page, pageSize, search, status]);
 

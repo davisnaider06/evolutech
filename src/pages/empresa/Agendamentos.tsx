@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DataTable, Column } from '@/components/crud/DataTable';
 import { PageHeader } from '@/components/crud/PageHeader';
@@ -117,7 +117,11 @@ const Agendamentos: React.FC = () => {
     status: 'pendente',
   });
 
+  const buscaAtual = useRef(0);
   const fetchAppointments = useCallback(async () => {
+    // Descarta resposta velha: com a busca mudando, a resposta de um texto
+    // antigo pode chegar depois da do texto novo e mostrar a lista errada.
+    const id = ++buscaAtual.current;
     setLoading(true);
     try {
       const result = await appointmentsService.listInternal({
@@ -126,12 +130,13 @@ const Agendamentos: React.FC = () => {
         search: search || undefined,
         status,
       });
+      if (id !== buscaAtual.current) return;
       setData(result.data || []);
       setTotal(result.total || 0);
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao carregar agendamentos');
+      if (id === buscaAtual.current) toast.error(error.message || 'Erro ao carregar agendamentos');
     } finally {
-      setLoading(false);
+      if (id === buscaAtual.current) setLoading(false);
     }
   }, [page, pageSize, search, status]);
 

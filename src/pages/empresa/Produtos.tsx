@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { DataTable, Column } from '@/components/crud/DataTable';
 import { PageHeader } from '@/components/crud/PageHeader';
 import { SearchFilters } from '@/components/crud/SearchFilters';
@@ -63,7 +63,11 @@ const Produtos: React.FC = () => {
 
   const totalPages = useMemo(() => Math.ceil(totalCount / pagination.pageSize), [totalCount, pagination.pageSize]);
 
+  const buscaAtual = useRef(0);
   const fetchProducts = async () => {
+    // Descarta resposta velha: com a busca mudando, a resposta de um texto
+    // antigo pode chegar depois da do texto novo e mostrar a lista errada.
+    const id = ++buscaAtual.current;
     try {
       setLoading(true);
       const [productsResult, servicesResult] = await Promise.all([
@@ -81,6 +85,7 @@ const Produtos: React.FC = () => {
         }),
       ]);
 
+      if (id !== buscaAtual.current) return;
       const mappedProducts = (productsResult.data || []).map((item: Product) => ({
         ...item,
         type: 'product' as const,
@@ -118,9 +123,9 @@ const Produtos: React.FC = () => {
       );
       setTotalCount(allItems.length || 0);
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao carregar produtos');
+      if (id === buscaAtual.current) toast.error(error.message || 'Erro ao carregar produtos');
     } finally {
-      setLoading(false);
+      if (id === buscaAtual.current) setLoading(false);
     }
   };
 
