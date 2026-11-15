@@ -78,17 +78,26 @@ app.use(
 app.use('/api/public/payments/webhook', paymentWebhookRoutes);
 app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '8mb' }));
 
-// Logger de Requisições
-if (requestLogEnabled) {
-  app.use((req, res, next) => {
-    const startedAt = Date.now();
-    res.on('finish', () => {
-      const elapsedMs = Date.now() - startedAt;
-      console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} -> ${res.statusCode} (${elapsedMs}ms)`);
-    });
-    next();
+// Logger de Requisições.
+// Requisicao lenta (acima de SLOW_REQUEST_MS, padrao 1500 ms) e sempre
+// registrada, com [lenta] no inicio para achar no log do Render. Com
+// REQUEST_LOG_ENABLED=true, registra todas. So o caminho entra no log, sem a
+// query string: ela pode carregar token (links de redefinicao, webhooks).
+// Alternativa leve ao OpenTelemetry (melhoria 18): sem dependencia nem coletor.
+const SLOW_REQUEST_MS = Math.max(1, Number(process.env.SLOW_REQUEST_MS || 1500));
+app.use((req, res, next) => {
+  const startedAt = Date.now();
+  res.on('finish', () => {
+    const elapsedMs = Date.now() - startedAt;
+    const lenta = elapsedMs >= SLOW_REQUEST_MS;
+    if (!lenta && !requestLogEnabled) return;
+    const caminho = req.originalUrl.split('?')[0];
+    console.log(
+      `${lenta ? '[lenta] ' : ''}[${new Date().toISOString()}] ${req.method} ${caminho} -> ${res.statusCode} (${elapsedMs}ms)`
+    );
   });
-}
+  next();
+});
 
 // Teto geral da API. Fica depois dos webhooks de proposito: o gateway pode
 // reenviar em rajada e nao deve levar 429 por isso.
