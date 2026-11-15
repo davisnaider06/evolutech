@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { EsqueletoLista } from '@/components/visual/EsqueletoLista';
 import { PageHeader } from '@/components/crud/PageHeader';
 import { CaixaDoDia } from '@/components/caixa/CaixaDoDia';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -745,7 +746,7 @@ const Caixa: React.FC = () => {
           </CardHeader>
           <CardContent className="space-y-4">
             {loading ? (
-              <p className="text-sm text-muted-foreground">Carregando recebimentos...</p>
+              <EsqueletoLista rotulo="Carregando recebimentos" />
             ) : !overview?.entries.length ? (
               <p className="text-sm text-muted-foreground">Nenhum recebimento encontrado.</p>
             ) : (
@@ -1003,7 +1004,7 @@ const Caixa: React.FC = () => {
           </div>
 
           {manualLoading ? (
-            <p className="text-sm text-muted-foreground">Carregando movimentações manuais...</p>
+            <EsqueletoLista rotulo="Carregando movimentações manuais" />
           ) : !manualTransactions.length ? (
             <p className="text-sm text-muted-foreground">Nenhuma movimentação manual encontrada.</p>
           ) : (

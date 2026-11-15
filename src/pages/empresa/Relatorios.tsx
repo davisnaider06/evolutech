@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { EsqueletoLista } from '@/components/visual/EsqueletoLista';
 import { subDays } from 'date-fns';
 import {
   BarChart,
@@ -19,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { SeletorDeCliente } from '@/components/crud/SeletorDeCliente';
 import { companyService } from '@/services/company';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
@@ -69,7 +71,6 @@ const Relatorios: React.FC = () => {
   const [serviceFilter, setServiceFilter] = useState('');
   const [dayFilter, setDayFilter] = useState('');
   const [periodGroup, setPeriodGroup] = useState<'daily' | 'monthly' | 'yearly'>('daily');
-  const [customerOptions, setCustomerOptions] = useState<FilterOption[]>([]);
   const [serviceOptions, setServiceOptions] = useState<FilterOption[]>([]);
 
   const fetchData = async () => {
@@ -98,18 +99,12 @@ const Relatorios: React.FC = () => {
   useEffect(() => {
     const loadFilterOptions = async () => {
       try {
-        const [customersResult, servicesResult] = await Promise.all([
-          companyService.list('customers', { page: 1, pageSize: 200, is_active: 'true', orderBy: 'name' }),
+        // Clientes nao vem mais aqui: o filtro busca no servidor (a lista
+        // "completa" parava nos 200 primeiros).
+        const [servicesResult] = await Promise.all([
           companyService.list('appointment_services', { page: 1, pageSize: 200, is_active: 'true', orderBy: 'name' }),
         ]);
 
-        setCustomerOptions(
-          (customersResult?.data || []).map((item: any) => ({
-            id: String(item.id || item.name),
-            value: String(item.name || ''),
-            label: item.phone ? `${String(item.name || '')} - ${String(item.phone)}` : String(item.name || ''),
-          }))
-        );
         setServiceOptions(
           (servicesResult?.data || []).map((item: any) => ({
             id: String(item.id || item.name),
@@ -118,7 +113,6 @@ const Relatorios: React.FC = () => {
           }))
         );
       } catch (_error) {
-        setCustomerOptions([]);
         setServiceOptions([]);
       }
     };
@@ -196,7 +190,7 @@ const Relatorios: React.FC = () => {
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-bold lg:text-3xl">Relatórios</h1>
-        <p className="text-muted-foreground">Carregando dados...</p>
+        <EsqueletoLista rotulo="Carregando dados" />
       </div>
     );
   }
@@ -211,13 +205,12 @@ const Relatorios: React.FC = () => {
         <div className="grid grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-6">
           <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
           <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
-          <SearchableSelect
+          <SeletorDeCliente
             value={customerFilter}
-            onValueChange={setCustomerFilter}
-            options={customerOptions.map((item) => ({ value: item.value, label: item.label }))}
+            compararPor="nome"
+            onChange={(cliente) => setCustomerFilter(cliente?.name || '')}
             placeholder="Filtrar por cliente"
-            searchPlaceholder="Buscar cliente..."
-            emptyMessage="Nenhum cliente encontrado."
+            opcaoVazia="Todos os clientes"
           />
           <SearchableSelect
             value={serviceFilter}

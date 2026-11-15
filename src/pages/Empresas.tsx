@@ -290,7 +290,7 @@ const Empresas: React.FC = () => {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         {empresa.logo_url ? (
-                          <img
+                          <img loading="lazy" decoding="async"
                             src={empresa.logo_url}
                             alt={empresa.name}
                             className="h-10 w-10 rounded-lg object-cover border border-border"

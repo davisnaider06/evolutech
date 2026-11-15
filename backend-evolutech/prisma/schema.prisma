@@ -273,6 +273,7 @@ model AuditLog {
   company   Company? @relation(fields: [companyId], references: [id])
   user      User?    @relation(fields: [userId], references: [id])
 
+  @@index([companyId, createdAt])
   @@map("audit_logs")
 }
 
@@ -313,6 +314,8 @@ model Order {
   paymentTransactions PaymentTransaction[]
   subscription        CustomerSubscription? @relation("SubscriptionOrder")
 
+  @@index([companyId, createdAt])
+  @@index([companyId, status, createdAt])
   @@map("orders")
 }
 
@@ -362,6 +365,7 @@ model PaymentTransaction {
 
   @@index([companyId, status, createdAt])
   @@index([externalPaymentId, provider])
+  @@index([orderId])
   @@map("payment_transactions")
 }
 

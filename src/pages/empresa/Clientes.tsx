@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { EsqueletoLista } from '@/components/visual/EsqueletoLista';
 import { DataTable, Column } from '@/components/crud/DataTable';
 import { PageHeader } from '@/components/crud/PageHeader';
 import { SearchFilters } from '@/components/crud/SearchFilters';
@@ -222,7 +223,11 @@ const Clientes: React.FC = () => {
 
   const totalPages = useMemo(() => Math.ceil(totalCount / pagination.pageSize), [totalCount, pagination.pageSize]);
 
+  const buscaAtual = useRef(0);
   const fetchCustomers = async () => {
+    // Descarta resposta velha: com a busca mudando, a resposta de um texto
+    // antigo pode chegar depois da do texto novo e mostrar a lista errada.
+    const id = ++buscaAtual.current;
     try {
       setLoading(true);
       const result = await companyService.list('customers', {
@@ -235,12 +240,13 @@ const Clientes: React.FC = () => {
         professional_id: onlyMine ? undefined : professionalFilter || undefined,
         inactive_days: inactiveDays || undefined,
       });
+      if (id !== buscaAtual.current) return;
       setData(result.data || []);
       setTotalCount(result.total || 0);
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao carregar clientes');
+      if (id === buscaAtual.current) toast.error(error.message || 'Erro ao carregar clientes');
     } finally {
-      setLoading(false);
+      if (id === buscaAtual.current) setLoading(false);
     }
   };
 
@@ -609,7 +615,7 @@ const Clientes: React.FC = () => {
           </div>
 
           {followUpsLoading ? (
-            <div className="text-sm text-muted-foreground">Carregando retornos...</div>
+            <EsqueletoLista rotulo="Carregando retornos" />
           ) : followUps.length === 0 ? (
             <div className="text-sm text-muted-foreground">Nenhum retorno encontrado no filtro atual.</div>
           ) : (
@@ -905,7 +911,7 @@ const Clientes: React.FC = () => {
           </DialogHeader>
 
           {historyLoading ? (
-            <div className="py-10 text-center text-muted-foreground">Carregando histórico...</div>
+            <EsqueletoLista rotulo="Carregando histórico" />
           ) : !historyData ? (
             <div className="py-10 text-center text-muted-foreground">Não foi possível carregar o histórico.</div>
           ) : (

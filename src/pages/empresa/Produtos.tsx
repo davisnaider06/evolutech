@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { DataTable, Column } from '@/components/crud/DataTable';
 import { PageHeader } from '@/components/crud/PageHeader';
 import { SearchFilters } from '@/components/crud/SearchFilters';
@@ -13,6 +13,10 @@ import { companyService } from '@/services/company';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { Upload } from 'lucide-react';
+
+
+// Teto de itens por pagina no backend (MAX_PAGE_SIZE em company.service).
+const LIMITE_DO_SERVIDOR = 200;
 
 interface Product {
   id: string;
@@ -60,27 +64,38 @@ const Produtos: React.FC = () => {
   const [pagination, setPagination] = useState({ page: 1, pageSize: 10 });
   const [totalCount, setTotalCount] = useState(0);
   const [importing, setImporting] = useState(false);
+  // Quantos itens ficaram de fora do limite do servidor (0 = nenhum).
+  const [itensForaDoLimite, setItensForaDoLimite] = useState(0);
 
   const totalPages = useMemo(() => Math.ceil(totalCount / pagination.pageSize), [totalCount, pagination.pageSize]);
 
+  const buscaAtual = useRef(0);
   const fetchProducts = async () => {
+    // Descarta resposta velha: com a busca mudando, a resposta de um texto
+    // antigo pode chegar depois da do texto novo e mostrar a lista errada.
+    const id = ++buscaAtual.current;
     try {
       setLoading(true);
       const [productsResult, servicesResult] = await Promise.all([
         companyService.list('products', {
           page: 1,
-          pageSize: 500,
+          pageSize: LIMITE_DO_SERVIDOR,
           search: filters.search,
           is_active: filters.is_active,
         }),
         companyService.list('appointment_services', {
           page: 1,
-          pageSize: 500,
+          pageSize: LIMITE_DO_SERVIDOR,
           search: filters.search,
           is_active: filters.is_active,
         }),
       ]);
 
+      if (id !== buscaAtual.current) return;
+      setItensForaDoLimite(
+        Math.max(0, Number(productsResult.total || 0) - (productsResult.data || []).length) +
+          Math.max(0, Number(servicesResult.total || 0) - (servicesResult.data || []).length),
+      );
       const mappedProducts = (productsResult.data || []).map((item: Product) => ({
         ...item,
         type: 'product' as const,
@@ -118,9 +133,9 @@ const Produtos: React.FC = () => {
       );
       setTotalCount(allItems.length || 0);
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao carregar produtos');
+      if (id === buscaAtual.current) toast.error(error.message || 'Erro ao carregar produtos');
     } finally {
-      setLoading(false);
+      if (id === buscaAtual.current) setLoading(false);
     }
   };
 
@@ -446,6 +461,12 @@ const Produtos: React.FC = () => {
         />
       </div>
 
+      {itensForaDoLimite > 0 && (
+        <p role="status" className="rounded-2xl bg-warning/10 px-4 py-3 text-sm text-warning-foreground">
+          {itensForaDoLimite} {itensForaDoLimite === 1 ? 'item não aparece' : 'itens não aparecem'} nesta lista
+          (o limite é {LIMITE_DO_SERVIDOR} produtos e {LIMITE_DO_SERVIDOR} serviços). Use a busca para encontrá-los.
+        </p>
+      )}
       <SearchFilters
         searchValue={filters.search || ''}
         onSearchChange={(value) => {

@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { EsqueletoLista } from '@/components/visual/EsqueletoLista';
+import { SeletorDeCliente, type ClienteResumo } from '@/components/crud/SeletorDeCliente';
 import { PageHeader } from '@/components/crud/PageHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -149,9 +151,14 @@ const Assinaturas: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [subscriptions, setSubscriptions] = useState<CustomerSubscription[]>([]);
+  // Clientes ja escolhidos nos seletores, para lembrar o barbeiro da carteira.
   const [customers, setCustomers] = useState<
     Array<{ id: string; name: string; phone?: string | null; preferredProfessionalId?: string }>
   >([]);
+  const lembrarCliente = (cliente: ClienteResumo | null) => {
+    if (!cliente) return;
+    setCustomers((atual) => (atual.some((item) => item.id === cliente.id) ? atual : [...atual, cliente]));
+  };
   const [professionals, setProfessionals] = useState<Array<{ id: string; name: string }>>([]);
   const [savingPlan, setSavingPlan] = useState(false);
   const [savingSubscription, setSavingSubscription] = useState(false);
@@ -193,25 +200,16 @@ const Assinaturas: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [plansData, subscriptionsData, customersResult, teamResult] = await Promise.all([
+      // Clientes nao vem mais aqui: os seletores buscam no servidor (a lista
+      // "completa" parava nos 200 primeiros).
+      const [plansData, subscriptionsData, teamResult] = await Promise.all([
         companyService.listSubscriptionPlans(),
         companyService.listCustomerSubscriptions(),
-        companyService.list('customers', { page: 1, pageSize: 200, is_active: 'true' }),
         companyService.listTeamMembers(),
       ]);
 
       setPlans(Array.isArray(plansData) ? plansData : []);
       setSubscriptions(Array.isArray(subscriptionsData) ? subscriptionsData : []);
-      const list = Array.isArray(customersResult?.data) ? customersResult.data : [];
-      setCustomers(
-        list.map((item: any) => ({
-          id: item.id,
-          name: item.name,
-          phone: item.phone || null,
-          // Guardado para pre-selecionar o barbeiro ao escolher o cliente.
-          preferredProfessionalId: item.preferred_professional_id || '',
-        }))
-      );
       setProfessionals(
         (Array.isArray(teamResult) ? teamResult : []).map((item: any) => ({
           id: String(item.id),
@@ -454,7 +452,7 @@ const Assinaturas: React.FC = () => {
           </CardHeader>
           <CardContent className="space-y-6">
             {atencaoLoading ? (
-              <p className="text-sm text-muted-foreground">Carregando...</p>
+              <EsqueletoLista rotulo="Carregando" />
             ) : (
               <>
                 {atencao.em_aberto.length > 0 && (
@@ -635,18 +633,14 @@ const Assinaturas: React.FC = () => {
         <CardContent className="grid gap-3 md:grid-cols-5">
           <div className="space-y-1">
             <Label>Cliente</Label>
-            <select
+            <SeletorDeCliente
               value={subscriptionForm.customer_id}
-              onChange={(e) => setSubscriptionForm((p) => ({ ...p, customer_id: e.target.value }))}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="">Selecione</option>
-              {customers.map((customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.phone ? `${customer.name} - ${customer.phone}` : customer.name}
-                </option>
-              ))}
-            </select>
+              onChange={(cliente) => {
+                lembrarCliente(cliente);
+                setSubscriptionForm((p) => ({ ...p, customer_id: cliente?.id || '' }));
+              }}
+              placeholder="Selecione"
+            />
           </div>
           <div className="space-y-1">
             <Label>Plano</Label>
@@ -717,7 +711,7 @@ const Assinaturas: React.FC = () => {
         </CardHeader>
         <CardContent className="space-y-2">
           {loading ? (
-            <p className="text-sm text-muted-foreground">Carregando...</p>
+            <EsqueletoLista rotulo="Carregando" />
           ) : plans.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhum plano cadastrado.</p>
           ) : (
@@ -750,7 +744,7 @@ const Assinaturas: React.FC = () => {
         </CardHeader>
         <CardContent className="space-y-2">
           {loading ? (
-            <p className="text-sm text-muted-foreground">Carregando...</p>
+            <EsqueletoLista rotulo="Carregando" />
           ) : subscriptions.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhuma assinatura cadastrada.</p>
           ) : (
@@ -787,18 +781,11 @@ const Assinaturas: React.FC = () => {
           <div className="grid gap-3 md:grid-cols-3">
             <div className="space-y-1">
               <Label>Filtrar por cliente</Label>
-              <select
+              <SeletorDeCliente
                 value={usageFilterCustomerId}
-                onChange={(e) => setUsageFilterCustomerId(e.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                <option value="">Todos</option>
-                {customers.map((customer) => (
-                  <option key={customer.id} value={customer.id}>
-                    {customer.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(cliente) => setUsageFilterCustomerId(cliente?.id || '')}
+                opcaoVazia="Todos"
+              />
             </div>
             <div className="space-y-1">
               <Label>Filtrar por assinatura</Label>
@@ -826,7 +813,7 @@ const Assinaturas: React.FC = () => {
           </div>
 
           {usageLoading ? (
-            <p className="text-sm text-muted-foreground">Carregando histórico...</p>
+            <EsqueletoLista rotulo="Carregando histórico" />
           ) : usage.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhum consumo registrado.</p>
           ) : (

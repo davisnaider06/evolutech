@@ -6,6 +6,25 @@ import { notificationService } from './notification.service';
 
 type JsonObject = Record<string, any>;
 
+/**
+ * Prazo das chamadas ao gateway. Sem ele, um gateway que nao responde
+ * prendia a requisicao do dono (e o job de cobranca) ate a conexao cair,
+ * o que pode levar minutos.
+ */
+const GATEWAY_TIMEOUT_MS = Number(process.env.PAYMENT_GATEWAY_TIMEOUT_MS || 15000);
+
+/**
+ * Estourar o prazo NAO quer dizer que a cobranca deixou de ser criada: o
+ * gateway pode ter recebido e so nao respondido. Por isso a mensagem manda
+ * conferir antes de tentar de novo, em vez de dizer que falhou.
+ */
+function erroDePrazoDoGateway() {
+  return new PaymentServiceError(
+    'O gateway de pagamento nao respondeu a tempo. A cobranca pode ter sido criada: confira no painel do gateway antes de tentar de novo.',
+    504
+  );
+}
+
 export class PaymentServiceError extends Error {
   statusCode: number;
 
@@ -58,7 +77,13 @@ function requestStripe(
       }
     );
 
-    req.on('error', (error) => reject(new PaymentServiceError(error.message || 'Erro de rede', 502)));
+    // Prazo total (conexao + resposta). `req.setTimeout` so conta depois que
+    // a conexao abre: com o gateway inalcancavel, levava bem mais que o prazo.
+    const prazo = setTimeout(() => req.destroy(erroDePrazoDoGateway()), GATEWAY_TIMEOUT_MS);
+    req.on('close', () => clearTimeout(prazo));
+    req.on('error', (error) =>
+      reject(error instanceof PaymentServiceError ? error : new PaymentServiceError(error.message || 'Erro de rede', 502))
+    );
     if (payload) req.write(payload);
     req.end();
   });
@@ -110,7 +135,13 @@ function requestJson(
       }
     );
 
-    req.on('error', (error) => reject(new PaymentServiceError(error.message || 'Erro de rede', 502)));
+    // Prazo total (conexao + resposta). `req.setTimeout` so conta depois que
+    // a conexao abre: com o gateway inalcancavel, levava bem mais que o prazo.
+    const prazo = setTimeout(() => req.destroy(erroDePrazoDoGateway()), GATEWAY_TIMEOUT_MS);
+    req.on('close', () => clearTimeout(prazo));
+    req.on('error', (error) =>
+      reject(error instanceof PaymentServiceError ? error : new PaymentServiceError(error.message || 'Erro de rede', 502))
+    );
     if (rawPayload) req.write(rawPayload);
     req.end();
   });
@@ -242,7 +273,10 @@ export class PaymentService {
           sessionId: params.externalPaymentId,
         });
       }
-      await this.avisarAssinaturaAtivada(assinaturaAtivada);
+      // Sem await: o gateway espera a resposta do webhook, e um provedor de
+      // e-mail lento (ate 20 s) fazia ele reenviar o evento. O aviso trata os
+      // proprios erros; o pagamento ja esta confirmado no banco a esta altura.
+      void this.avisarAssinaturaAtivada(assinaturaAtivada);
     }
 
     return { received: true, processed: true };

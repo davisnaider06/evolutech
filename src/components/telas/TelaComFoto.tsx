@@ -16,6 +16,8 @@ import React from 'react';
 import { cn } from '@/lib/utils';
 
 export const FOTO_PADRAO = '/imagens/barbearia-capa.jpg';
+const FOTO_PADRAO_AVIF = '/imagens/barbearia-capa.avif';
+const FOTO_PADRAO_WEBP = '/imagens/barbearia-capa.webp';
 
 interface Props {
   children: React.ReactNode;
@@ -27,12 +29,19 @@ interface Props {
 
 export const TelaComFoto: React.FC<Props> = ({ children, foto, topo, className }) => (
   <div className="relative min-h-[100dvh] overflow-hidden bg-neutral-950 text-white">
-    <img
-      src={foto || FOTO_PADRAO}
-      alt=""
-      aria-hidden
-      className="absolute inset-0 h-full w-full object-cover object-[center_30%]"
-    />
+    {/* Foto padrao em AVIF/WebP (51 kB/84 kB contra 173 kB do JPEG). A foto
+        propria da barbearia, quando houver, vai como veio. */}
+    <picture>
+      {!foto && <source srcSet={FOTO_PADRAO_AVIF} type="image/avif" />}
+      {!foto && <source srcSet={FOTO_PADRAO_WEBP} type="image/webp" />}
+      <img
+        src={foto || FOTO_PADRAO}
+        alt=""
+        aria-hidden
+        decoding="async"
+        className="absolute inset-0 h-full w-full object-cover object-[center_30%]"
+      />
+    </picture>
     {/* Escurece de baixo para cima: o texto branco precisa de fundo escuro em
         qualquer foto, e o rosto no alto continua aparecendo. */}
     <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/55 to-black/95" />

@@ -482,12 +482,21 @@ body.tema-vidro .glass-subtle {
   to   { opacity: 1; translate: 0 0; scale: 1; }
 }
 
+/* Entrada de cada tela do painel (substitui o framer-motion do ConteudoDaRota). */
+@keyframes tela-entrar {
+  from { opacity: 0; translate: 0 14px; }
+  to   { opacity: 1; translate: 0 0; }
+}
+
 @keyframes vidro-brilho {
   from { background-position: 150% 0; }
   to   { background-position: -50% 0; }
 }
 
 @layer utilities {
+  .animar-troca-de-tela {
+    animation: tela-entrar 0.38s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  }
   .animar-entrada-lado {
     animation: vidro-entrar-lado 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.05s backwards;
   }

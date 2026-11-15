@@ -478,7 +478,7 @@ export default function TemaGlobal() {
                           onClick={() => handleCompanySelect(company.id)}
                         >
                           {company.logo_url ? (
-                            <img src={company.logo_url} alt={company.name} className="h-8 w-8 rounded object-cover" />
+                            <img loading="lazy" decoding="async" src={company.logo_url} alt={company.name} className="h-8 w-8 rounded object-cover" />
                           ) : (
                             <div className="flex h-8 w-8 items-center justify-center rounded bg-secondary">
                               <Building2 className="h-4 w-4 text-muted-foreground" />

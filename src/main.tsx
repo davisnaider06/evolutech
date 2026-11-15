@@ -7,10 +7,14 @@ import "@fontsource/outfit/600.css";
 import "@fontsource/outfit/700.css";
 import "./index.css";
 import { registerSW } from "virtual:pwa-register";
+import { medirVelocidade } from "./lib/medirVelocidade";
 
 createRoot(document.getElementById("root")!).render(<App />);
 
 if (import.meta.env.PROD) {
+  // Velocidade real dos usuarios (melhoria 30): so em producao.
+  medirVelocidade();
+
   // Versao nova so entra quando a pessoa tocar em "Atualizar". Antes ela
   // assumia sozinha (autoUpdate) no meio do uso, sem ninguem saber, e uma tela
   // aberta continuava com o codigo velho falando com a API nova.

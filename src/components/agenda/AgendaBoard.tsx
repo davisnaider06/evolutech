@@ -692,7 +692,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({
                         }`}
                       >
                         {column.professional_avatar_url ? (
-                          <img
+                          <img decoding="async"
                             src={column.professional_avatar_url}
                             alt={column.professional_name}
                             className="h-full w-full object-cover"

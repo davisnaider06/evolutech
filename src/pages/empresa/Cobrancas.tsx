@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { EsqueletoLista } from '@/components/visual/EsqueletoLista';
 import { companyService } from '@/services/company';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -442,7 +443,7 @@ const Cobrancas: React.FC = () => {
           </CardHeader>
           <CardContent>
             {loadingMetrics ? (
-              <p className="text-sm text-muted-foreground">Carregando...</p>
+              <EsqueletoLista rotulo="Carregando" />
             ) : (
               <>
                 <p className="text-xl font-semibold">{currency(Number(metrics?.pending_amount || 0))}</p>
@@ -457,7 +458,7 @@ const Cobrancas: React.FC = () => {
           </CardHeader>
           <CardContent>
             {loadingMetrics ? (
-              <p className="text-sm text-muted-foreground">Carregando...</p>
+              <EsqueletoLista rotulo="Carregando" />
             ) : (
               <>
                 <p className="text-xl font-semibold">{currency(Number(metrics?.paid_amount || 0))}</p>
@@ -472,7 +473,7 @@ const Cobrancas: React.FC = () => {
           </CardHeader>
           <CardContent>
             {loadingMetrics ? (
-              <p className="text-sm text-muted-foreground">Carregando...</p>
+              <EsqueletoLista rotulo="Carregando" />
             ) : (
               <>
                 <p className="text-xl font-semibold">{currency(Number(metrics?.overdue_amount || 0))}</p>
@@ -487,7 +488,7 @@ const Cobrancas: React.FC = () => {
           </CardHeader>
           <CardContent>
             {loadingMetrics ? (
-              <p className="text-sm text-muted-foreground">Carregando...</p>
+              <EsqueletoLista rotulo="Carregando" />
             ) : (
               <>
                 <p className="text-xl font-semibold">{Number(metrics?.upcoming_count || 0)}</p>
@@ -767,7 +768,7 @@ const Cobrancas: React.FC = () => {
             </Button>
             <Badge variant="outline">{executionActiveFilterCount} filtros ativos</Badge>
           </div>
-          {loadingExecutions && <p className="text-muted-foreground">Carregando execuções...</p>}
+          {loadingExecutions && <EsqueletoLista rotulo="Carregando execuções" />}
           {!loadingExecutions && executionLogs.length === 0 && (
             <p className="text-muted-foreground">Nenhuma execução registrada ainda.</p>
           )}
@@ -812,7 +813,7 @@ const Cobrancas: React.FC = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {loadingCharges && <p className="text-muted-foreground">Carregando...</p>}
+          {loadingCharges && <EsqueletoLista rotulo="Carregando" />}
           {!loadingCharges && charges.length === 0 && (
             <p className="text-muted-foreground">Nenhuma cobrança criada.</p>
           )}
@@ -989,7 +990,7 @@ const Cobrancas: React.FC = () => {
             <Badge variant="outline">{activeFilterCount} filtros ativos</Badge>
           </div>
 
-          {loadingReminders && <p className="text-muted-foreground">Carregando lembretes...</p>}
+          {loadingReminders && <EsqueletoLista rotulo="Carregando lembretes" />}
           {!loadingReminders && reminders.length === 0 && (
             <p className="text-muted-foreground">Nenhum lembrete encontrado para os filtros atuais.</p>
           )}

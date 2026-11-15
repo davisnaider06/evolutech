@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { EsqueletoLista } from '@/components/visual/EsqueletoLista';
 import { PageHeader } from '@/components/crud/PageHeader';
 import { FormDialog } from '@/components/crud/FormDialog';
 import { StatusBadge } from '@/components/crud/StatusBadge';
@@ -166,7 +167,7 @@ const ServicosAgendamento: React.FC = () => {
         </CardHeader>
         <CardContent>
           {carregando ? (
-            <p className="text-sm text-muted-foreground">Carregando serviços...</p>
+            <EsqueletoLista rotulo="Carregando serviços" />
           ) : servicos.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               Nenhum serviço cadastrado ainda.

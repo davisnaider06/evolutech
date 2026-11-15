@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -9,6 +9,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Search, Filter, X } from 'lucide-react';
+
+const ATRASO_DA_BUSCA_MS = 300;
 
 interface StatusOption {
   value: string;
@@ -38,14 +40,39 @@ export const SearchFilters: React.FC<SearchFiltersProps> = ({
   showClear = false,
   children,
 }) => {
+  // Debounce da busca: o campo mostra o que foi digitado na hora, mas a tela
+  // so recebe o texto (e busca no servidor) depois de 300 ms sem digitar.
+  // Antes cada tecla virava uma requisicao.
+  const [texto, setTexto] = useState(searchValue);
+  const ultimoEnviado = useRef(searchValue);
+  const avisar = useRef(onSearchChange);
+  avisar.current = onSearchChange;
+
+  // Valor trocado por fora (ex.: botao Limpar) volta para o campo.
+  useEffect(() => {
+    if (searchValue !== ultimoEnviado.current) {
+      ultimoEnviado.current = searchValue;
+      setTexto(searchValue);
+    }
+  }, [searchValue]);
+
+  useEffect(() => {
+    if (texto === ultimoEnviado.current) return;
+    const espera = window.setTimeout(() => {
+      ultimoEnviado.current = texto;
+      avisar.current(texto);
+    }, ATRASO_DA_BUSCA_MS);
+    return () => window.clearTimeout(espera);
+  }, [texto]);
+
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
       <div className="relative flex-1 max-w-md">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           placeholder={searchPlaceholder}
-          value={searchValue}
-          onChange={(e) => onSearchChange(e.target.value)}
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
           className="pl-10"
         />
       </div>
