@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { API_URL } from '@/config/api';
+import { requisitar } from '@/lib/rede';
 
 export interface CompanyModule {
   id: string;
@@ -70,7 +71,9 @@ let buscaEmAndamento: { token: string; promessa: Promise<CompanyModule[] | null>
 
 const buscarModulosDoBackend = (token: string): Promise<CompanyModule[] | null> => {
   if (buscaEmAndamento?.token === token) return buscaEmAndamento.promessa;
-  const promessa = fetch(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+  // `requisitar` (e nao fetch direto): o AuthContext pede o mesmo /auth/me na
+  // abertura do app, e assim as duas chamadas viram uma so requisicao.
+  const promessa = requisitar(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
     .then(async (response) => {
       if (!response.ok) return null;
       const data = await response.json();
