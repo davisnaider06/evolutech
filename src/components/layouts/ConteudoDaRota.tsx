@@ -1,6 +1,5 @@
-import React, { Suspense, useState } from 'react';
-import { useLocation, useOutlet } from 'react-router-dom';
-import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
+import React, { Suspense } from 'react';
+import { Outlet, useLocation } from 'react-router-dom';
 
 /**
  * Conteudo da tela atual, com transicao suave entre telas.
@@ -10,13 +9,6 @@ import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
  * tela e so a area de conteudo mostra o esqueleto. Antes o app inteiro
  * piscava para um spinner a cada troca de tela.
  */
-
-/** Guarda a tela que estava montada, para ela sair animando sem virar a nova. */
-const TelaCongelada: React.FC = () => {
-  const outlet = useOutlet();
-  const [tela] = useState(outlet);
-  return tela;
-};
 
 const Bloco: React.FC<{ className?: string }> = ({ className = '' }) => (
   <div className={`esqueleto-vidro rounded-2xl ${className}`} />
@@ -38,24 +30,21 @@ export const EsqueletoDaTela: React.FC = () => (
   </div>
 );
 
+/**
+ * A transicao de entrada e CSS (.animar-troca-de-tela em index.css), nao
+ * framer-motion: os layouts sao carregados na abertura do app, e a biblioteca
+ * (o maior pacote do JS inicial) ia junto ate para o cliente que so abria o
+ * link de agendamento. A `key` remonta o bloco a cada tela, o que reinicia a
+ * animacao. Quem pediu menos movimento no sistema nao ve a animacao (regra
+ * global de prefers-reduced-motion).
+ */
 export const ConteudoDaRota: React.FC = () => {
   const location = useLocation();
   return (
-    // reducedMotion="user": quem pediu menos movimento no sistema troca de
-    // tela sem deslizar (o CSS global nao alcanca o framer-motion).
-    <MotionConfig reducedMotion="user">
-    <AnimatePresence mode="wait">
-      <motion.div
-        key={location.pathname}
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0, transition: { duration: 0.38, ease: [0.22, 1, 0.36, 1] } }}
-        exit={{ opacity: 0, y: -6, transition: { duration: 0.14, ease: 'easeIn' } }}
-      >
-        <Suspense fallback={<EsqueletoDaTela />}>
-          <TelaCongelada />
-        </Suspense>
-      </motion.div>
-    </AnimatePresence>
-    </MotionConfig>
+    <div key={location.pathname} className="animar-troca-de-tela">
+      <Suspense fallback={<EsqueletoDaTela />}>
+        <Outlet />
+      </Suspense>
+    </div>
   );
 };
