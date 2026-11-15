@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { EsqueletoLista } from '@/components/visual/EsqueletoLista';
 import { subDays } from 'date-fns';
 import {
   BarChart,
@@ -189,7 +190,7 @@ const Relatorios: React.FC = () => {
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-bold lg:text-3xl">Relatórios</h1>
-        <p className="text-muted-foreground">Carregando dados...</p>
+        <EsqueletoLista rotulo="Carregando dados" />
       </div>
     );
   }

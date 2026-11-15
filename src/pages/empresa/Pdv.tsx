@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { EsqueletoLista } from '@/components/visual/EsqueletoLista';
 import { ExternalLink, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -308,7 +309,7 @@ const Pdv: React.FC = () => {
               onChange={(event) => setSearch(event.target.value)}
             />
             {loading ? (
-              <div className="py-10 text-center text-muted-foreground">Carregando catálogo...</div>
+              <EsqueletoLista rotulo="Carregando catálogo" />
             ) : (
               <div className="grid gap-3 md:grid-cols-2">
                 {catalog.map((item) => (
@@ -550,7 +551,7 @@ const Pdv: React.FC = () => {
           </Button>
         </CardHeader>
         <CardContent className="space-y-2">
-          {pendingPixLoading ? <p className="text-sm text-muted-foreground">Carregando...</p> : null}
+          {pendingPixLoading ? <EsqueletoLista rotulo="Carregando" /> : null}
           {!pendingPixLoading && pendingPixOrders.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sem PIX pendente.</p>
           ) : null}

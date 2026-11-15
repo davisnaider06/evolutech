@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { EsqueletoLista } from '@/components/visual/EsqueletoLista';
 import { adminService } from '@/services/admin';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -252,7 +253,7 @@ const GatewaysPagamento: React.FC = () => {
           />
         </CardHeader>
         <CardContent className="space-y-3">
-          {loading && <p className="text-muted-foreground">Carregando...</p>}
+          {loading && <EsqueletoLista rotulo="Carregando" />}
           {!loading && filtered.length === 0 && (
             <p className="text-muted-foreground">Nenhum gateway encontrado.</p>
           )}

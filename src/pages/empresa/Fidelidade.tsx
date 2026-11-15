@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { EsqueletoLista } from '@/components/visual/EsqueletoLista';
 import { PageHeader } from '@/components/crud/PageHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { SeletorDeCliente } from '@/components/crud/SeletorDeCliente';
@@ -218,7 +219,7 @@ const Fidelidade: React.FC = () => {
             />
           </div>
 
-          {profileLoading ? <p className="text-sm text-muted-foreground">Carregando perfil...</p> : null}
+          {profileLoading ? <EsqueletoLista rotulo="Carregando perfil" /> : null}
           {!profileLoading && profile?.profile ? (
             <>
               <div className="grid gap-3 md:grid-cols-4">

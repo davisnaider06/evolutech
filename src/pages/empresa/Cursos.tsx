@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { EsqueletoLista } from '@/components/visual/EsqueletoLista';
 import { PageHeader } from '@/components/crud/PageHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -447,7 +448,7 @@ const Cursos: React.FC = () => {
           </CardHeader>
           <CardContent className="space-y-4">
             {loading ? (
-              <p className="text-sm text-muted-foreground">Carregando cursos...</p>
+              <EsqueletoLista rotulo="Carregando cursos" />
             ) : !overview?.courses.length ? (
               <p className="text-sm text-muted-foreground">Nenhum curso cadastrado ainda.</p>
             ) : (

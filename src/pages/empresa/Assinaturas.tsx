@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { EsqueletoLista } from '@/components/visual/EsqueletoLista';
 import { SeletorDeCliente, type ClienteResumo } from '@/components/crud/SeletorDeCliente';
 import { PageHeader } from '@/components/crud/PageHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -451,7 +452,7 @@ const Assinaturas: React.FC = () => {
           </CardHeader>
           <CardContent className="space-y-6">
             {atencaoLoading ? (
-              <p className="text-sm text-muted-foreground">Carregando...</p>
+              <EsqueletoLista rotulo="Carregando" />
             ) : (
               <>
                 {atencao.em_aberto.length > 0 && (
@@ -710,7 +711,7 @@ const Assinaturas: React.FC = () => {
         </CardHeader>
         <CardContent className="space-y-2">
           {loading ? (
-            <p className="text-sm text-muted-foreground">Carregando...</p>
+            <EsqueletoLista rotulo="Carregando" />
           ) : plans.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhum plano cadastrado.</p>
           ) : (
@@ -743,7 +744,7 @@ const Assinaturas: React.FC = () => {
         </CardHeader>
         <CardContent className="space-y-2">
           {loading ? (
-            <p className="text-sm text-muted-foreground">Carregando...</p>
+            <EsqueletoLista rotulo="Carregando" />
           ) : subscriptions.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhuma assinatura cadastrada.</p>
           ) : (
@@ -812,7 +813,7 @@ const Assinaturas: React.FC = () => {
           </div>
 
           {usageLoading ? (
-            <p className="text-sm text-muted-foreground">Carregando histórico...</p>
+            <EsqueletoLista rotulo="Carregando histórico" />
           ) : usage.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhum consumo registrado.</p>
           ) : (

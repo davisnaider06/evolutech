@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { EsqueletoLista } from '@/components/visual/EsqueletoLista';
 import { companyService } from '@/services/company';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
@@ -220,7 +221,7 @@ export default function PermissoesEquipe() {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <p className="text-sm text-muted-foreground">Carregando permissões...</p>
+            <EsqueletoLista rotulo="Carregando permissões" />
           ) : sortedMembers.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhum funcionário cadastrado.</p>
           ) : (

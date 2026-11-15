@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { EsqueletoLista } from '@/components/visual/EsqueletoLista';
 import { toast } from 'sonner';
 import { companyService } from '@/services/company';
 import { PageHeader } from '@/components/crud/PageHeader';
@@ -388,7 +389,7 @@ const Comissoes: React.FC = () => {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <p className="text-sm text-muted-foreground">Carregando...</p>
+            <EsqueletoLista rotulo="Carregando" />
           ) : rows.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               Nenhum resultado neste mês. A comissão de serviço vem dos agendamentos marcados
@@ -559,7 +560,7 @@ const Comissoes: React.FC = () => {
         </CardHeader>
         <CardContent>
           {adjustmentsLoading ? (
-            <p className="text-sm text-muted-foreground">Carregando...</p>
+            <EsqueletoLista rotulo="Carregando" />
           ) : !selectedProfessionalId ? (
             <p className="text-sm text-muted-foreground">Selecione um profissional.</p>
           ) : adjustments.length === 0 ? (

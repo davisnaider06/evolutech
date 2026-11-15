@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { EsqueletoLista } from '@/components/visual/EsqueletoLista';
 import { useAuth } from '@/contexts/AuthContext';
 import { companyService } from '@/services/company';
 import { StatsCard } from '@/components/dashboard/StatsCard';
@@ -210,7 +211,7 @@ const EmpresaApp: React.FC = () => {
             </CardHeader>
             <CardContent className="space-y-3 min-h-24">
               {loading ? (
-                <p className="text-sm text-muted-foreground">Carregando...</p>
+                <EsqueletoLista rotulo="Carregando" />
               ) : column.items.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Sem tarefas nesta coluna</p>
               ) : (

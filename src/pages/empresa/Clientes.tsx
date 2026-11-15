@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { EsqueletoLista } from '@/components/visual/EsqueletoLista';
 import { DataTable, Column } from '@/components/crud/DataTable';
 import { PageHeader } from '@/components/crud/PageHeader';
 import { SearchFilters } from '@/components/crud/SearchFilters';
@@ -614,7 +615,7 @@ const Clientes: React.FC = () => {
           </div>
 
           {followUpsLoading ? (
-            <div className="text-sm text-muted-foreground">Carregando retornos...</div>
+            <EsqueletoLista rotulo="Carregando retornos" />
           ) : followUps.length === 0 ? (
             <div className="text-sm text-muted-foreground">Nenhum retorno encontrado no filtro atual.</div>
           ) : (
@@ -910,7 +911,7 @@ const Clientes: React.FC = () => {
           </DialogHeader>
 
           {historyLoading ? (
-            <div className="py-10 text-center text-muted-foreground">Carregando histórico...</div>
+            <EsqueletoLista rotulo="Carregando histórico" />
           ) : !historyData ? (
             <div className="py-10 text-center text-muted-foreground">Não foi possível carregar o histórico.</div>
           ) : (
